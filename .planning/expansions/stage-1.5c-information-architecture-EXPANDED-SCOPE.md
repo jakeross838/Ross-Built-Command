@@ -33,6 +33,61 @@ Per Jake nwrp44 explicit assignment (Q9=A baseline + Q10=B-modified produces 6th
 
 All other Q1-Q15 recommendations approved as written (Q2=A, Q3=B, Q5=A, Q6=C, Q7=A, Q8=A, Q9=A, Q11=C, Q12=A, Q13=A, Q14=A, Q15 per recommendation).
 
+## iter-2 amendments (per Jake nwrp45, 2026-05-05)
+
+After plan-review iter-1 returned REVISE-PLAN with 13 CRITICAL findings + 6 cross-reviewer agreements, Jake nwrp45 resolved 4 architectural decisions and authorized iter-2:
+
+### 4 architectural decisions resolved
+
+- **Decision A — Site Office direction scope (D-057):** **A = a (wrap production routes in `.design-system-scope` class).** Minimal scope change; preserves D-07 by construction. Plan 3 thin-wrapper extraction wraps each production route's outer container in `.design-system-scope`. The scope's meaning is extended from "playground-only" to "Site Office consumer."
+- **Decision B — /admin/platform 13 sub-routes migration (D-058):** **B = a-modified (full migration in 1.5c).** Wildcard redirect `/admin/platform/:path* → /platform-admin/:path*` AND mount the existing `/admin/platform` layouts + 13 sub-routes at the new `/platform-admin` path. Sub-routes are real, working, migrated — Jake and Andrew never lose access to audit / orgs / users / feedback / support / items / cost-intelligence. `/platform-admin` index page itself stays as placeholder showing directory of available tools. Migration happens in 1.5c, NOT deferred to Wave 1.1-Lite. Scope addition: ~1d for migration work, accepted as worth the URL hygiene.
+- **Decision C — PerJobTabs mobile posture (D-059):** **C = b (collapse to dropdown <768px).** Matches existing nav-bar mobile hamburger pattern. Plan 5 PerJobTabs renders 6 primary tabs + More dropdown on ≥768px; collapses to a single dropdown showing all tabs on <768px.
+- **Decision D — Admin dropdown vs Admin section overview (D-060):** **D = a (both exist with clear precedence).** Admin dropdown is power-user shortcut (top-nav direct access to settings sub-items); `/admin` section overview Card grid is canonical destination (clicking "Admin" in main nav lands here). Plans document the precedence in CLAUDE.md atomic update.
+
+### 5 must-fix CRITICAL findings (iter-2 mandatory)
+
+1. **Site Office scope leak** (XR-4 / design-pushback C-1) — RESOLVED via Decision A. Plan 3 wraps production routes in `.design-system-scope`. iter-2 watchpoint: visual diff before/after.
+2. **JobTabs vs PerJobTabs double-nav collision** (architect C-1) — Plan 5 explicitly removes inline `<JobTabs>` from all 9 existing `/jobs/[id]/*` pages (page.tsx, draws/page.tsx, budget/page.tsx, invoices/page.tsx, change-orders/page.tsx, activity/page.tsx, lien-releases/page.tsx, internal-billings/page.tsx, purchase-orders/page.tsx), OR renames them to use the new layout-mounted `<PerJobTabs>`. Goal: zero double-tab-bar rendering.
+3. **/admin/platform regression** (architect C-2) — RESOLVED via Decision B-modified. Plan 1 adds wildcard redirect `/admin/platform/:path* → /platform-admin/:path*`. Plan 6 mounts existing 13 sub-route layouts at `/platform-admin/{audit,organizations,users,feedback,support,items,cost-intelligence}` paths. iter-2 watchpoint: verify migrated sub-routes are functional, not just routed.
+4. **/platform-admin auth gate** (XR-2 / security BLOCKING SEC-1 + compliance W-1) — Plan 6 Task 2 LOCKS Option A (middleware regex extension). `src/middleware.ts:65` updates to match `/admin/platform` AND `/platform-admin/*` with same `!isPlatformAdmin` redirect posture. iter-2 watchpoint: auth bypass test (PM/accountant authenticated session navigating to `/platform-admin/audit` MUST receive redirect).
+5. **Audit-log schema rewrite** (XR-3 / enterprise-readiness C-1+C-2 + compliance C-1) — Plan 2 Step B replaces concat-action-string framing with the actual `entity_type` + `action` separate-column reality (verified via 5+ live audit-write sites: `src/lib/activity-log.ts:20-49`, `src/app/api/draws/[id]/action/route.ts:243`, `src/app/api/lien-releases/*`, `src/app/api/cron/overdue-invoices/route.ts:65`). Strategy 1' (entity_type-aware UI label mapping) becomes primary recommendation. Plan 2 (or Plan 7) ships `src/lib/audit/action-labels.ts` helper module (~30 LOC) — contract committed, even if no code calls it yet. iter-2 watchpoint: live audit-site smoke test.
+
+### 10 mechanical fixes (iter-2 must encode)
+
+1. **Plans 5+6 add `depends_on Plan 4 Task 1`** (PlaceholderCard) — OR PlaceholderCard creation hoists to Plan 1.
+2. **PlaceholderCard rename to `NwPlaceholderCard`** + Plan 7 atomic update includes COMPONENTS.md §7 entry per PROPAGATION-RULES.md §4b workflow.
+3. **Plan 1 PlatformAdminBadge hardcoded hex `#F7F5EC` fallback** — verify `--text-on-dark` and `--border-on-dark` tokens exist in `colors_and_type.css`; drop fallbacks. If tokens don't exist, propagation-rules workflow blocks 1.5c.
+4. **Plan 1 `/admin/billing` redirect loop fix** — add `/admin/billing` to `BILLING_ESCAPE_PATHS` (middleware.ts:12-16) + update billing-gate redirect destination from `/settings/billing` to `/admin/billing`.
+5. **Plan 4 Sub Portal token stub fixes** — (a) param-reflection grep verify (`grep -E "params\.token"` returns 0); (b) F3 compliance contract in stub copy (token expiry, scope binding, audit-log-on-use, cookie-vs-querystring posture, JWT-with-org-claim REJECTED by-construction).
+6. **Plan 7 ENTITY-INVENTORY.md adds "Retention class" + "PII?" columns.** ROLES-CATALOG.md adds "Cross-org?" column. ARCHITECTURE.md adds §SOC2 control mapping section (CC6.1 / CC6.6 / CC6.7 / CC7.2 / PI1.1 / C1.1).
+7. **Plan 7 atomic 9-doc commit** (instead of 4 NEW commit + 5 UPDATED commit). AC-1.5c-7-11 verifies `git log -1 --stat shows all 9 docs`.
+8. **Plan 7 atomic update idempotency guard** — `grep -c 'D-040' .planning/MASTER-PLAN.md` before append; halt if >0.
+9. **Plan 4 AC-1.5c-4-07 verify** — add 3 explicit grep tokens (one per Sub Portal stub).
+10. **Real-logic re-mounts preserve `getCurrentMembership()` verbatim** (Plans 4 + 6). Add per-route grep diff verify: `diff <(grep -E 'getCurrentMembership|org_id|requireMembership' src/app/<source>) <(grep -E ... src/app/<destination>)` — expect zero diff.
+
+### Owner Portal auth posture clarification (multi-tenant W-1)
+
+CONTEXT D-08's "owner_view role gate" claim is misleading. iter-2 plans should clarify:
+- 1.5c is structural — Owner Portal at `/owner-portal/*` mounts thin-wrapper components with Caldwell fixtures. No real auth flow exercised.
+- F1 wires real backend. F1 must commit to either (a) extending `client_portal_access` token model (SHA-256 + service-role-API + anon-grant per migration 00074) OR (b) introducing `owner_view` member role with RLS for owner-scoped reads. NOT both.
+- Plan 7 ARCHITECTURE.md (or new OWNER-PORTAL-CUTOVER.md) documents this constraint so F1 inherits it.
+
+### iter-2 specific watchpoints
+
+1. **Verify Decision A actually fixes Site Office propagation** — visual diff before/after extraction (production route `/financials/bills/[id]` rendered without `.design-system-scope` wrap vs with wrap; expect 1px slate-tile left-stamp + JetBrains Mono UPPERCASE eyebrow + Space Grotesk Medium headline now appear on production after wrap).
+2. **Verify Decision B migrated `/admin/platform` sub-routes are functional, not just routed** — smoke test: navigate to `/platform-admin/audit`, `/platform-admin/organizations`, `/platform-admin/users`, etc.; confirm each renders the existing layout + functionality (audit log table loads, org list loads, user list loads, etc.).
+3. **Verify `/platform-admin` middleware gate actually rejects non-platform-admin users** — auth bypass test: log in as a PM (non-platform-admin); navigate to `/platform-admin/audit`; confirm redirect to `/dashboard` or 404 (NOT a successful render).
+4. **Verify audit-log writes use new schema correctly** — live audit site smoke test: trigger an audit-log write at one of the 5+ live sites (`/api/draws/[id]/action/route.ts:243` is the easiest); confirm `entity_type` + `action` columns are populated separately (not concatenated).
+
+### D-057 through D-060 logged in MASTER-PLAN.md DECISIONS LOG (Plan 7 atomic update)
+
+- D-057 = Decision A (Site Office .design-system-scope wrapping for production routes)
+- D-058 = Decision B-modified (full /admin/platform → /platform-admin migration in 1.5c, including 13 sub-routes mounted)
+- D-059 = Decision C (PerJobTabs collapse to dropdown <768px)
+- D-060 = Decision D (Admin dropdown shortcut + /admin canonical destination, both surfaces with clear precedence)
+
+D-051..D-056 unchanged (carried forward from nwrp44 amendments).
+
 ## Standing rules during execution (per nwrp44)
 
 - **Parallel execution by work type:**

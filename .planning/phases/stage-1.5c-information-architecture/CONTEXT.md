@@ -130,6 +130,27 @@ Tactical sub-decisions during implementation (Claude decides during execute, app
 - TanStack Table v8 reuse vs new pattern for any DataGrid surfaces in the IA scaffold
 - Halt only if a tactical choice would force a SYSTEM.md / COMPONENTS.md / PATTERNS.md update.
 
+### Phase-local decisions added per Jake nwrp45 (post-iter-1 plan-review)
+
+After /nightwork-plan-review iter-1 returned REVISE-PLAN with 13 CRITICAL findings (REVISE-PLAN report at `.planning/plan-reviews/stage-1.5c-information-architecture-plan-review.md`), Jake nwrp45 resolved 4 architectural decisions:
+
+- **D-19 (= MASTER-PLAN D-057):** Site Office direction scope — Plan 3 thin-wrapper extraction wraps each production route's outer container in `.design-system-scope` (Decision A from plan-review). Extends scope's meaning from "playground-only" to "Site Office consumer." Preserves D-07 by construction. Not "promote to globals.css" (which would be SYSTEM.md-level change requiring `/nightwork-propagate`). Not "redefine D-07."
+
+- **D-20 (= MASTER-PLAN D-058):** Full `/admin/platform` → `/platform-admin` migration in 1.5c (Decision B-modified from plan-review). Wildcard redirect `/admin/platform/:path* → /platform-admin/:path*` AND mount existing 13 sub-route layouts at the new path. Sub-routes are real, working, migrated. `/platform-admin` index page itself stays as placeholder showing directory of available tools. NOT deferred to Wave 1.1-Lite. Scope addition: ~1d for migration, accepted as worth the URL hygiene.
+
+- **D-21 (= MASTER-PLAN D-059):** PerJobTabs collapses to dropdown <768px (Decision C from plan-review). Matches existing nav-bar mobile hamburger pattern. Plan 5 PerJobTabs renders 6 primary tabs + More dropdown on ≥768px; collapses to a single dropdown showing all tabs on <768px.
+
+- **D-22 (= MASTER-PLAN D-060):** Admin dropdown vs Admin section overview both exist with clear precedence (Decision D from plan-review). Admin dropdown is power-user shortcut (top-nav direct access to settings sub-items); `/admin` section overview Card grid is canonical destination (clicking "Admin" in main nav lands here). Plans document precedence in CLAUDE.md atomic update.
+
+### iter-2 watchpoints (per Jake nwrp45)
+
+These are explicit verifications in the iter-2 plans:
+
+1. **Visual diff verify Decision A (D-19)** — Plan 3 explicitly screenshots production route before/after `.design-system-scope` wrap; expect 1px slate-tile left-stamp + JetBrains Mono eyebrow + Space Grotesk headline to appear post-wrap.
+2. **Sub-route functionality verify Decision B (D-20)** — Plan 6 explicitly smokes /platform-admin/audit, /organizations, /users, /feedback, /support, /items, /cost-intelligence; each must render existing layout + functionality.
+3. **Auth bypass test for /platform-admin middleware (D-09 + 5th must-fix)** — Plan 6 includes test: PM (non-platform-admin) navigating to /platform-admin/audit MUST redirect (NOT successful render).
+4. **Audit-log live smoke test (5th must-fix)** — Plan 2 (or Plan 7) triggers audit-log write at /api/draws/[id]/action/route.ts:243 (or equivalent); confirms entity_type + action columns populated separately.
+
 ### NOT decisions (planner must surface for Jake)
 
 - Wave decomposition recommendation if it diverges from the natural Wave 1/2/3/4 above (planner's `/gsd-plan-checker` may have suggestions)
