@@ -2,6 +2,13 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+// iter-3 (D-23 / D-057 implementation correction per Q-iter2-1=a) — bundles
+// the direction stylesheet into every route so that Plan 3's
+// `.design-system-scope` wrap on production routes activates Site Office
+// rules (slate-tile left-stamp on cards, compact 16px padding, 0.18em
+// eyebrow tracking). Set B is the default base palette; direction
+// overrides only fire when data-direction is set inside the scope.
+import "@/app/design-system/design-system.css";
 import ConnectionBanner from "@/components/connection-banner";
 import ImpersonationBanner from "@/components/impersonation-banner";
 import SupportChatMount from "@/components/support-chat-mount";
