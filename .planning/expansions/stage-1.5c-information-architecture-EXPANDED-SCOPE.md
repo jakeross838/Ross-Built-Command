@@ -79,7 +79,67 @@ CONTEXT D-08's "owner_view role gate" claim is misleading. iter-2 plans should c
 3. **Verify `/platform-admin` middleware gate actually rejects non-platform-admin users** — auth bypass test: log in as a PM (non-platform-admin); navigate to `/platform-admin/audit`; confirm redirect to `/dashboard` or 404 (NOT a successful render).
 4. **Verify audit-log writes use new schema correctly** — live audit site smoke test: trigger an audit-log write at one of the 5+ live sites (`/api/draws/[id]/action/route.ts:243` is the easiest); confirm `entity_type` + `action` columns are populated separately (not concatenated).
 
-### D-057 through D-060 logged in MASTER-PLAN.md DECISIONS LOG (Plan 7 atomic update)
+## iter-3 amendments (per Jake nwrp46, 2026-05-05 — investigation outcome from Q-iter2-1)
+
+After plan-review iter-2 returned REVISE-PLAN with 1 NEW CRITICAL (architect NEW-C-1 + design-pushback REVISE — same finding: Plan 3 `.design-system-scope` wrap mechanically ineffective), Jake nwrp46 authorized **Q-iter2-1 = (b) investigate first**.
+
+### Investigation outcome (2026-05-05)
+
+Read `src/app/layout.tsx`, `src/app/globals.css`, `src/app/colors_and_type.css`, `src/app/design-system/design-system.css`, `src/components/nw/Card.tsx`, `src/components/nw/Eyebrow.tsx`.
+
+**Production routes ALREADY inherit ~70% of Site Office signature** at root level:
+- ✓ Inter body font + 15px (globals.css line 109-111)
+- ✓ JetBrains Mono UPPERCASE eyebrows at base 0.14em tracking (NwEyebrow inline style with `var(--…, fallback)` pattern)
+- ✓ Slate palette colors (light/dark theme via colors_and_type.css)
+- ✓ Grain texture (globals.css `.grain` class on body)
+- ✓ Theme awareness via `data-theme="light"|"dark"` on `<html>`
+
+**Production routes DO NOT get Site Office C-specific overrides** because design-system.css is loaded ONLY by `/design-system/*` layouts (side-effect import at `design-system/layout.tsx:52`):
+- ✗ Slate-tile 1px left-stamp on cards (design-system.css lines 132-140 require `.design-system-scope[data-direction="C"]`)
+- ✗ 16px Site Office C compact card padding (Tailwind `p-5` = 20px outside scope)
+- ✗ 0.18em Site Office C eyebrow tracking (base 0.14em outside scope)
+- ✗ 16px Site Office C section gap
+
+### Verdict + path
+
+Per Jake nwrp46: "If it doesn't [already inherit Site Office from root], fall through to option (a)." → **Q-iter2-1 = (a) — patch Decision A.**
+
+D-19/D-057 NOT retracted — kept as the architectural intent. Implementation details corrected:
+
+### Decision A (D-19/D-057) — implementation correction
+
+iter-3 patches the original iter-2 Decision A encoding to actually work:
+
+1. **Plan 1 adds task: import `design-system.css` from root layout.tsx.** Add `import "@/app/design-system/design-system.css";` to `src/app/layout.tsx` (after the existing `import "./globals.css";` on line 4). Side effect: design-system.css bundles into ALL routes (~3KB CSS). Set B palette is the default base (no override fires unless `[data-palette="A"]` is set). Direction overrides only fire when `[data-direction="A|B|C"]` is set inside `.design-system-scope`.
+
+2. **Plan 3 wrap template adds `data-direction="C" data-palette="B"`.** Updated from iter-2's `<div className="design-system-scope">` to `<div data-direction="C" data-palette="B" className="design-system-scope">` mirroring `src/app/design-system/prototypes/layout.tsx:39` (the playground layout that the prototype routes use). This activates the direction-aware CSS rules at design-system.css lines 84-148 on production routes.
+
+3. **Plan 7 PATTERNS.md update reconciles original lines 471-484 vs iter-2 amendment lines 552-553** (design-pushback W-2). Original paragraph claimed production routes inherit Site Office from root globals.css with NO `data-direction='C'` attribute needed. Investigation showed this was a misdiagnosis. Iter-3 PATTERNS.md update DELETES original paragraph 471-484; iter-2 amendment 552-553 stays (Plan 3 wraps + design-system.css import covers production Site Office).
+
+4. **Plan 3 watchpoint #1 verify updated.** Add: `grep -E "data-direction=\"C\"" src/app/<production-route>/layout.tsx` returns >=1 (mirroring the playground pattern). Visual diff before/after wrap confirms slate-tile left-stamp + UPPERCASE 0.18em mono eyebrow + Space Grotesk Medium headline appear post-wrap.
+
+### Plus 4 minor follow-ups (per Jake nwrp46)
+
+**Follow-up A — SEC-9 MEDIUM (security iter-2):** Plan 6 SUMMARY explicitly documents `/platform-admin/audit` migrated viewer's Supabase client type. iter-2 mechanical #10 grep diff returns "zero diff" vacuously because the viewer uses neither `getCurrentMembership` nor `org_id` (queries cross-org via service-role client per existing posture). Plan 6 verify adds:
+- Inspect source `src/app/admin/platform/audit/page.tsx`; confirm Supabase client type (service-role for cross-org reads, OR anon-with-platform_admin-RLS).
+- Migrated `src/app/platform-admin/audit/page.tsx` MUST preserve same client type verbatim.
+- Plan 6 SUMMARY documents the client type + cross-org row verification (smoke test confirms PM cannot read audit rows; platform_admin CAN read cross-org rows).
+
+**Follow-up B — SEC-10 LOW (security iter-2):** Plan 3 verify block adds defensive grep: `grep -rE 'data-org-id|data-org-name|data-tenant' src/app/financials/ src/app/jobs/ src/app/owner-portal/ src/app/people/` returns 0. Confirms production wrappers don't introduce DOM tenant-context attributes.
+
+**Follow-up C — NOTE-3 (planner iter-2 commit title):** Plan 7 atomic commit may include 10 docs (4 NEW + 5 UPDATED + COMPONENTS.md §7 entry for NwPlaceholderCard added per mechanical #2). Two options:
+- **C1 (chosen):** Update Plan 7 atomic commit title from "4 NEW + 5 UPDATED" to "4 NEW + 6 UPDATED" to reflect COMPONENTS.md inclusion. AC-1.5c-7-12 verifies `git log -1 --stat` shows all 10 docs.
+- C2: Split COMPONENTS.md into separate commit per PROPAGATION-RULES.md §4b workflow. Cleaner but adds a commit; chosen NOT to do (atomic 1-commit is simpler for the 1.5c IA close).
+
+**Follow-up D — design-pushback W-2 (PATTERNS.md reconciliation):** Plan 7 atomic update DELETES original PATTERNS.md inheritance paragraph (lines 471-484 in iter-2 state) that incorrectly claimed production routes inherit Site Office C from root globals.css with NO `data-direction='C'` attribute needed. Iter-2 amendment paragraph (lines 552-553) stays — accurately documents the Plan 3 wrap + design-system.css import mechanism. Per Jake nwrp46.
+
+### Standing rules unchanged
+
+All nwrp44/nwrp45 standing rules unchanged. iter-3 is a focused 5-item correction on top of iter-2.
+
+---
+
+## D-057 through D-060 logged in MASTER-PLAN.md DECISIONS LOG (Plan 7 atomic update)
 
 - D-057 = Decision A (Site Office .design-system-scope wrapping for production routes)
 - D-058 = Decision B-modified (full /admin/platform → /platform-admin migration in 1.5c, including 13 sub-routes mounted)

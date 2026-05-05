@@ -142,6 +142,34 @@ After /nightwork-plan-review iter-1 returned REVISE-PLAN with 13 CRITICAL findin
 
 - **D-22 (= MASTER-PLAN D-060):** Admin dropdown vs Admin section overview both exist with clear precedence (Decision D from plan-review). Admin dropdown is power-user shortcut (top-nav direct access to settings sub-items); `/admin` section overview Card grid is canonical destination (clicking "Admin" in main nav lands here). Plans document precedence in CLAUDE.md atomic update.
 
+### iter-3 amendments (per Jake nwrp46, post-iter-2 plan-review)
+
+iter-2 plan-review returned REVISE-PLAN with 1 NEW CRITICAL — architect NEW-C-1 + design-pushback REVISE both flagged Plan 3's `.design-system-scope` wrap as mechanically ineffective. Jake nwrp46 authorized **Q-iter2-1 = (b) investigate first**.
+
+**Investigation outcome (read globals.css + colors_and_type.css + design-system.css + root layout.tsx + Card.tsx + Eyebrow.tsx):** Production routes already inherit ~70% of Site Office signature at root level (Inter body, JetBrains Mono UPPERCASE eyebrows at 0.14em base, slate palette, grain texture, theme), but DO NOT get Site Office C-specific overrides (slate-tile 1px left-stamp, 16px compact card padding, 0.18em eyebrow tracking, 16px section gap) because `design-system.css` is loaded ONLY by `/design-system/*` layouts.
+
+Per Jake nwrp46 fall-through: **Q-iter2-1 = (a) — patch Decision A.**
+
+#### Phase-local decisions added per nwrp46
+
+- **D-23 (= MASTER-PLAN D-057, implementation correction):** Decision A patch — Plan 3 wrap template adds `data-direction="C" data-palette="B"` (mirroring `src/app/design-system/prototypes/layout.tsx:39`). Plan 1 adds `import "@/app/design-system/design-system.css";` to `src/app/layout.tsx` root layout. Side effect: design-system.css bundles into ALL routes (~3KB CSS). Set B is the default base palette; direction overrides only fire inside `.design-system-scope[data-direction="..."]`. This activates Site Office C rules on production routes by construction.
+
+- **D-24 (PATTERNS.md reconciliation per design-pushback W-2):** Plan 7 atomic update DELETES original PATTERNS.md "Site Office direction inheritance" paragraph (iter-2 state lines 471-484) that incorrectly claimed production routes inherit Site Office from globals.css with NO `data-direction='C'` attribute needed. Investigation revealed this was a misdiagnosis. iter-2 amendment paragraph (lines 552-553) stays — accurately documents the Plan 3 wrap + design-system.css import mechanism.
+
+- **D-25 (security iter-2 SEC-9 follow-up):** Plan 6 SUMMARY explicitly documents `/platform-admin/audit` migrated viewer's Supabase client type. Mechanical fix #10 grep diff is vacuously zero for that route (uses neither `getCurrentMembership` nor `org_id` — queries cross-org via service-role client per existing posture). Plan 6 verify adds: (a) inspect source `/admin/platform/audit/page.tsx` Supabase client type; (b) migrated `/platform-admin/audit/page.tsx` MUST preserve verbatim; (c) cross-org row smoke test (PM cannot read; platform_admin CAN).
+
+- **D-26 (security iter-2 SEC-10 follow-up):** Plan 3 verify adds defensive grep `grep -rE 'data-org-id|data-org-name|data-tenant' src/app/financials/ src/app/jobs/ src/app/owner-portal/ src/app/people/` returns 0 — confirms production wrappers don't introduce DOM tenant-context attributes.
+
+- **D-27 (planner iter-2 NOTE-3 follow-up):** Plan 7 atomic commit title updated from "4 NEW + 5 UPDATED" to **"4 NEW + 6 UPDATED"** (COMPONENTS.md §7 NwPlaceholderCard entry counts as the 6th UPDATED doc). AC-1.5c-7-12 verifies `git log -1 --stat` shows all 10 docs.
+
+#### Plan 3 watchpoint #1 (revised per D-23)
+
+After Plan 3 thin-wrapper extraction completes:
+1. Verify each production route wrapper has `data-direction="C" data-palette="B"` attributes via `grep -E "data-direction=\"C\"" src/app/<route>` returns >=1.
+2. Verify root layout.tsx imports design-system.css via `grep -c "design-system.css" src/app/layout.tsx` returns >=1.
+3. Visual diff at 3 fixed viewports (1920x1080, 1280x800, 393x852): production route at `/financials/bills/[id]` MUST render slate-tile 1px left-stamp on cards + UPPERCASE 0.18em JetBrains Mono eyebrow + Space Grotesk Medium 500 headline + 16px Site Office C compact card padding. Side-by-side with `/design-system/prototypes/invoices/[id]` should be IDENTICAL (modulo TD-fix-attributable differences).
+4. Treat divergence as CRITICAL halt per CONTEXT D-07.
+
 ### iter-2 watchpoints (per Jake nwrp45)
 
 These are explicit verifications in the iter-2 plans:
