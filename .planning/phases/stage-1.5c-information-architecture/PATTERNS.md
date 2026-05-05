@@ -528,3 +528,35 @@ Touch-target min: 44px standard / 56px high-stakes per SYSTEM.md §11. NwButton'
 ---
 
 *End of PATTERNS.md*
+
+
+## iter-2 amendments (per Jake nwrp45)
+
+The following clarifications apply to iter-2 plans without changing the core pattern map above:
+
+### Rename: PlaceholderCard → NwPlaceholderCard (per iter-2 mechanical #2)
+
+Per PROPAGATION-RULES.md §4b — Nw<Role> PascalCase naming is required for new primitives in src/components/nw/. The component originally named `PlaceholderCard` in this map is RENAMED to `NwPlaceholderCard`. All references in iter-2 plan files (Plans 1, 4, 5, 6) use NwPlaceholderCard. PATTERNS.md table entries above retain the original `PlaceholderCard` label for historical traceability — actual file at `src/components/nw/NwPlaceholderCard.tsx`.
+
+### Hoist: NwPlaceholderCard creation moved from Plan 4 to Plan 1 (per iter-2 mechanical #1)
+
+Plans 5 + 6 declared `requires PlaceholderCard` without `depends_on Plan 4 Task 1` — Wave 3 race condition. iter-2 hoists creation to Plan 1 Task 1; Plans 4/5/6 import + consume only.
+
+### Section overview Card grid vs NwPlaceholderCard distinction (per iter-2 design-pushback W-7)
+
+- **Section overview Card grid** (e.g., /pipeline, /financials, /people, /company, /reports, /admin): NOT a NwPlaceholderCard. Renders multiple Cards in a grid linking to sub-routes; each Card has eyebrow + label + 1-line description + optional Wave badge for placeholder destinations.
+- **NwPlaceholderCard** (single primitive): renders one Card describing a future-state feature with eyebrow + headline + body + Wave badge.
+- Section overviews USE Card primitives directly (with Link wrappers); NwPlaceholderCard is ONE specific Card variant for placeholder-only routes.
+
+### Plan 3 production wrapper template — .design-system-scope wrap (per iter-2 must-fix CRITICAL #1 / D-19)
+
+Production route wrappers in Plan 3 add an outer `<div className="design-system-scope">` so Site Office direction-aware CSS rules at /design-system/design-system.css:84-153 propagate (1px slate-tile left-stamp, JetBrains Mono UPPERCASE eyebrows, Space Grotesk Medium headlines).
+
+### iter-2 D-19 / D-20 / D-21 / D-22 in plan files
+
+- D-19 (= MASTER-PLAN D-057): Site Office .design-system-scope wrap on production routes — encoded in Plan 3 Tasks 2 + 5
+- D-20 (= MASTER-PLAN D-058): Full /admin/platform → /platform-admin migration — encoded in Plan 1 (wildcard redirect) + Plan 6 (13 sub-routes mounted)
+- D-21 (= MASTER-PLAN D-059): PerJobTabs collapse to dropdown <768px — encoded in Plan 5 Task 1
+- D-22 (= MASTER-PLAN D-060): Admin dropdown + /admin section overview precedence — encoded in Plan 1 (dropdown) + Plan 6 (overview Card grid) + Plan 7 (CLAUDE.md atomic update documents precedence)
+
+*End iter-2 amendments.*
