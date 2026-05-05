@@ -48,8 +48,9 @@ EXPANDED-SCOPE §7 ac12 + plan 01.5-6 Task 4 + nwrp33 C3.
 | F-16 | Source-code naming | Pre-existing source-code "Drummond" mentions outside Wave 1 scope at `inputs/page.tsx:572` and `file-naming.ts:13` | privacy-cosmetic | nwrp40 inventory | D-28 acceptable-leak surface; address only if objectionable |
 | F-17 | Lien releases | Fixture covers only 2 of 4 Florida statute types | functional | 01.5-1 + 01.5-3 | Real-data fidelity — final releases logically come after Substantial Completion 2026-03-15 |
 | F-18 | Mobile approval | Real-phone walkthrough on iPhone+Safari pending | gating | 01.5-4 + nwrp40 | Required before `/gsd-ship` |
+| **F-W2-5** | Reconciliation Candidate 1 | When both columns show identical cell content with drift on a NULL attribute, the warn-border on the right column is correct but subtle — real users may miss the drift signal | functional | nwrp41 walk | Strengthen treatment with strikethrough on the imported-but-now-null value, "UNRESOLVED" label, or icon indicator. Apply during production-version reconciliation phase post-3.9 |
 
-**Total polish items: ~22.** None trigger Q9=B halt criterion.
+**Total polish items: ~23.** None trigger Q9=B halt criterion.
 
 ## 2. Critical findings (workflow failures — halt-and-decide)
 
@@ -203,13 +204,17 @@ Resolution path: Jake-call at CP3 / Wave 1.1 polish.
 - TD-17 inputs/page.tsx:572
 - TD-18 file-naming.ts:13
 
-### Wave 2 walk findings (4 items)
+### Wave 2 walk findings (5 items)
 - TD-W2-1 mobile CTA
 - TD-W2-2 mobile reject path
 - TD-W2-3 DataGrid stress test partial
 - TD-W2-4 Gantt opacity + arrows
+- TD-W2-5 Reconciliation Candidate 1 NULL-drift signal too subtle (= F-W2-5)
 
-**Total: ~22 effective items.** All non-blocking; all feed Wave 1.1 polish phase.
+### Production-render polish (1 item — nwrp41 walk)
+- **TD-19** `[SYNTHESIZED per nwrp38]` tags appear in G702 print output for PCCO #4 (framing scope reduction) and PCCO #5 (drywall allowance reconciliation) because the synthesis disclaimer prefix is part of the change-order `description` string. Polish requirement: production render should strip these synthesis disclaimers from the printed G702. Two implementation options — (a) strip-at-print-render-time via a description sanitizer in the print component, or (b) conditionally include based on a prototype-vs-production flag (preferred — keeps the disclaimer in prototype output for QA traceability, hides it in production where the data is real). Cosmetic but objectionable in real customer-facing G702.
+
+**Total: ~24 effective items.** All non-blocking; all feed Wave 1.1 polish phase.
 
 ## 10. Phase 1B G702 1-day judgment outcome
 
