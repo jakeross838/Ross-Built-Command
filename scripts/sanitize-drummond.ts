@@ -1197,6 +1197,16 @@ async function main() {
     // Synthesize draw line items: each cost code gets one per draw, with
     // monotonically increasing this_period values that sum to total_completed.
     drawLineItems = [];
+    // Per-cost-code allocation weights for synthesizing draw line items.
+    // The raw weights sum to 1.15 (not 1.00) — a relic of organic editing as
+    // cost codes were added during plan iterations. Normalized at use-site
+    // (each weight divided by WEIGHT_SUM) so the line items per draw sum
+    // EXACTLY to that draw's total_completed_to_date. This is the math
+    // relationship that the AIA G702 cover (Line 7 Current Payment Due) and
+    // the AIA G703 detail (Grand Total Column E This Period) both depend
+    // on — without normalization the two sheets disagree by 15%, which a
+    // construction professional would catch immediately when reviewing a
+    // printed pay app. Per QA TD-31 fix.
     const costCodeWeights: Record<string, number> = {
       "01101": 0.04, "01104": 0.02, "01201": 0.03, "01301": 0.02,
       "03110": 0.02, "03112": 0.01, "03115": 0.01,
@@ -1213,6 +1223,7 @@ async function main() {
       "15101": 0.05, "15201": 0.04, "15301": 0.03, "15401": 0.06, "15501": 0.04,
       "16101": 0.03,
     };
+    const WEIGHT_SUM = Object.values(costCodeWeights).reduce((a, b) => a + b, 0);
     let id = 1;
     const drawObjs = draws as Array<{ id: string; draw_number: number; total_completed_to_date: number; contract_sum_to_date: number; balance_to_finish: number }>;
     for (const draw of drawObjs) {
@@ -1221,8 +1232,9 @@ async function main() {
       const previousDraw = drawObjs.find((d) => d.draw_number === draw.draw_number - 1);
       const previousTotal = previousDraw?.total_completed_to_date ?? 0;
       for (const cc of costCodes) {
-        const weight = costCodeWeights[cc.code] ?? 0;
-        if (weight === 0) continue;
+        const rawWeight = costCodeWeights[cc.code] ?? 0;
+        if (rawWeight === 0) continue;
+        const weight = rawWeight / WEIGHT_SUM; // normalize so line items sum to draw total
         const allocatedTotal = Math.round(drawTotalCents * weight);
         const previousAllocated = Math.round(previousTotal * weight);
         const thisPeriod = allocatedTotal - previousAllocated;
@@ -1355,7 +1367,11 @@ async function main() {
     }));
   } else {
     // Synthesize budget from cost codes + weights, applying CO adjustments to
-    // affected lines.
+    // affected lines. Per QA TD-31: weights normalized at use-site so the
+    // budget lines sum to the stated TOTAL_BUDGET / REVISED_TOTAL exactly,
+    // not 1.15× as the raw weights would produce. Same costCodeWeights table
+    // and normalization pattern as the draw_line_items synthesis above —
+    // keeping them parallel ensures budget vs. draw line items reconcile.
     const TOTAL_BUDGET = 287_500_000; // job original
     const REVISED_TOTAL = 296_250_000;
     const codeWeights: Record<string, number> = {
@@ -1374,10 +1390,11 @@ async function main() {
       "15101": 0.05, "15201": 0.04, "15301": 0.03, "15401": 0.06, "15501": 0.04,
       "16101": 0.03,
     };
+    const WEIGHT_SUM = Object.values(codeWeights).reduce((a, b) => a + b, 0);
     budget = costCodes
       .filter((cc) => (codeWeights[cc.code] ?? 0) > 0)
       .map((cc) => {
-        const weight = codeWeights[cc.code] ?? 0;
+        const weight = (codeWeights[cc.code] ?? 0) / WEIGHT_SUM; // normalize
         const original = Math.round(TOTAL_BUDGET * weight);
         const revised = Math.round(REVISED_TOTAL * weight);
         return {
@@ -1544,90 +1561,116 @@ async function main() {
   // ─── RECONCILIATION PAIRS ────────────────────────────────────────────
   // 8 pairs = 4 candidates × 2 drift types (invoice_po, draw_budget).
   // Derived from invoices/POs/budget mismatches.
+  //
+  // Per QA TD-29 (diff purity): every entry in `diffs` MUST have
+  // imported_value !== current_value. Equal-value entries are not drift
+  // and would render semantic noise in the reconciliation strawman.
+  //
+  // Per QA TD-30 (FK integrity): each invoice_po pair's invoice_id MUST
+  // reference a real entry in CALDWELL_INVOICES with matching vendor_name
+  // and invoice_amount. The pair generation below is hand-aligned to the
+  // 7 invoices in scripts/drummond-invoice-fields.json.
   const reconciliation: Array<Record<string, unknown>> = [
     // ── invoice_po drift type (4 candidates) ─────────────────────────
+    // Pair 1 — Anchor Bay Plumbing (inv-caldwell-002, $19,899). PM hasn't
+    // linked PO in Nightwork yet; imported snapshot has the PO + an under-
+    // amount (overage of $1,899 vs the cap).
     {
       id: "rec-caldwell-invoice_po-1",
       drift_type: "invoice_po",
       imported: {
-        invoice_id: "inv-caldwell-001",
+        invoice_id: "inv-caldwell-002",
         vendor_name: substitute("Loftin Plumbing", subMap),
+        po_id: "PO-2025-0042",
         po_amount_dollars: 18000.00,
         invoice_amount_dollars: 19899.00,
       },
       current: {
-        invoice_id: "inv-caldwell-001",
+        invoice_id: "inv-caldwell-002",
         vendor_name: substitute("Loftin Plumbing", subMap),
-        po_amount_dollars: 18000.00,
-        invoice_amount_dollars: 19899.00,
         po_id: null,
+        po_amount_dollars: null,
+        invoice_amount_dollars: 19899.00,
       },
       diffs: [
         { field: "po_id", imported_value: "PO-2025-0042", current_value: null },
-        { field: "amount_overage", imported_value: 1899.00, current_value: 1899.00 },
+        { field: "po_amount_dollars", imported_value: 18000.00, current_value: null },
       ],
     },
+    // Pair 2 — Bay Region Carpentry T&M (inv-caldwell-007, $8,377). T&M
+    // ticket against a $10K cap PO; PO not yet linked in Nightwork.
     {
       id: "rec-caldwell-invoice_po-2",
       drift_type: "invoice_po",
       imported: {
-        invoice_id: "inv-caldwell-002",
+        invoice_id: "inv-caldwell-007",
         vendor_name: substitute("Florida Sunshine Carpentry", subMap),
-        po_amount_dollars: 22000.00,
-        invoice_amount_dollars: 18540.00,
+        po_id: "PO-2025-0048",
+        po_amount_dollars: 10000.00,
+        invoice_amount_dollars: 8377.00,
       },
       current: {
-        invoice_id: "inv-caldwell-002",
+        invoice_id: "inv-caldwell-007",
         vendor_name: substitute("Florida Sunshine Carpentry", subMap),
-        po_amount_dollars: 22000.00,
-        invoice_amount_dollars: 18540.00,
         po_id: null,
+        po_amount_dollars: null,
+        invoice_amount_dollars: 8377.00,
       },
       diffs: [
         { field: "po_id", imported_value: "PO-2025-0048", current_value: null },
-        { field: "po_remaining_dollars", imported_value: 3460.00, current_value: 0.00 },
+        { field: "po_amount_dollars", imported_value: 10000.00, current_value: null },
       ],
     },
+    // Pair 3 — Coastline Foam (inv-caldwell-003, $17,921.56). Imported
+    // snapshot has older PO ID; Nightwork has the current canonical ID.
+    // Drift on PO ID only — amounts match.
     {
       id: "rec-caldwell-invoice_po-3",
       drift_type: "invoice_po",
       imported: {
         invoice_id: "inv-caldwell-003",
-        vendor_name: substitute("Doug Naeher Drywall", subMap),
-        po_amount_dollars: 41250.00,
-        invoice_amount_dollars: 41250.00,
+        vendor_name: substitute("Paradise Foam", subMap),
+        po_id: "PO-2025-0061",
+        po_amount_dollars: 17921.56,
+        invoice_amount_dollars: 17921.56,
       },
       current: {
         invoice_id: "inv-caldwell-003",
-        vendor_name: substitute("Doug Naeher Drywall", subMap),
-        po_amount_dollars: null,
-        invoice_amount_dollars: 41250.00,
-        po_id: null,
+        vendor_name: substitute("Paradise Foam", subMap),
+        po_id: "PO-CALDWELL-0034",
+        po_amount_dollars: 17921.56,
+        invoice_amount_dollars: 17921.56,
       },
       diffs: [
-        { field: "po_amount_dollars", imported_value: 41250.00, current_value: null },
-        { field: "po_id", imported_value: "PO-2025-0061", current_value: null },
+        { field: "po_id", imported_value: "PO-2025-0061", current_value: "PO-CALDWELL-0034" },
       ],
     },
+    // Pair 4 — Coastal Smart Systems (inv-caldwell-001, $2,845.84). CO-
+    // driven electrical billing. Imported snapshot shows partially_invoiced;
+    // Nightwork has fully_invoiced after subsequent CO billing completed.
+    // Same vendor, same amount — drift on PO ID + status only.
     {
       id: "rec-caldwell-invoice_po-4",
       drift_type: "invoice_po",
       imported: {
-        invoice_id: "inv-caldwell-006",
-        vendor_name: substitute("Paradise Foam", subMap),
-        po_amount_dollars: 17000.00,
-        invoice_amount_dollars: 17921.56,
+        invoice_id: "inv-caldwell-001",
+        vendor_name: substitute("SmartShield Homes", subMap),
+        po_id: "PO-2025-0078",
+        po_amount_dollars: 5000.00,
+        po_status: "partially_invoiced",
+        invoice_amount_dollars: 2845.84,
       },
       current: {
-        invoice_id: "inv-caldwell-006",
-        vendor_name: substitute("Paradise Foam", subMap),
-        po_amount_dollars: 17000.00,
-        invoice_amount_dollars: 17921.56,
-        po_id: "PO-CALDWELL-0034",
+        invoice_id: "inv-caldwell-001",
+        vendor_name: substitute("SmartShield Homes", subMap),
+        po_id: "PO-CALDWELL-0042",
+        po_amount_dollars: 5000.00,
+        po_status: "fully_invoiced",
+        invoice_amount_dollars: 2845.84,
       },
       diffs: [
-        { field: "amount_overage_dollars", imported_value: 921.56, current_value: 921.56 },
-        { field: "po_status", imported_value: "fully_invoiced", current_value: "fully_invoiced" },
+        { field: "po_id", imported_value: "PO-2025-0078", current_value: "PO-CALDWELL-0042" },
+        { field: "po_status", imported_value: "partially_invoiced", current_value: "fully_invoiced" },
       ],
     },
     // ── draw_budget drift type (4 candidates) ────────────────────────
@@ -1691,6 +1734,11 @@ async function main() {
         { field: "draw_id", imported_value: "d-caldwell-05", current_value: null },
       ],
     },
+    // Pair 4 (draw_budget) — cc-13101. Lien release linkage drift —
+    // imported snapshot had the lien release attached; Nightwork has lost
+    // the linkage somewhere in the import path. Per QA TD-29: dropped a
+    // prior `vendor_id` diff entry that had imported === current (false
+    // drift). Only the lien_release_id genuinely drifts here.
     {
       id: "rec-caldwell-draw_budget-4",
       drift_type: "draw_budget",
@@ -1699,15 +1747,16 @@ async function main() {
         budget_revised_dollars: 5_925.00,
         draw_total_to_date_dollars: 2_845.84,
         percent_complete: 0.48,
+        vendor_id: "v-caldwell-coastal-smart-systems",
       },
       current: {
         cost_code: "13101",
         budget_revised_dollars: 5_925.00,
         draw_total_to_date_dollars: 2_845.84,
         percent_complete: 0.48,
+        vendor_id: "v-caldwell-coastal-smart-systems",
       },
       diffs: [
-        { field: "vendor_id", imported_value: "v-caldwell-coastal-smart-systems", current_value: "v-caldwell-coastal-smart-systems" },
         { field: "lien_release_id", imported_value: "lr-caldwell-001", current_value: null },
       ],
     },
@@ -1734,8 +1783,56 @@ async function main() {
   // substringCollisionCheck — denylist tokens surviving.
   const collisionHits = substringCollisionCheck(allEntities, subMap, DENYLIST);
 
-  if (grepViolations.length > 0 || collisionHits.length > 0) {
-    console.error("\n[sanitize-drummond] FAIL — sanitized output has leaks:");
+  // fkValidation (per QA TD-30) — every reconciliation_pair invoice_id
+  // must resolve to a real invoice with matching vendor_name + amount.
+  // Halts the pipeline if a pair points at an invoice that doesn't exist
+  // or has a mismatched vendor/amount, so future fixture authors catch
+  // FK drift at script-run time instead of QA review time.
+  type RecPair = {
+    id: string;
+    drift_type: string;
+    imported: { invoice_id?: string; vendor_name?: string; invoice_amount_dollars?: number };
+  };
+  type Invoice = { id: string; vendor_id: string; total_amount: number };
+  type Vendor = { id: string; name: string };
+  const fkViolations: Array<{ pair: string; reason: string }> = [];
+  const invoicesById: Map<string, Invoice> = new Map(
+    (invoices as Invoice[]).map((inv) => [inv.id, inv]),
+  );
+  const vendorsById: Map<string, Vendor> = new Map(
+    (vendors as Vendor[]).map((v) => [v.id, v]),
+  );
+  for (const pair of reconciliation as RecPair[]) {
+    if (pair.drift_type !== "invoice_po") continue;
+    const invId = pair.imported.invoice_id;
+    if (!invId) continue;
+    const inv = invoicesById.get(invId);
+    if (!inv) {
+      fkViolations.push({ pair: pair.id, reason: `invoice_id "${invId}" does not resolve to any CALDWELL_INVOICES entry` });
+      continue;
+    }
+    const importedVendorName = pair.imported.vendor_name;
+    const actualVendor = vendorsById.get(inv.vendor_id);
+    if (importedVendorName && actualVendor && importedVendorName !== actualVendor.name) {
+      fkViolations.push({
+        pair: pair.id,
+        reason: `vendor_name "${importedVendorName}" does not match invoice's actual vendor "${actualVendor.name}"`,
+      });
+    }
+    const importedAmtDollars = pair.imported.invoice_amount_dollars;
+    if (typeof importedAmtDollars === "number") {
+      const importedCents = dollarsToCents(importedAmtDollars);
+      if (importedCents !== inv.total_amount) {
+        fkViolations.push({
+          pair: pair.id,
+          reason: `invoice_amount_dollars ${importedAmtDollars} (${importedCents} cents) does not match invoice's total_amount ${inv.total_amount} cents`,
+        });
+      }
+    }
+  }
+
+  if (grepViolations.length > 0 || collisionHits.length > 0 || fkViolations.length > 0) {
+    console.error("\n[sanitize-drummond] FAIL — sanitized output has leaks or FK drift:");
     if (grepViolations.length > 0) {
       console.error(`\n  ${grepViolations.length} grep violation(s):`);
       for (const v of grepViolations.slice(0, 20)) {
@@ -1748,7 +1845,13 @@ async function main() {
         console.error(`    ${h.path.join(".")}: token="${h.token}" in value="${h.value.slice(0, 80)}"`);
       }
     }
-    console.error("\n  Fix the SUBSTITUTION-MAP or extractor logic and re-run.");
+    if (fkViolations.length > 0) {
+      console.error(`\n  ${fkViolations.length} reconciliation FK violation(s):`);
+      for (const fk of fkViolations) {
+        console.error(`    ${fk.pair}: ${fk.reason}`);
+      }
+    }
+    console.error("\n  Fix the SUBSTITUTION-MAP, reconciliation pair authoring, or extractor logic and re-run.");
     process.exit(1);
   }
 
