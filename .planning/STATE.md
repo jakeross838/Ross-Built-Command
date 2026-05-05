@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-05T20:45:23.082Z"
+last_updated: "2026-05-05T21:30:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 13
-  completed_plans: 6
-  percent: 46
+  completed_plans: 7
+  percent: 53
 ---
 
 # Nightwork — State
@@ -20,9 +20,21 @@ progress:
 
 - **Branch:** `phase/1.5-c-information-architecture`
 - **Phase:** Stage 1.5c — Information Architecture (8-section nav, Today scaffold, redirects, thin-wrapper extraction, placeholders, canonical docs).
-- **Plan position:** Plan 1 (`01.5c-1-nav-today-redirects`) **COMPLETE** (2026-05-05). Halt-pending Jake review per `halt_after: true`.
-- **Last completed plan:** 01.5c-1-nav-today-redirects (commits d115447, 88be994, 8f62295, 8436844). SUMMARY at `.planning/phases/stage-1.5c-information-architecture/01.5c-1-nav-today-redirects-SUMMARY.md`.
-- **Next plan (after halt review):** Plan 2 (thin-wrapper architect) + Plan 3 (extraction + production routes) — Wave 2 parallel spawn after Jake walks the new top nav + Today screen + redirects on desktop + iPhone Safari.
+- **Plan position:** Plan 2 (`01.5c-2-thin-wrapper-architect`) **COMPLETE** (2026-05-05). Halt-pending Jake review per `halt_after: true`.
+- **Last completed plan:** 01.5c-2-thin-wrapper-architect (commits b5eeaeb, 4b6e628, e8e27e6). SUMMARY at `.planning/phases/stage-1.5c-information-architecture/01.5c-2-thin-wrapper-architect-SUMMARY.md`.
+- **Prior completed plan:** 01.5c-1-nav-today-redirects (commits d115447, 88be994, 8f62295, 8436844).
+- **Next plan (after halt review):** Plan 3 (extraction-production-routes — 4-6 parallel implementers extract 9 remaining prototypes by COPYING the 2 exemplars from Plan 2). Spawn after Jake walks 2 prototype pages at 3 viewports + approves architectural decisions (Strategy 1-prime locked, T10c Option A unchanged, exemplar shapes, currentDraw 7th prop, TanStack sort-trigger TD-20 exemption).
+
+## Plan 2 outcomes (2026-05-05)
+
+- **InvoiceReviewView** at `src/components/prototypes/InvoiceReviewView.tsx` (351 LOC) — Document Review pattern exemplar. Props-only View accepting `{ invoice, vendor, job, costCode, breadcrumbRoot? }`. Plan 3's 6 of 9 remaining extractions (DocumentReviewView, DrawApprovalView, ReconciliationView, MobileApprovalView, OwnerDashboardView, OwnerDrawView) COPY this verbatim.
+- **BudgetView** at `src/components/prototypes/BudgetView.tsx` (565 LOC) — multi-fixture aggregation pattern exemplar (iter-2 architect W-2). Props-only View accepting 6 fixture-type props + currentDraw + breadcrumbRoot. R.2 recalculate-don't-increment computed fields. Plan 3's 3 of 9 remaining extractions (ScheduleView, VendorListView, VendorDetailView) COPY this verbatim.
+- **AUDIT-LOG-STRATEGY.md** rewritten with schema-correct framing (entity_type + action separate TEXT NOT NULL columns per migration 00026 + 50+ live write sites). **Strategy 1-prime LOCKED** for 1.5c (preserve entity_type literal values; UI maps via action-labels.ts; zero DB migration risk). Strategy 2 (enum migration) deferred to F1. Strategy 3 rejected.
+- **src/lib/audit/action-labels.ts** (84 LOC) — `auditLabel(entity_type, action): AuditLabel` helper module shipped as committed contract per iter-2 must-fix CRITICAL #5. Maps `entity_type='invoice'` → 'Bill', `'draw'` → 'Pay App'. All 11 ActivityEntityType + 15 ActivityAction values covered.
+- **T10c hook posture verified Option A** — no hook adjustment needed. 3 control tests confirmed: design-system file importing `@/lib/supabase/server` BLOCKS; production-route fixture imports SILENT; design-system fixture imports SILENT. Component path `src/components/prototypes/` never matches T10c regex.
+- 2 prototype pages refactored as thin wrappers: invoices/[id]/page.tsx (452 → 53 LOC, 88% reduction) + jobs/[id]/budget/page.tsx (564 → 73 LOC, 87% reduction).
+- **Plan 2 deviations: 3 auto-fixed** — (1) comment-text-tripping verify regex (cosmetic comment fix); (2) currentDraw 7th prop added to BudgetView contract beyond the 6-fixture must_have spec (clean wrapper-resolves-once pattern); (3) TanStack column-header sort-trigger TD-20 exemption with rationale + NwButton import path documented in comments.
+- Build clean: ✓ Compiled successfully + 81/81 static pages generated; no new warnings. All 3 task commits passed pre-commit hooks.
 
 ## Plan 1 outcomes (2026-05-05)
 
@@ -36,6 +48,7 @@ progress:
 
 ## Recent work shipped (per git log + canonical plan)
 
+- **Stage 1.5c Plan 2 (2026-05-05)**: 2 thin-wrapper exemplars (InvoiceReviewView + BudgetView) + AUDIT-LOG-STRATEGY rewrite + action-labels.ts helper + T10c posture verified.
 - **Stage 1.5c Plan 1 (2026-05-05)**: 8-section nav + /today + /company/overview + 38 redirects + middleware billing fix + NwPlaceholderCard hoist + design-system.css root import.
 - **Stage 1.5b ship (2026-05-04)**: Prototype gallery + sanitized Caldwell fixtures + 11 prototype routes locked at CP2.
 - **Stage 1.5a ship (~2026-04-30)**: Site Office direction C + Set B palette locked; SYSTEM.md + COMPONENTS.md + PATTERNS.md + PROPAGATION-RULES.md authoritative.
@@ -45,7 +58,7 @@ progress:
 ## Branches
 
 - `main` — clean; merged through Stage 1.5b CP2 (commit `bff9457`).
-- `phase/1.5-c-information-architecture` — current working branch; Plan 1 commits landed; Plans 2-7 still pending.
+- `phase/1.5-c-information-architecture` — current working branch; Plans 1 + 2 commits landed; Plans 3-7 still pending (Plan 3 spawns after Jake halt-review approves Plan 2 architectural decisions).
 
 ## Outstanding tech debt + known issues
 
