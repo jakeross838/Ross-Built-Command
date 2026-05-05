@@ -3,35 +3,49 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-04T17:52:45.191Z"
+last_updated: "2026-05-05T20:45:23.082Z"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 0
-  total_plans: 6
-  completed_plans: 0
-  percent: 0
+  total_plans: 13
+  completed_plans: 6
+  percent: 46
 ---
 
 # Nightwork — State
 
-**Updated:** 2026-04-29.
+**Updated:** 2026-05-05.
 
 ## Active phase
 
-- Branch: `nightwork-build-system-setup`
-- Phase: build-system setup (per `nwrp1.txt`) — installing GSD locally, surgical ECC items, custom Nightwork skills/agents/commands/hooks, Vercel posture, security baseline.
-- Status: complete pending user-only steps (Superpowers `/plugin install` + `vercel link`/login + final test deploy). See `nwrp1.txt` Phase J final report.
+- **Branch:** `phase/1.5-c-information-architecture`
+- **Phase:** Stage 1.5c — Information Architecture (8-section nav, Today scaffold, redirects, thin-wrapper extraction, placeholders, canonical docs).
+- **Plan position:** Plan 1 (`01.5c-1-nav-today-redirects`) **COMPLETE** (2026-05-05). Halt-pending Jake review per `halt_after: true`.
+- **Last completed plan:** 01.5c-1-nav-today-redirects (commits d115447, 88be994, 8f62295, 8436844). SUMMARY at `.planning/phases/stage-1.5c-information-architecture/01.5c-1-nav-today-redirects-SUMMARY.md`.
+- **Next plan (after halt review):** Plan 2 (thin-wrapper architect) + Plan 3 (extraction + production routes) — Wave 2 parallel spawn after Jake walks the new top nav + Today screen + redirects on desktop + iPhone Safari.
+
+## Plan 1 outcomes (2026-05-05)
+
+- 8-section top nav LIVE (Today | Pipeline | Jobs | Financials | Price Intel | People | Company | Reports + Admin ▾ + Platform Admin badge + bell + theme toggle + user menu).
+- /today personal-home scaffold replaces /dashboard (Cash Flow + Getting Started moved to /company/overview per Q6=C).
+- 38 legacy-path 308-redirects + middleware billing escape fix; D-20 wildcard /admin/platform/:path* covers 13 sub-routes.
+- NwPlaceholderCard primitive HOISTED to Plan 1 (per iter-2 mechanical #1) — Plans 4/5/6 import without race condition.
+- iter-3 D-23: design-system.css imported from root layout — Plan 3's `.design-system-scope` wrap activates Site Office C rules on production.
+- Plan 1 token gap decision: Option B for PlatformAdminBadge (existing --nw-white-sand + --border-default; PROPAGATION run for --text-on-dark deferred to Wave 1.1-Lite).
+- Plan 1 deviations: 3 auto-fixed (Tailwind template-literal hover bug fixed; pre-existing text-white in marketing landing fixed inline; taskkill /F violation logged for behavioral correction).
 
 ## Recent work shipped (per git log + canonical plan)
 
+- **Stage 1.5c Plan 1 (2026-05-05)**: 8-section nav + /today + /company/overview + 38 redirects + middleware billing fix + NwPlaceholderCard hoist + design-system.css root import.
+- **Stage 1.5b ship (2026-05-04)**: Prototype gallery + sanitized Caldwell fixtures + 11 prototype routes locked at CP2.
+- **Stage 1.5a ship (~2026-04-30)**: Site Office direction C + Set B palette locked; SYSTEM.md + COMPONENTS.md + PATTERNS.md + PROPAGATION-RULES.md authoritative.
 - **PR #31 (2026-04-29)**: Plan consolidation — `docs/nightwork-plan-canonical-v1.md` becomes the single source of truth.
 - **PR #26 (~2026-04-28)**: Phase 3.4 proposals review form aligned with invoice patterns; print-view added; phase pre-merge cleanups.
-- **Phase 3.4 polish** (in-flight before this session): invoice review structure mirrored to proposals.
 
 ## Branches
 
-- `main` — clean, recently merged.
-- `nightwork-build-system-setup` — current; build-system files staged for review.
+- `main` — clean; merged through Stage 1.5b CP2 (commit `bff9457`).
+- `phase/1.5-c-information-architecture` — current working branch; Plan 1 commits landed; Plans 2-7 still pending.
 
 ## Outstanding tech debt + known issues
 
