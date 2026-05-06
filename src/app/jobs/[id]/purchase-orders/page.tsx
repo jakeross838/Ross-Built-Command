@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import JobTabs from "@/components/job-tabs";
+// JobTabs removed per Stage 1.5c Plan 3 iter-2 must-fix CRITICAL #2 —
+// Plan 5's PerJobTabs in /jobs/[id]/layout.tsx is the sole tab surface.
 import JobFinancialBar from "@/components/job-financial-bar";
 import Breadcrumbs from "@/components/breadcrumbs";
 import POImportModal from "@/components/po-import-modal";
@@ -191,7 +192,7 @@ export default function PurchaseOrdersPage({ params }: { params: { id: string } 
             </Link>
           </div>
         </div>
-        <JobTabs jobId={job.id} active="budget" />
+        {/* JobTabs render removed — PerJobTabs in /jobs/[id]/layout.tsx (Plan 5) replaces */}
         <JobFinancialBar jobId={job.id} />
         <BudgetCostsSubTabs jobId={job.id} active="pos" />
 

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import JobTabs from "@/components/job-tabs";
+// JobTabs removed per Stage 1.5c Plan 3 iter-2 must-fix CRITICAL #2 —
+// Plan 5's PerJobTabs in /jobs/[id]/layout.tsx is the sole tab surface.
 import JobFinancialBar from "@/components/job-financial-bar";
 import Breadcrumbs from "@/components/breadcrumbs";
 import { supabase } from "@/lib/supabase/client";
@@ -128,7 +129,7 @@ export default function JobDrawsPage({ params }: { params: { id: string } }) {
             + New Draw
           </Link>
         </div>
-        <JobTabs jobId={job.id} active="draws" />
+        {/* JobTabs render removed — PerJobTabs in /jobs/[id]/layout.tsx (Plan 5) replaces */}
         <JobFinancialBar jobId={job.id} />
         <DrawsSubTabs jobId={job.id} active="draws" />
 

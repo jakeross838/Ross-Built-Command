@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import JobTabs from "@/components/job-tabs";
+// JobTabs removed per Stage 1.5c Plan 3 iter-2 must-fix CRITICAL #2 —
+// Plan 5's PerJobTabs in /jobs/[id]/layout.tsx is the sole tab surface.
 import JobFinancialBar from "@/components/job-financial-bar";
 import Breadcrumbs from "@/components/breadcrumbs";
 import { supabase } from "@/lib/supabase/client";
@@ -33,7 +34,7 @@ export default function JobActivityPage({ params }: { params: { id: string } }) 
         <div className="mb-4">
           <h2 className="font-display text-2xl text-[color:var(--text-primary)]">{jobName || "..."}</h2>
         </div>
-        <JobTabs jobId={params.id} active="activity" />
+        {/* JobTabs render removed — PerJobTabs in /jobs/[id]/layout.tsx (Plan 5) replaces */}
         <JobFinancialBar jobId={params.id} />
 
         <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-8 text-center">

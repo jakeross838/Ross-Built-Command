@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils/format";
-import JobTabs from "@/components/job-tabs";
+// JobTabs removed per Stage 1.5c Plan 3 iter-2 must-fix CRITICAL #2 —
+// Plan 5's PerJobTabs in /jobs/[id]/layout.tsx is the sole tab surface.
 import JobFinancialBar from "@/components/job-financial-bar";
 import Breadcrumbs from "@/components/breadcrumbs";
 import DrawsSubTabs from "@/components/draws-sub-tabs";
@@ -176,7 +177,7 @@ export default function JobLienReleasesPage({ params }: { params: { id: string }
             Track conditional and unconditional waivers for every vendor on every draw.
           </p>
         </div>
-        <JobTabs jobId={params.id} active="draws" />
+        {/* JobTabs render removed — PerJobTabs in /jobs/[id]/layout.tsx (Plan 5) replaces */}
         <JobFinancialBar jobId={params.id} />
         <DrawsSubTabs jobId={params.id} active="liens" />
 
