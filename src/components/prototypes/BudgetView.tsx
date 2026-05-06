@@ -704,18 +704,11 @@ export default function BudgetView({
         </div>
       </Card>
 
-      {/* Footer count */}
-      <p
-        className="text-[10px] mt-3 uppercase"
-        style={{
-          fontFamily: "var(--font-jetbrains-mono)",
-          letterSpacing: "0.14em",
-          color: "var(--text-tertiary)",
-        }}
-      >
-        {table.getRowModel().rows.length} of {rows.length} budget lines · Site
-        Office compact density
-      </p>
+      {/* CHANGE 3 per nwrp48 — footer dev info ("30 of 30 budget lines ·
+          Site Office Compact Density") removed. The row count + density mode
+          were diagnostic info useful during 1.5b prototype walks; production
+          surfaces don't need them. If a row count is needed in production it
+          should live in a view-options menu (not in the page chrome). */}
     </div>
   );
 }
