@@ -2805,6 +2805,29 @@ Per nwrp16 directive 8 — directions extend the existing aesthetic; they don't 
 
 Directions affect: which COMPONENTS.md variants get used, which tokens get emphasized, what motion timing applies, what extra Forbidden items get added (but NOT existing locked Forbidden), and what direction-specific signature visual cue is the most-repeated motif.
 
+### 6.9 Verification-first development pattern (per stage-1.5c-verification-harness D-30)
+
+Added 2026-05-06 (post-iter-1 plan-review amendment). Cross-references stage-1.5c-verification-harness D-30 (tenant boundary by construction) + the verification harness shipped in that phase.
+
+The Nightwork verification harness (`.planning/architecture/VERIFICATION-PIPELINE.md`) verifies design decisions made in this PHILOSOPHY document at every commit. The link is concrete:
+
+- **CP2 direction lock (Site Office + Set B per D-037)** is verified mechanically by `.claude/hooks/nightwork-post-edit.sh` (the 7 Forbidden items) AND visually by harness Layer 3 (Claude vision against `<criteria>` blocks like "Site Office signature visible: tracking-eyebrow 0.18em UPPERCASE on eyebrows").
+- **Slate Set B palette tokens** are checked at hook level (no hardcoded hex outside `globals.css`/`tailwind.config.*`) AND at vision level ("Slate Set B palette only — no off-token hex").
+- **Document Review template** (file preview LEFT + right-rail panel + audit timeline BELOW per §6.8 lockdown) is a vision-criterion: "Document Review pattern present" on every applicable surface.
+
+**Tenant-safety boundary (per D-30 — applies to ALL design verification):** The harness operates on fixture-org-scoped data only — real-tenant data is unreachable BY CONSTRUCTION. This means:
+
+- Visual sign-off via harness Layer 3 NEVER captures real-tenant data even when verifying production routes; the harness session is fixture-org-scoped (`harness-fixture@nightwork.local` membership in `fixture-harness-org`).
+- Screenshots stored at `runs/<phase>/<commit>/screenshots/<org_id>/<route>.png` are gitignored AND scoped to fixture org_id.
+- Git-tracked final reports strip page URLs, screenshot paths, and raw vision reasoning — only criterion ID + verdict + confidence persist.
+
+**Implication for design changes:** A new direction or palette pick (CP3, CP4) requires updating both the design tokens (mechanical) AND the Layer 3 vision criteria (semantic) so the harness verifies the new lock at every commit. PHILOSOPHY.md remains the design intent + constraints; the harness is the enforcement mechanism. Design drift is impossible if both are kept in sync.
+
+**See also:**
+- `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-CONTEXT.md` — D-30 verbatim wording + per-plan implementation map
+- `.planning/architecture/VERIFICATION-PIPELINE.md` — canonical harness doc (shipped in stage-1.5c-verification-harness Plan 10)
+- `.impeccable.md` §3 (Forbidden items) — the mechanical-enforcement layer that pairs with vision-enforcement
+
 ---
 
 ## 7. CP2 affordance
