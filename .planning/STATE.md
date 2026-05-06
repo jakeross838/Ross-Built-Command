@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-05T21:30:00.000Z"
+last_updated: "2026-05-06T13:50:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 0
@@ -14,21 +14,23 @@ progress:
 
 # Nightwork — State
 
-**Updated:** 2026-05-05.
+**Updated:** 2026-05-06.
 
 ## Active phase
 
 - **Branch:** `phase/1.5-c-information-architecture`
 - **Phase:** Stage 1.5c — Information Architecture (8-section nav, Today scaffold, redirects, thin-wrapper extraction, placeholders, canonical docs).
-- **Plan position:** Plan 2 (`01.5c-2-thin-wrapper-architect`) **COMPLETE** (2026-05-05). Halt-pending Jake review per `halt_after: true`.
-- **Last completed plan:** 01.5c-2-thin-wrapper-architect (commits b5eeaeb, 4b6e628, e8e27e6). SUMMARY at `.planning/phases/stage-1.5c-information-architecture/01.5c-2-thin-wrapper-architect-SUMMARY.md`.
+- **Plan position:** Plan 2 (`01.5c-2-thin-wrapper-architect`) **COMPLETE + AMENDMENT LANDED** (original 2026-05-05; amendment 2026-05-06 per Jake nwrp48). Halt-pending Jake re-walk per `halt_after: true`.
+- **Last completed plan:** 01.5c-2-thin-wrapper-architect-AMENDMENT (commits 0cb99db, cb9aab9, ade04b4, 6dafc10, f9316bf, 1769e24, e8e67ba). Original Plan 2 commits: b5eeaeb, 4b6e628, e8e27e6. SUMMARY at `.planning/phases/stage-1.5c-information-architecture/01.5c-2-thin-wrapper-architect-SUMMARY.md` (with AMENDMENT section appended).
 - **Prior completed plan:** 01.5c-1-nav-today-redirects (commits d115447, 88be994, 8f62295, 8436844).
-- **Next plan (after halt review):** Plan 3 (extraction-production-routes — 4-6 parallel implementers extract 9 remaining prototypes by COPYING the 2 exemplars from Plan 2). Spawn after Jake walks 2 prototype pages at 3 viewports + approves architectural decisions (Strategy 1-prime locked, T10c Option A unchanged, exemplar shapes, currentDraw 7th prop, TanStack sort-trigger TD-20 exemption).
+- **Next plan (after re-walk):** Plan 3 (extraction-production-routes — 4-6 parallel implementers extract 9 remaining prototypes by COPYING the 2 exemplars from Plan 2 + amendment). Spawn after Jake walks 2 prototype pages at 3 viewports + reads WORKFLOW-INTELLIGENCE.md end-to-end + approves D-066..D-072 + approves architectural decisions (Strategy 1-prime locked, T10c Option A unchanged, exemplar shapes incl. amendment changes, currentDraw 7th prop, TanStack sort-trigger TD-20 exemption, fixture-gap path 1, ARCHITECTURE.md cross-ref deferral to Plan 7).
 
-## Plan 2 outcomes (2026-05-05)
+## Plan 2 outcomes (2026-05-05) + AMENDMENT (2026-05-06 per nwrp48)
 
-- **InvoiceReviewView** at `src/components/prototypes/InvoiceReviewView.tsx` (351 LOC) — Document Review pattern exemplar. Props-only View accepting `{ invoice, vendor, job, costCode, breadcrumbRoot? }`. Plan 3's 6 of 9 remaining extractions (DocumentReviewView, DrawApprovalView, ReconciliationView, MobileApprovalView, OwnerDashboardView, OwnerDrawView) COPY this verbatim.
-- **BudgetView** at `src/components/prototypes/BudgetView.tsx` (565 LOC) — multi-fixture aggregation pattern exemplar (iter-2 architect W-2). Props-only View accepting 6 fixture-type props + currentDraw + breadcrumbRoot. R.2 recalculate-don't-increment computed fields. Plan 3's 3 of 9 remaining extractions (ScheduleView, VendorListView, VendorDetailView) COPY this verbatim.
+- **InvoiceReviewView** at `src/components/prototypes/InvoiceReviewView.tsx` (442 LOC post-amendment) — Document Review pattern exemplar. Props-only View accepting `{ invoice, vendor, job, costCode, breadcrumbRoot? }`. AMENDMENT — Parse Confidence + Status Timeline panels collapsed by default via native `<details>`/`<summary>` with chevron + eyebrow + inline status badge. Plan 3's 6 of 9 remaining extractions (DocumentReviewView, DrawApprovalView, ReconciliationView, MobileApprovalView, OwnerDashboardView, OwnerDrawView) COPY this verbatim incl. collapsible panel pattern.
+- **BudgetView** at `src/components/prototypes/BudgetView.tsx` (615 LOC post-amendment) — multi-fixture aggregation pattern exemplar (iter-2 architect W-2). Props-only View accepting 6 fixture-type props + currentDraw + breadcrumbRoot. R.2 recalculate-don't-increment computed fields. AMENDMENT — Committed column added between Revised and Previous; Available column replaces Balance; KPI strip's Remaining card relabeled Available with optional committed sub-line; footer dev info removed. Prop shape UNCHANGED — committed + available derived from existing inputs. Plan 3's 3 of 9 remaining extractions (ScheduleView, VendorListView, VendorDetailView) COPY this verbatim incl. committed-column contract.
+- **WORKFLOW-INTELLIGENCE.md** at `.planning/architecture/WORKFLOW-INTELLIGENCE.md` (722 LOC, 39 patterns; AMENDMENT) — canonical 39-pattern catalog of cross-entity validation rules + workflow intelligence patterns. Section A (16 invoice patterns) + Section B (11 budget patterns) + Section C (12 cross-cutting "no other tool has this" patterns). Shipped at creation: WI-015, WI-016, WI-017 (CO portion), WI-027. Backed by MASTER-PLAN D-066..D-072. ARCHITECTURE.md cross-ref deferred to Plan 7 atomic creation alongside ENTITY-INVENTORY.md, ROLES-CATALOG.md, INGESTION-ARCHITECTURE.md.
+- **MASTER-PLAN D-066..D-072** (AMENDMENT) — 7 architectural decisions: D-066 cross-entity validation as first-class concern; D-067 daily-log/time-entry/photo correlation as F5 capability; D-068 punchlist-blocks-release as F6 capability; D-069 multi-modal punchlist (WI-038) as Wave 3; D-070 auto-generated daily plans (WI-039) as Wave 3; D-071 all 39 WI patterns tracked in canonical doc; D-072 1.5c scope discipline (only WI-015/016/017/027 land).
 - **AUDIT-LOG-STRATEGY.md** rewritten with schema-correct framing (entity_type + action separate TEXT NOT NULL columns per migration 00026 + 50+ live write sites). **Strategy 1-prime LOCKED** for 1.5c (preserve entity_type literal values; UI maps via action-labels.ts; zero DB migration risk). Strategy 2 (enum migration) deferred to F1. Strategy 3 rejected.
 - **src/lib/audit/action-labels.ts** (84 LOC) — `auditLabel(entity_type, action): AuditLabel` helper module shipped as committed contract per iter-2 must-fix CRITICAL #5. Maps `entity_type='invoice'` → 'Bill', `'draw'` → 'Pay App'. All 11 ActivityEntityType + 15 ActivityAction values covered.
 - **T10c hook posture verified Option A** — no hook adjustment needed. 3 control tests confirmed: design-system file importing `@/lib/supabase/server` BLOCKS; production-route fixture imports SILENT; design-system fixture imports SILENT. Component path `src/components/prototypes/` never matches T10c regex.
