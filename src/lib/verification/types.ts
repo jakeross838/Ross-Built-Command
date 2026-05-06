@@ -129,6 +129,11 @@ export interface Layer1Context {
   routes_to_check: string[];
   dom_criteria: VerificationCriterion[];
   repo_root: string;
+  // Plan 2 dev-loop convenience: skip expensive sub-runners locally. The
+  // orchestrator (Plan 5) and CI (Plan 6) leave these undefined / false so
+  // every check runs in the canonical signal path.
+  skip_build?: boolean;
+  skip_typecheck?: boolean;
 }
 
 export interface Layer2Context {
