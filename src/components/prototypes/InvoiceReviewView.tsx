@@ -1,6 +1,7 @@
 // src/components/prototypes/InvoiceReviewView.tsx
 //
-// InvoiceReviewView — Document Review pattern exemplar (Stage 1.5c Plan 2).
+// InvoiceReviewView — Document Review pattern exemplar (Stage 1.5c Plan 2
+// + AMENDMENT per nwrp48).
 //
 // Pure props-only View component. Accepts pre-resolved fixture data via props;
 // imports NO runtime fixtures (type-only imports OK). Plan 3 implementers
@@ -9,6 +10,19 @@
 //
 // File preview LEFT, structured fields right-rail, audit timeline BELOW
 // (per .planning/design/PATTERNS.md "Document Review" pattern).
+//
+// Plan 2 AMENDMENT (per Jake nwrp48 — landed before Plan 3 spawns):
+//   - CHANGE 2: AI Parse Confidence panel + Status Timeline panel both
+//     collapsed by default with inline summaries visible. Both are
+//     diagnostic/audit information, not workflow data — approver needs
+//     invoice details + budget context up top, audit detail one click
+//     away. Pattern: native <details>/<summary> (already used in
+//     design-system/patterns/page.tsx; zero JS state; accessibility
+//     built-in via aria-expanded). The same pattern applies to both
+//     panels for visual consistency. Plan 3's 6 InvoiceReviewView
+//     consumers (DocumentReviewView, DrawApprovalView, ReconciliationView,
+//     MobileApprovalView, OwnerDashboardView, OwnerDrawView) inherit the
+//     collapsed-by-default contract by copying this pattern verbatim.
 //
 // Wrapper-View boundary:
 //   - Wrapper at src/app/design-system/prototypes/invoices/[id]/page.tsx
@@ -40,6 +54,7 @@ import {
   CheckBadgeIcon,
   XMarkIcon,
   ExclamationTriangleIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 
 import type {
@@ -332,36 +347,78 @@ export default function InvoiceReviewView({
             </div>
           </Card>
 
+          {/* CHANGE 2 per nwrp48 — AI parse confidence panel collapsed by
+              default. Inline summary in the <summary> shows overall %, flag
+              count, and confidence tone so the approver sees the gist
+              without expanding. Click to expand the per-field grid + flag
+              detail. Native <details>/<summary> chosen for zero JS state +
+              built-in aria-expanded; pattern already used in design-system
+              playground (patterns/page.tsx:134). Plan 3's 6 InvoiceReviewView
+              consumers inherit by copying this pattern verbatim. */}
           <Card padding="md">
-            <Eyebrow tone="muted" className="mb-2">
-              AI parse confidence
-            </Eyebrow>
-            <div className="mb-3 flex items-center gap-2">
-              <span
-                className="text-[11px]"
-                style={{ color: "var(--text-secondary)" }}
+            <details className="group">
+              <summary
+                className="cursor-pointer list-none flex items-center justify-between gap-3"
+                aria-label="Toggle AI parse confidence detail"
               >
-                Overall
-              </span>
-              <Badge variant={confidenceTone(inv.confidence_score)}>
-                {(inv.confidence_score * 100).toFixed(0)}%
-              </Badge>
-            </div>
-            <ConfidenceGrid details={inv.confidence_details} />
-            {inv.flags.length > 0 && (
-              <div
-                className="mt-3 flex items-start gap-1.5 text-[11px]"
-                style={{ color: "var(--nw-warn)" }}
-              >
-                <ExclamationTriangleIcon
-                  className="w-3.5 h-3.5 mt-0.5 shrink-0"
-                  strokeWidth={1.5}
-                />
-                <span style={{ color: "var(--text-secondary)" }}>
-                  {inv.flags.join(" · ")}
-                </span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <ChevronRightIcon
+                    className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
+                    aria-hidden="true"
+                    strokeWidth={2}
+                    style={{ color: "var(--text-tertiary)" }}
+                  />
+                  <Eyebrow tone="muted">AI parse confidence</Eyebrow>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge variant={confidenceTone(inv.confidence_score)}>
+                    {(inv.confidence_score * 100).toFixed(0)}%
+                  </Badge>
+                  {inv.flags.length > 0 && (
+                    <span
+                      className="text-[10px] flex items-center gap-1"
+                      style={{
+                        fontFamily: "var(--font-jetbrains-mono)",
+                        color: "var(--nw-warn)",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      <ExclamationTriangleIcon
+                        className="w-3 h-3"
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                      />
+                      {inv.flags.length} flag{inv.flags.length > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+              </summary>
+              <div className="mt-3">
+                <div className="mb-3 flex items-center gap-2">
+                  <span
+                    className="text-[11px]"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
+                    Per-field confidence
+                  </span>
+                </div>
+                <ConfidenceGrid details={inv.confidence_details} />
+                {inv.flags.length > 0 && (
+                  <div
+                    className="mt-3 flex items-start gap-1.5 text-[11px]"
+                    style={{ color: "var(--nw-warn)" }}
+                  >
+                    <ExclamationTriangleIcon
+                      className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                      strokeWidth={1.5}
+                    />
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      {inv.flags.join(" · ")}
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
+            </details>
           </Card>
 
           {/* Line items panel */}
@@ -407,57 +464,91 @@ export default function InvoiceReviewView({
         </div>
       </div>
 
-      {/* Audit timeline (BELOW per PATTERNS.md §2) — faked client-side per F1 gap */}
+      {/* CHANGE 2 per nwrp48 — Status timeline panel collapsed by default.
+          Inline summary in <summary> shows step count + last/terminal status
+          label so the approver sees the gist without expanding. Click to
+          expand the full reconstructed timeline. Same native <details>
+          pattern as the AI parse confidence panel (above) — both panels use
+          identical pattern for visual consistency. Audit timeline still
+          renders BELOW the hero grid per PATTERNS.md §2. */}
       <Card padding="md">
-        <Eyebrow tone="muted" className="mb-2">
-          Status timeline
-        </Eyebrow>
-        <div
-          className="mb-3 text-[10px]"
-          style={{
-            fontFamily: "var(--font-jetbrains-mono)",
-            color: "var(--text-tertiary)",
-            letterSpacing: "0.04em",
-          }}
-        >
-          Note: timeline reconstructed from terminal status. Real
-          status_history JSONB lands in F1.
-        </div>
-        <ul className="space-y-2 text-[12px]">
-          {timeline.map((e, i) => (
-            <li key={i} className="flex items-baseline gap-3">
-              <span
-                className="w-1.5 h-1.5 mt-1 shrink-0"
-                style={{
-                  borderRadius: "var(--radius-dot)",
-                  background: e.done
-                    ? "var(--nw-stone-blue)"
-                    : "var(--border-default)",
-                }}
+        <details className="group">
+          <summary
+            className="cursor-pointer list-none flex items-center justify-between gap-3"
+            aria-label="Toggle status timeline detail"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <ChevronRightIcon
+                className="w-3 h-3 shrink-0 transition-transform group-open:rotate-90"
+                aria-hidden="true"
+                strokeWidth={2}
+                style={{ color: "var(--text-tertiary)" }}
               />
+              <Eyebrow tone="muted">Status timeline</Eyebrow>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               <span
-                className="text-[10px] shrink-0"
+                className="text-[10px]"
                 style={{
                   fontFamily: "var(--font-jetbrains-mono)",
                   color: "var(--text-tertiary)",
-                  minWidth: "140px",
                   letterSpacing: "0.04em",
                 }}
               >
-                {e.when}
+                {timeline.length} step{timeline.length === 1 ? "" : "s"}
               </span>
-              <span
-                style={{
-                  color: e.done
-                    ? "var(--text-primary)"
-                    : "var(--text-tertiary)",
-                }}
-              >
-                {e.what}
-              </span>
-            </li>
-          ))}
-        </ul>
+              <Badge variant={status.variant}>{status.label}</Badge>
+            </div>
+          </summary>
+          <div className="mt-3">
+            <div
+              className="mb-3 text-[10px]"
+              style={{
+                fontFamily: "var(--font-jetbrains-mono)",
+                color: "var(--text-tertiary)",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Note: timeline reconstructed from terminal status. Real
+              status_history JSONB lands in F1.
+            </div>
+            <ul className="space-y-2 text-[12px]">
+              {timeline.map((e, i) => (
+                <li key={i} className="flex items-baseline gap-3">
+                  <span
+                    className="w-1.5 h-1.5 mt-1 shrink-0"
+                    style={{
+                      borderRadius: "var(--radius-dot)",
+                      background: e.done
+                        ? "var(--nw-stone-blue)"
+                        : "var(--border-default)",
+                    }}
+                  />
+                  <span
+                    className="text-[10px] shrink-0"
+                    style={{
+                      fontFamily: "var(--font-jetbrains-mono)",
+                      color: "var(--text-tertiary)",
+                      minWidth: "140px",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    {e.when}
+                  </span>
+                  <span
+                    style={{
+                      color: e.done
+                        ? "var(--text-primary)"
+                        : "var(--text-tertiary)",
+                    }}
+                  >
+                    {e.what}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
       </Card>
     </div>
   );
