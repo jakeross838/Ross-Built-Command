@@ -2,28 +2,35 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-05-06T16:41:11.299Z"
+status: halt-pending
+last_updated: "2026-05-06T18:57:07Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 6
   completed_plans: 0
   percent: 0
+active_phase: stage-1.5c-verification-harness
+active_wave: 0
+last_completed_plan: 01.5-c-verification-harness-1-foundation
+halt_pending: true
+halt_reason: "Wave 0 complete — Plan 1 (foundation) shipped per halt_after:true. Awaiting Jake review before dispatching Wave 1 (Plans 2/3/4 in parallel)."
 ---
 
 # Nightwork — State
 
-**Updated:** 2026-04-29.
+**Updated:** 2026-05-06 (Plan 1 of stage-1.5c-verification-harness shipped).
 
 ## Active phase
 
-- Branch: `nightwork-build-system-setup`
-- Phase: build-system setup (per `nwrp1.txt`) — installing GSD locally, surgical ECC items, custom Nightwork skills/agents/commands/hooks, Vercel posture, security baseline.
-- Status: complete pending user-only steps (Superpowers `/plugin install` + `vercel link`/login + final test deploy). See `nwrp1.txt` Phase J final report.
+- Branch: `phase/1.5-c-verification-harness`
+- Phase: stage-1.5c-verification-harness — 3-layer verification pipeline runnable on `phase/*` branches via Vercel preview URL + GitHub Actions.
+- Wave: 0 — foundation contracts (Plan 1) shipped, `halt_after: true`. Awaiting Jake review before Wave 1 dispatch.
+- Status: Plan 1 SUMMARY at `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-1-foundation-SUMMARY.md`. Wave 1 will dispatch Plans 2/3/4 (Layers 1/2/3) in parallel after halt review.
 
 ## Recent work shipped (per git log + canonical plan)
 
+- **2026-05-06: stage-1.5c-verification-harness Plan 1 (foundation) shipped on `phase/1.5-c-verification-harness`.** 5 atomic commits: types/registry/idempotency/state-machine module (`9b73f57`); standards JSON schema + 5 domain dirs + reports tracked + .gitignore (`a5f213a`); criteria-loader.test.md scaffold (`ba304ec`); fixture-org migration 00092 + .down.sql (`3476854`); README (`ff7861e`). Halt-pending Jake review before Wave 1 dispatch (Plans 2/3/4 parallel). All iter-1 plan-review CRITICAL amendments addressed (ARCH-CRIT-1/2/3, C1, C4, D-30).
 - **PR #31 (2026-04-29)**: Plan consolidation — `docs/nightwork-plan-canonical-v1.md` becomes the single source of truth.
 - **PR #26 (~2026-04-28)**: Phase 3.4 proposals review form aligned with invoice patterns; print-view added; phase pre-merge cleanups.
 - **Phase 3.4 polish** (in-flight before this session): invoice review structure mirrored to proposals.
@@ -31,7 +38,8 @@ progress:
 ## Branches
 
 - `main` — clean, recently merged.
-- `nightwork-build-system-setup` — current; build-system files staged for review.
+- `phase/1.5-c-verification-harness` — current; Wave 0 (Plan 1) shipped; halt-pending Jake review before Wave 1.
+- `nightwork-build-system-setup` — predecessor; build-system files staged for review.
 
 ## Outstanding tech debt + known issues
 
