@@ -198,9 +198,10 @@ These are explicit verifications in the iter-2 plans:
 - `.planning/expansions/stage-1.5c-information-architecture-AUTO-LOG.md` — Setup audit trail.
 
 ### Architecture / strategy
-- `.planning/MASTER-PLAN.md` — 32 prior decisions (D-01..D-039 incl D-040..D-050 to be added in 1.5c per Q9=A). MUST be updated atomically per D-16.
+- `.planning/MASTER-PLAN.md` — 32 prior decisions (D-01..D-039 incl D-040..D-050 to be added in 1.5c per Q9=A; D-066..D-072 added by Plan 2 amendment 2026-05-05 per nwrp48 Part 3). MUST be updated atomically per D-16.
 - `.planning/architecture/CP1-RESOLUTIONS.md` — D-029 (substitution-map workflow), D-036 (reconciliation strawman as 1.5b deliverable).
 - `.planning/architecture/CURRENT-STATE.md`, `TARGET.md`, `GAP.md`, `VISION.md` — strategic context.
+- `.planning/architecture/WORKFLOW-INTELLIGENCE.md` — canonical 39-pattern catalog of cross-entity validation rules + workflow intelligence patterns (created 2026-05-05 per Jake nwrp48 Part 2; backed by D-066..D-072). F1 schema design MUST read this doc and design entities/relationships to support eventual implementation. WI-015, WI-016, WI-017 (CO portion), WI-027 ship in 1.5c via Plan 2 amendment; all others defer to target phase.
 - `CLAUDE.md` (root) — Architecture Rules + Tech Stack + Phase Roadmap + Standing Rules. MUST be updated atomically per D-16.
 
 ### Stage 1.5b artifacts (predecessor — locked, do NOT modify per Part 8)
