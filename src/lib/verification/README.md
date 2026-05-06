@@ -18,8 +18,62 @@ Foundation for the 3-layer verification pipeline (stage-1.5c-verification-harnes
 - `registry.ts` — verifyFn registry (Plan 3 populates).
 - `idempotency.ts` — sha256(commit_sha + criterion_hash) cache. Plan 4 vision reads/writes; Plan 11 self-tests rerun-on-same-commit no-op.
 - `state-machine.ts` — loop state machine. Plan 8b consumes; Plan 11 self-tests transitions.
+- `_browser.ts` — chromium launch args helper (Plan 4 extraction). Plan 1/2/4 use.
 - `index.ts` — barrel re-export.
+- **Plan 5 deliverables (orchestrator + integration):**
+  - `vercel-discovery.ts` — 4-tier preview URL discovery (REST API primary; CLI / pattern fallbacks; fail-loudly).
+  - `criteria-loader.ts` — parses PLAN `<criteria>` yaml blocks → flat `VerificationCriterion[]`. SEC-HIGH-2 sanitization on each criterion text.
+  - `auth-strategy.ts` — `createHarnessSession` via Supabase `signInWithPassword`. D-30 BREACH detection. NO platform-admin path.
+  - `orchestrator.ts` — `runHarness` composes runLayer1/2/3 + emits `HarnessReport`. Does NOT drive state machine (per ARCH-CRIT-1).
+  - `report-writer.ts` — `writePerCommitReport` (gitignored, full evidence) + `writeReport` (git-tracked, sanitized per ITER-1 C5).
+  - `orchestrator.test.md` — manual test fixture (Plan 11 self-test executes the scenarios end-to-end).
 - `criteria-loader.test.md` — smoke-test scaffold (per iter-1 ARCH-CRIT-2). Plan 11 self-test executes this against Plan 5's criteria-loader.ts.
+
+## Chicken-and-egg setup (Plan 5)
+
+`auth-strategy.ts` requires the harness fixture user to exist BEFORE the
+first `runHarness` call. The setup flow (one-time per fresh checkout):
+
+1. **Apply migration 00092** — seeds the fixture org row (UUID
+   `00000000-0000-0000-0000-fb1ce0a55e55`) and (idempotently) the
+   `org_members` row IF the user already exists in `auth.users`.
+2. **Bootstrap the harness user** via Supabase Studio SQL editor:
+
+   ```sql
+   SELECT auth.admin.create_user(
+     email := 'harness-fixture@nightwork.local',
+     password := '<the-value-you-will-set-as-HARNESS_FIXTURE_PASSWORD>',
+     email_confirm := true
+   );
+   ```
+
+3. **Re-run migration 00092** — now binds membership to the fixture org.
+4. **Set `HARNESS_FIXTURE_PASSWORD`** in `.env.local` or as GH Action secret.
+5. **Run the harness** — `createHarnessSession` succeeds.
+
+If any step is skipped, `createHarnessSession` throws with an actionable
+error. Per D-30: there is NO platform-admin escape hatch — the bootstrap
+MUST be done. Future need = explicit D-30 amendment.
+
+See `orchestrator.test.md` "Chicken-and-egg setup" section for the full
+walkthrough.
+
+## FIXTURE_ORG_ID slug vs FIXTURE_ORG_UUID
+
+Per Plan 5 active scope item #1: `types.ts` exports BOTH constants
+(Option A — additive):
+
+- **`FIXTURE_ORG_ID`** = `"fixture-harness-org"` — the slug. What every
+  `Layer*Context.org_id` carries; what `canonicalCriterionHash` uses;
+  what runs/screenshots paths use; what Sentry tags use.
+- **`FIXTURE_ORG_UUID`** = `"00000000-0000-0000-0000-fb1ce0a55e55"` —
+  the database primary key. What RLS filters on; what `createHarnessSession`
+  asserts the harness session's resolved org_id matches.
+
+The slug is the harness-scoped string identifier; the UUID is the
+database primary key. Both are correct. `auth-strategy.ts` returns both
+in the `HarnessSession` so callers never need to do their own slug↔UUID
+lookup.
 
 ## Standards rule contract
 
