@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-06T13:50:00.000Z"
+last_updated: "2026-05-06T15:06:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 13
-  completed_plans: 7
-  percent: 53
+  completed_plans: 8
+  percent: 62
 ---
 
 # Nightwork — State
@@ -20,10 +20,22 @@ progress:
 
 - **Branch:** `phase/1.5-c-information-architecture`
 - **Phase:** Stage 1.5c — Information Architecture (8-section nav, Today scaffold, redirects, thin-wrapper extraction, placeholders, canonical docs).
-- **Plan position:** Plan 2 (`01.5c-2-thin-wrapper-architect`) **COMPLETE + AMENDMENT LANDED** (original 2026-05-05; amendment 2026-05-06 per Jake nwrp48). Halt-pending Jake re-walk per `halt_after: true`.
-- **Last completed plan:** 01.5c-2-thin-wrapper-architect-AMENDMENT (commits 0cb99db, cb9aab9, ade04b4, 6dafc10, f9316bf, 1769e24, e8e67ba). Original Plan 2 commits: b5eeaeb, 4b6e628, e8e27e6. SUMMARY at `.planning/phases/stage-1.5c-information-architecture/01.5c-2-thin-wrapper-architect-SUMMARY.md` (with AMENDMENT section appended).
-- **Prior completed plan:** 01.5c-1-nav-today-redirects (commits d115447, 88be994, 8f62295, 8436844).
-- **Next plan (after re-walk):** Plan 3 (extraction-production-routes — 4-6 parallel implementers extract 9 remaining prototypes by COPYING the 2 exemplars from Plan 2 + amendment). Spawn after Jake walks 2 prototype pages at 3 viewports + reads WORKFLOW-INTELLIGENCE.md end-to-end + approves D-066..D-072 + approves architectural decisions (Strategy 1-prime locked, T10c Option A unchanged, exemplar shapes incl. amendment changes, currentDraw 7th prop, TanStack sort-trigger TD-20 exemption, fixture-gap path 1, ARCHITECTURE.md cross-ref deferral to Plan 7).
+- **Plan position:** Plan 3 (`01.5c-3-extraction-production-routes`) **COMPLETE** (2026-05-06). Halt-pending Jake walk per `halt_after: true`.
+- **Last completed plan:** 01.5c-3-extraction-production-routes (commits 7b1bb60 [Task 1], 1f2e9ae [Task 3], 5a2150c [Task 4]). SUMMARY at `.planning/phases/stage-1.5c-information-architecture/01.5c-3-extraction-production-routes-SUMMARY.md`. Halt-pending: Jake walks 12 production-portfolio pairs × 3 viewports + decides on Plan 3a portfolio-rewrites follow-up vs. defer.
+- **Prior completed plan:** 01.5c-2-thin-wrapper-architect-AMENDMENT (commits 0cb99db, cb9aab9, ade04b4, 6dafc10, f9316bf, 1769e24, e8e67ba). Original Plan 2 commits: b5eeaeb, 4b6e628, e8e27e6.
+- **Next plan (after halt-review):** Plan 3a (portfolio-rewrites — orchestrator-recommended; 10 mechanical portfolio-route rewrites; estimated 15 min) OR Plan 4 (jobs-list-detail) per Jake decision at halt-review.
+
+## Plan 3 outcomes (2026-05-06)
+
+- **10 NEW props-only View components** at `src/components/prototypes/` (DrawApprovalView 528 LOC, DrawPrintView 746, ScheduleView 522, VendorListView 336, VendorDetailView 301, DocumentReviewView 719, OwnerDashboardView 330, OwnerDrawView 282, MobileApprovalView 328, ReconciliationView 590). All follow Plan 2 exemplar conventions: tenant-blind, Heroicons-only outside ui/, Slate tokens via bracket-value utilities + nw-* raw utilities. DrawPrintView documents AIA-print-monochrome hex exception in `<style jsx global>`.
+- **12 production routes mounted as thin wrappers** wrapped in `<div data-direction="C" data-palette="B" className="design-system-scope">` per CONTEXT D-19 + iter-3 Q-iter2-1=a. 11 NEW routes (Architect W-5: PLACEHOLDER); 1 REPLACED route (`/jobs/[id]/budget/page.tsx` was 1514-LOC client-side Supabase-auth page → 96-LOC thin wrapper; auth surface backed up as comment block for F1 swap reference).
+- **8 inline JobTabs removed** from existing /jobs/[id]/* pages (page.tsx, draws, invoices, change-orders, activity, lien-releases, internal-billings, purchase-orders) per iter-2 must-fix CRITICAL #2; 9th file (/jobs/[id]/budget/page.tsx) cleaned implicitly via REAL-route replacement. Plan 5's PerJobTabs in /jobs/[id]/layout.tsx becomes the sole tab surface.
+- **NIGHTWORK_PRECOMMIT_DISABLE=1 env-var precedent** Jake-authorized for Plan 3 commits (option 2 of 3) — bypasses Claude-Bash-tool QA-staleness hook only; system .githooks/pre-commit Drummond grep gate stays armed at git level. End-of-phase /nightwork-qa closes the staleness gap.
+- **iter-2 multi-tenant W-1 Owner Portal posture clarified** — 1.5c structural; F1 commits to ONE auth path (Path A: extend client_portal_access tokens; OR Path B: introduce owner_view role with RLS — not both). Plan 7 ARCHITECTURE.md / OWNER-PORTAL-CUTOVER.md documents this constraint.
+- **SEC-10 defensive grep** for `data-org-id|data-org-name|data-tenant` returns 0 hits across all 12 production routes — confirms `.design-system-scope` wrap (CSS scope class only) + `data-direction="C" data-palette="B"` (presentation attributes only) introduce ZERO DOM tenant-context attributes.
+- **Plan 3 deviations: 3 documented** — (1) Task 2 evidence-only path (TD-20/25/26 verified clean — 0 fixes needed; previous agent applied inline during Task 1); (2) Plan-file Task 3 portfolio-rewrites omitted from orchestrator's 5-task work order (flagged for orchestrator awareness; recommendation: spawn Plan 3a follow-up); (3) post-edit hook flagged pre-existing CSS-var-fallback hex literal in `src/app/jobs/[id]/page.tsx:582-583` (out of Plan 3 scope; logged to deferred-items.md).
+- **Visual D-07 verification at 3 viewports DEFERRED to Jake's halt-review walk** — sequential agent without authenticated browser session cannot Chrome-MCP-screenshot middleware-gated production routes. Visual parity is structurally guaranteed by verbatim JSX preservation + production wrap mirroring playground layout exactly + design-system.css imported from root layout. 12 production-portfolio pairs at 3 viewports (1920×1080, 1280×800, 393×852).
+- Build clean: ✓ Compiled successfully + 88/88 static pages generated. All 3 task commits passed system Drummond grep gate (no `--no-verify` used).
 
 ## Plan 2 outcomes (2026-05-05) + AMENDMENT (2026-05-06 per nwrp48)
 
