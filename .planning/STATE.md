@@ -3,33 +3,31 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: halt-pending
-last_updated: "2026-05-06T18:57:07Z"
+last_updated: "2026-05-05T00:00:00Z"
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 6
-  completed_plans: 0
-  percent: 0
-active_phase: stage-1.5c-verification-harness
-active_wave: 0
-last_completed_plan: 01.5-c-verification-harness-1-foundation
-halt_pending: true
-halt_reason: "Wave 0 complete — Plan 1 (foundation) shipped per halt_after:true. Awaiting Jake review before dispatching Wave 1 (Plans 2/3/4 in parallel)."
+  total_plans: 18
+  completed_plans: 9
+  percent: 50
 ---
 
 # Nightwork — State
 
-**Updated:** 2026-05-06 (Plan 1 of stage-1.5c-verification-harness shipped).
+**Updated:** 2026-05-05 (Plan 5 of stage-1.5c-verification-harness shipped — Wave 2 single-plan dispatch).
 
 ## Active phase
 
 - Branch: `phase/1.5-c-verification-harness`
 - Phase: stage-1.5c-verification-harness — 3-layer verification pipeline runnable on `phase/*` branches via Vercel preview URL + GitHub Actions.
-- Wave: 0 — foundation contracts (Plan 1) shipped, `halt_after: true`. Awaiting Jake review before Wave 1 dispatch.
-- Status: Plan 1 SUMMARY at `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-1-foundation-SUMMARY.md`. Wave 1 will dispatch Plans 2/3/4 (Layers 1/2/3) in parallel after halt review.
+- Wave: 2 — orchestrator (Plan 5) shipped, `halt_after: true`. Awaiting Jake review before Wave 3 dispatch.
+- Status: Plan 5 SUMMARY at `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-5-orchestrator-and-vercel-discovery-SUMMARY.md`. Wave 3 will dispatch Plan 6 (GitHub Actions workflow) sequentially after halt review.
 
 ## Recent work shipped (per git log + canonical plan)
 
+- **2026-05-05: stage-1.5c-verification-harness Plan 5 (orchestrator + Vercel discovery + criteria-loader + auth-strategy + report-writer + verify-phase.ts CLI) shipped on `phase/1.5-c-verification-harness`.** 3 atomic commits + 1 SUMMARY commit: vercel-discovery + criteria-loader + auth-strategy (`1cc868d`); orchestrator + report-writer (`547c00d`); verify-phase.ts + test fixture + README update (`789fe35`). Wave 2 single-plan dispatch complete; halt-pending Jake review before Wave 3 (Plan 6 GH Actions workflow). All 7 watchpoints (Jake nwrp51) addressed: REST API as PRIMARY discovery (Jake watchpoint #2), real Supabase signInWithPassword auth strategy with NO platform-admin path (watchpoint #3), 141 non-N/A criteria extracted from this phase's 12 PLANs (watchpoint #4), runHarness does NOT drive state machine (watchpoint #1+#5), all 3 active scope items closed (watchpoint #6), calibration-log custodian integration designed (watchpoint #7). HarnessReport.loop_state DELETED per ARCH-CRIT-1; FIXTURE_ORG_UUID added alongside slug (Option A). Iter-1 amendments verified: ARCH-CRIT-1/2/3, C1, C5, SEC-HIGH-2, WARNING-1, W1, D-30.
+- **2026-05-06: stage-1.5c-verification-harness Plan 4 (Layer 3 vision) shipped on `phase/1.5-c-verification-harness`.** Wave 1 sequential complete (Plans 2/3/4 sequenced); halt-pending Jake review before Wave 2.
+- **2026-05-06: stage-1.5c-verification-harness Plans 2 + 3 (Layer 1 static + Layer 2 standards framework) shipped.**
 - **2026-05-06: stage-1.5c-verification-harness Plan 1 (foundation) shipped on `phase/1.5-c-verification-harness`.** 5 atomic commits: types/registry/idempotency/state-machine module (`9b73f57`); standards JSON schema + 5 domain dirs + reports tracked + .gitignore (`a5f213a`); criteria-loader.test.md scaffold (`ba304ec`); fixture-org migration 00092 + .down.sql (`3476854`); README (`ff7861e`). Halt-pending Jake review before Wave 1 dispatch (Plans 2/3/4 parallel). All iter-1 plan-review CRITICAL amendments addressed (ARCH-CRIT-1/2/3, C1, C4, D-30).
 - **PR #31 (2026-04-29)**: Plan consolidation — `docs/nightwork-plan-canonical-v1.md` becomes the single source of truth.
 - **PR #26 (~2026-04-28)**: Phase 3.4 proposals review form aligned with invoice patterns; print-view added; phase pre-merge cleanups.
