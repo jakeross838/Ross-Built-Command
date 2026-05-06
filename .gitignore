@@ -125,6 +125,16 @@ skills-lock.json
 # nightwork-ui-template). Must sync across PCs. Per D-018 + SPEC §2.
 !/.planning/design/
 !/.planning/design/**
+# verification/ — runs/ are gitignored (per-commit harness reports clutter
+# git history); reports/ and standards/ are tracked (per-phase final reports
+# + standards rules library). Per D-15/D-16 (stage-1.5c verification harness).
+!/.planning/verification/
+!/.planning/verification/standards/
+!/.planning/verification/standards/**
+!/.planning/verification/reports/
+!/.planning/verification/reports/**
+/.planning/verification/runs/
+/.planning/verification/runs/**
 
 # smoke + E2E runtime logs (ephemeral, regenerated each run)
 /e2e-state.json
