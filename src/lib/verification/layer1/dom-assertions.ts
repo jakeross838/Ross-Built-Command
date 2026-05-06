@@ -26,6 +26,7 @@ import type {
   VerificationResult,
 } from "../types";
 import { deriveIdempotencyKey } from "../idempotency";
+import { chromiumLaunchArgs } from "../_browser";
 
 interface Viewport {
   name: string;
@@ -57,21 +58,10 @@ function parseDomCriterion(text: string): ParsedCriterion | null {
   };
 }
 
-/**
- * Build the chromium launch args. Per iter-1 SECURITY MEDIUM-2:
- *   - --disable-dev-shm-usage always (works around /dev/shm size constraints
- *     in containers; no security trade-off).
- *   - --no-sandbox conditional on CI env detection. Local dev uses Chromium's
- *     default sandbox; CI containers without namespaced sandbox capabilities
- *     get the relaxed setting.
- */
-function chromiumLaunchArgs(): string[] {
-  const args = ["--disable-dev-shm-usage"];
-  const ci =
-    process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
-  if (ci) args.push("--no-sandbox");
-  return args;
-}
+// chromiumLaunchArgs extracted to ../_browser.ts in Plan 4 (2nd chromium
+// launch site triggered the Plan 3 SUMMARY-recommended extraction). Local
+// definition removed — single source of truth honors iter-1 MEDIUM-2 sandbox
+// policy without drift risk.
 
 export async function runDomAssertions(
   preview_url: string,
