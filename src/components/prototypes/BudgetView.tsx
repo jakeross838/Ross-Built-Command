@@ -1,19 +1,37 @@
 // src/components/prototypes/BudgetView.tsx
 //
-// BudgetView — Multi-fixture aggregation pattern exemplar (Stage 1.5c Plan 2).
+// BudgetView — Multi-fixture aggregation pattern exemplar (Stage 1.5c Plan 2
+// + AMENDMENT per nwrp48).
 // iter-2 architect W-2: 2nd canonical extraction exemplar; Plan 3
 // implementers COPY THIS PATTERN VERBATIM when extracting Schedule,
 // VendorList, VendorDetail, and any other multi-fixture surfaces.
+//
+// Plan 2 AMENDMENT (per Jake nwrp48 — landed before Plan 3 spawns):
+//   - CHANGE 1: Committed column added between Revised and Previous.
+//     Cost-plus PMs need live budget standing including approved-unbilled
+//     CO uplift (and, when PO fixtures land, open PO balance). Previous
+//     "Balance" column renamed to "Available" (revised − committed −
+//     invoiced) to reflect cost-plus-truthful spendable headroom. KPI
+//     strip's Remaining card relabeled "Available" with optional
+//     committed-amount sub-line. Prop shape UNCHANGED — committed and
+//     available are derived from existing inputs (changeOrders +
+//     budgetLines + invoices) so Plan 3's 3 BudgetView consumers
+//     (ScheduleView, VendorListView, VendorDetailView) inherit it
+//     without prop refactor.
+//   - CHANGE 3: Footer dev info ("30 of 30 budget lines · Site Office
+//     Compact Density") removed. Diagnostic info; not user-facing.
 //
 // Pattern characteristics (vs. InvoiceReviewView's single-fixture
 // Document Review pattern):
 //   - Aggregates 6 fixture types into computed rows
 //   - R.2 "Recalculate, don't increment" — every running total
-//     (previous_applications, this_period, total_to_date,
-//     percent_complete, balance_to_finish, revised_estimate) is
-//     derived on render from source rows. Zero stored aggregates.
+//     (previous_applications, this_period, total_to_date, committed,
+//     available, percent_complete, balance_to_finish) is derived on
+//     render from source rows. Zero stored aggregates.
 //   - Job-level KPI strip aggregates row-level computed values
-//   - DataGrid renders 30+ rows with computed columns
+//   - DataGrid renders 30+ rows with computed columns (Cost code |
+//     Original | Revised | Committed | Previous | This period | Total |
+//     % complete | Available — 9 columns)
 //   - F1 swaps fixtures for real Supabase queries with the same
 //     JOIN pattern + same computed fields
 //
@@ -104,11 +122,37 @@ export interface BudgetViewProps {
 }
 
 // Computed shape per R.2 — never stored, always derived on render.
+//
+// Plan 2 amendment (CHANGE 1 per nwrp48): added `committed` + `available`.
+// Cost-plus PMs need live budget standing, not just invoiced-to-date. A line
+// might show "$0 invoiced, $50K remaining" when in reality there's a $5K
+// approved-unbilled CO uplift already committed against it; real available is
+// $45K, not $50K.
+//
+// committed interpretation (fixture-realistic): the portion of the CO uplift
+// (revised_estimate − original_estimate) that has NOT yet been invoiced. We
+// can't link invoices to COs directly in the current fixtures (co_id is null
+// on every invoice — the CO references live in description text only), so
+// "billed against the CO" is approximated as: invoicing in excess of the
+// original budget represents CO billing.
+//
+//   co_uplift = max(0, revised − original)
+//   co_uplift_billed = max(0, total_to_date − original)
+//   committed = max(0, co_uplift − co_uplift_billed)
+//   available = revised − committed − total_to_date
+//
+// This works for any fixture snapshot. Future scope (when fixtures grow):
+// also subtract sum of OPEN POs allocated to this cost code; the formula
+// becomes committed = unbilled_co_uplift + open_po_balance. Plan 3 BudgetView
+// consumers (ScheduleView, VendorListView, VendorDetailView) inherit this
+// pattern by copying it verbatim — see SUMMARY for the propagation contract.
 type BudgetRow = CaldwellBudgetLine & {
   cost_code_label: string;
   previous_applications: number;
   this_period: number;
   total_to_date: number;
+  committed: number;
+  available: number;
   percent_complete: number;
   balance_to_finish: number;
 };
@@ -163,12 +207,28 @@ export default function BudgetView({
           bl.revised_estimate > 0 ? total_to_date / bl.revised_estimate : 0;
         const balance_to_finish = bl.revised_estimate - total_to_date;
 
+        // committed (CHANGE 1 per nwrp48) — approved-unbilled CO uplift on
+        // this line. CO uplift = revised − original. Portion already billed
+        // = invoicing above original. Committed = uplift not yet billed.
+        // Future: + open PO balance allocated to this cost code (no PO
+        // fixtures today; documented in SUMMARY for fixture evolution).
+        const co_uplift = Math.max(0, bl.revised_estimate - bl.original_estimate);
+        const co_uplift_billed = Math.max(0, total_to_date - bl.original_estimate);
+        const committed = Math.max(0, co_uplift - co_uplift_billed);
+
+        // available = revised − committed − invoiced. Real spendable headroom
+        // from the cost-plus PM perspective: what's left after honoring the
+        // committed obligations and what's already drawn down.
+        const available = bl.revised_estimate - committed - total_to_date;
+
         return {
           ...bl,
           cost_code_label: cc ? `${cc.code} · ${cc.description}` : "—",
           previous_applications,
           this_period,
           total_to_date,
+          committed,
+          available,
           percent_complete,
           balance_to_finish,
         };
@@ -176,11 +236,16 @@ export default function BudgetView({
   }, [job.id, budgetLines, invoices, costCodes, currentDraw.id]);
 
   // KPI summary — also derived on render per R.2.
+  //
+  // Plan 2 amendment (CHANGE 1 per nwrp48): added committedSum + availableSum.
+  // The Remaining KPI now reports cost-plus-truthful Available (revised −
+  // committed − invoiced) instead of legacy Balance (revised − invoiced).
   const kpis = useMemo(() => {
     const originalSum = rows.reduce((s, r) => s + r.original_estimate, 0);
     const revisedSum = rows.reduce((s, r) => s + r.revised_estimate, 0);
     const totalToDateSum = rows.reduce((s, r) => s + r.total_to_date, 0);
-    const balanceSum = rows.reduce((s, r) => s + r.balance_to_finish, 0);
+    const committedSum = rows.reduce((s, r) => s + r.committed, 0);
+    const availableSum = rows.reduce((s, r) => s + r.available, 0);
     const approvedCOs = changeOrders
       .filter(
         (co) =>
@@ -188,12 +253,13 @@ export default function BudgetView({
           (co.status === "approved" || co.status === "executed"),
       )
       .reduce((s, co) => s + co.total_with_fee, 0);
-    const overUnderTotal = rows.filter((r) => r.balance_to_finish < 0).length;
+    const overUnderTotal = rows.filter((r) => r.available < 0).length;
     return {
       originalSum,
       revisedSum,
       totalToDateSum,
-      balanceSum,
+      committedSum,
+      availableSum,
       approvedCOs,
       overUnderTotal,
     };
@@ -229,6 +295,33 @@ export default function BudgetView({
         accessorKey: "revised_estimate",
         header: "Revised",
         cell: (info) => <Money cents={info.getValue<number>()} size="sm" />,
+        sortingFn: "basic",
+      },
+      // CHANGE 1 per nwrp48 — Committed column. Cost-plus PMs need live
+      // budget standing including approved-unbilled CO uplift (and, when
+      // PO fixtures land, open PO balance). Column rendered between
+      // Revised and Previous so the eye reads
+      // Original → Revised → Committed → Previous → This period → Total →
+      // % complete → Available.
+      {
+        accessorKey: "committed",
+        header: "Committed",
+        cell: (info) => {
+          const c = info.getValue<number>();
+          // Committed > 0 = a future-known obligation against the line.
+          // Render in stone-blue accent so the PM eye picks it up; zero
+          // committed renders muted so it doesn't clutter the scan.
+          return (
+            <span
+              style={{
+                color:
+                  c > 0 ? "var(--nw-stone-blue)" : "var(--text-tertiary)",
+              }}
+            >
+              <Money cents={c} size="sm" />
+            </span>
+          );
+        },
         sortingFn: "basic",
       },
       {
@@ -302,13 +395,16 @@ export default function BudgetView({
         },
         sortingFn: "basic",
       },
+      // CHANGE 1 per nwrp48 — was "Balance" (revised − total_to_date);
+      // becomes "Available" (revised − committed − total_to_date). The
+      // cost-plus PM-truthful number: real spendable headroom after honoring
+      // approved-unbilled commitments. Negative still flags over-budget in
+      // danger tone.
       {
-        accessorKey: "balance_to_finish",
-        header: "Balance",
+        accessorKey: "available",
+        header: "Available",
         cell: (info) => {
           const bal = info.getValue<number>();
-          // Negative balance = over budget; render in danger color so the
-          // overrun is unmistakable when scanning.
           return (
             <span
               style={{
@@ -415,12 +511,18 @@ export default function BudgetView({
             sub: `${completionPct.toFixed(1)}% complete`,
           },
           {
-            label: "Remaining",
-            value: <Money cents={kpis.balanceSum} size="xl" variant="emphasized" />,
+            label: "Available",
+            value: (
+              <Money cents={kpis.availableSum} size="xl" variant="emphasized" />
+            ),
             sub:
               kpis.overUnderTotal > 0
                 ? `${kpis.overUnderTotal} lines over budget`
-                : "all lines on budget",
+                : kpis.committedSum > 0
+                  ? `${(kpis.committedSum / 100).toLocaleString(undefined, {
+                      maximumFractionDigits: 0,
+                    })} committed`
+                  : "all lines on budget",
           },
         ].map((k) => (
           <div
