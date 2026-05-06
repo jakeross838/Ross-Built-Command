@@ -3,28 +3,29 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: halt-pending
-last_updated: "2026-05-05T00:00:00Z"
+last_updated: "2026-05-06T22:00:00Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 18
-  completed_plans: 9
-  percent: 50
+  completed_plans: 10
+  percent: 56
 ---
 
 # Nightwork — State
 
-**Updated:** 2026-05-05 (Plan 5 of stage-1.5c-verification-harness shipped — Wave 2 single-plan dispatch).
+**Updated:** 2026-05-06 (Plan 6 of stage-1.5c-verification-harness shipped — Wave 3 single-plan dispatch; first GH Action on main from this branch).
 
 ## Active phase
 
 - Branch: `phase/1.5-c-verification-harness`
 - Phase: stage-1.5c-verification-harness — 3-layer verification pipeline runnable on `phase/*` branches via Vercel preview URL + GitHub Actions.
-- Wave: 2 — orchestrator (Plan 5) shipped, `halt_after: true`. Awaiting Jake review before Wave 3 dispatch.
-- Status: Plan 5 SUMMARY at `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-5-orchestrator-and-vercel-discovery-SUMMARY.md`. Wave 3 will dispatch Plan 6 (GitHub Actions workflow) sequentially after halt review.
+- Wave: 3 — GitHub Actions workflow (Plan 6) shipped, `halt_after: true`. Awaiting Jake review before Wave 4 dispatch.
+- Status: Plan 6 SUMMARY at `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-6-github-actions-workflow-SUMMARY.md`. Wave 4 will dispatch Plan 7 (new agents — `gsd-research-standards` + planner mandate) after halt review. **First push to remote will trigger Plan 6 verifying Plan 6 (watchpoint #8 meta-test).**
 
 ## Recent work shipped (per git log + canonical plan)
 
+- **2026-05-06: stage-1.5c-verification-harness Plan 6 (GitHub Actions workflow) shipped on `phase/1.5-c-verification-harness`.** 2 atomic task commits + 1 SUMMARY commit: verify-phase.yml workflow YAML (`4dfa994`); workflow README (`3feeb14`). First GH Action on main from this branch (`.github/workflows/` did not exist on main pre-merge). 14-step workflow with push + workflow_dispatch triggers, concurrency cancel-in-progress, Vercel REST API wait-for-Ready gate (live-tests Plan 5 vercel-discovery contract per watchpoint #3), defensive harness-output JSON parser (watchpoint #4), 5 GH secrets wired (the original 2 from plan template + 3 added per Rule 2 missing-critical: HARNESS_FIXTURE_PASSWORD + Supabase URL + anon key), exit-code 0/1/2/3/4 → success/failure/failure/error/error mapping (watchpoint #6), 7-day artifact retention with screenshots/ excluded per C2+D-30. SEC-HIGH-1 verified: 0 violations of `${{ github.* }}` / `${{ inputs.* }}` in shell `run:` bodies (watchpoint #1; precise Python parser tracking shell-block boundaries). Watchpoints #3, #7, #8 deferred to first push (workflow self-test). Halt-pending Jake review before Wave 4 (Plan 7 — new agents). 4 deviations auto-fixed (3 Rule 2 missing-critical + 1 Rule 1 bug fixing transcribed YAML fragment in plan template).
 - **2026-05-05: stage-1.5c-verification-harness Plan 5 (orchestrator + Vercel discovery + criteria-loader + auth-strategy + report-writer + verify-phase.ts CLI) shipped on `phase/1.5-c-verification-harness`.** 3 atomic commits + 1 SUMMARY commit: vercel-discovery + criteria-loader + auth-strategy (`1cc868d`); orchestrator + report-writer (`547c00d`); verify-phase.ts + test fixture + README update (`789fe35`). Wave 2 single-plan dispatch complete; halt-pending Jake review before Wave 3 (Plan 6 GH Actions workflow). All 7 watchpoints (Jake nwrp51) addressed: REST API as PRIMARY discovery (Jake watchpoint #2), real Supabase signInWithPassword auth strategy with NO platform-admin path (watchpoint #3), 141 non-N/A criteria extracted from this phase's 12 PLANs (watchpoint #4), runHarness does NOT drive state machine (watchpoint #1+#5), all 3 active scope items closed (watchpoint #6), calibration-log custodian integration designed (watchpoint #7). HarnessReport.loop_state DELETED per ARCH-CRIT-1; FIXTURE_ORG_UUID added alongside slug (Option A). Iter-1 amendments verified: ARCH-CRIT-1/2/3, C1, C5, SEC-HIGH-2, WARNING-1, W1, D-30.
 - **2026-05-06: stage-1.5c-verification-harness Plan 4 (Layer 3 vision) shipped on `phase/1.5-c-verification-harness`.** Wave 1 sequential complete (Plans 2/3/4 sequenced); halt-pending Jake review before Wave 2.
 - **2026-05-06: stage-1.5c-verification-harness Plans 2 + 3 (Layer 1 static + Layer 2 standards framework) shipped.**
