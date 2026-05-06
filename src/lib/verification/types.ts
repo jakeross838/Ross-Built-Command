@@ -118,8 +118,21 @@ export interface VisionResult {
 // constant FIXTURE_ORG_ID = "fixture-harness-org". When Wave 1.1+ enables
 // per-tenant preview verification, this becomes the tenant's org_id and the
 // idempotency cache + report scoping respect tenant isolation BY CONSTRUCTION.
+//
+// Plan 5 disambiguation (Option A — additive constants):
+//   FIXTURE_ORG_ID    — slug used by Layer*Context.org_id, idempotency cache
+//                       keys, screenshot paths, all "harness identity" surfaces.
+//                       The slug is what Plans 1/2/3/4 thread end-to-end.
+//   FIXTURE_ORG_UUID  — primary key in public.organizations (per migration
+//                       00092). What auth-strategy.ts asserts the harness
+//                       session's resolved org_id matches; what RLS filters on
+//                       when the harness ever needs to query Supabase directly.
+// Both are correct — slug is the harness-scoped string identifier; UUID is the
+// database primary key. See layer3/README.md "Plan 5 chicken-and-egg setup"
+// for the full disambiguation rationale.
 
 export const FIXTURE_ORG_ID = "fixture-harness-org";
+export const FIXTURE_ORG_UUID = "00000000-0000-0000-0000-fb1ce0a55e55";
 
 export interface Layer1Context {
   preview_url: string;
