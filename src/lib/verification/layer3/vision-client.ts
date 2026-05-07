@@ -28,7 +28,11 @@ import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import type { VerificationCriterion, VisionResult } from "../types";
 
-const DEFAULT_MODEL = "claude-3-5-sonnet-20241022";
+// Updated 2026-05-07 per nwrp62 FIX 4: claude-3-5-sonnet-20241022 was retired
+// by Anthropic and now returns 404 on every call (12 SKIPs in run #25513946216
+// blocked on this single deprecated ID). claude-sonnet-4-6 is the current
+// production Sonnet — vision-capable, cost-tier appropriate for Layer 3.
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 /**
  * Heuristic cost estimate per vision call. Anthropic pricing fluctuates;

@@ -61,7 +61,8 @@ import {
 import { CostCap } from "./cost-cap";
 import { chromiumLaunchArgs } from "../_browser";
 
-const VISION_MODEL_ID = "claude-3-5-sonnet-20241022";
+// Updated 2026-05-07 per nwrp62 FIX 4: see vision-client.ts DEFAULT_MODEL.
+const VISION_MODEL_ID = "claude-sonnet-4-6";
 
 export async function runLayer3(
   ctx: Layer3Context
