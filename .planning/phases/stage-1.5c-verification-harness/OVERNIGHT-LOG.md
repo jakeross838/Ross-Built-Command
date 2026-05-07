@@ -725,3 +725,68 @@ Category 1 cleared cleanly. The 3 remaining FAILs are exactly the Category 2 (ro
 **Budget status:** Attempt 8/9 used (nwrp64 authorized two attempts). 1 remaining for FIX 7.
 
 **Cost-cap status:** $0.0260 this run; cumulative $0.183 across three productive Layer 3 runs. Well under $1/run cap. Idempotency cache should short-circuit AC-08a-93 (PASS) on subsequent runs against the same commit at $0 vision cost.
+
+---
+
+## 2026-05-07T20:10:40Z — Run #25519241866 on `ab292c6`: nwrp65 FIX 7 root-caused criteria-loader bug. 3 new findings unmasked. HALT.
+
+**Action (attempt 9 — nwrp65 FIX 7, route-resolver implementation + criteria-mandate update):**
+
+### DEEPER ROOT CAUSE found while implementing FIX 7
+
+The 4 "Plan 8a Layer 3 ACs" (`Page <route>: Site Office signature…`, `…Slate palette…`, `…cost code on invoice line items…`, `Document Review pattern present…`) we'd been chasing as Category 2 since nwrp63 — they were **NEVER Plan 8a's real criteria**. They were **template examples** the criteria-loader was extracting because its regex matched the FIRST `<criteria>` literal anywhere in the file (an inline-prose mention at Plan 8a:20 — `"…require <criteria> yaml block per D-17/D-18"`) → first ```yaml``` block after it (the drop-in template at line 145 with `Page <route>: …` placeholders), not the real `<criteria>` block at line 503.
+
+This means:
+- Plan 8a's actual criteria were never being loaded (its real block sat dead since the file was authored)
+- Other PLAN files with inline `<criteria>` mentions in prose may have been similarly affected
+- The "WI-004 cost-code AC" and "Document Review pattern AC" we'd been excited about — those were template examples Jake/team had written as illustrations of good criteria; never real verification targets
+
+### Three changes shipped in this commit
+
+1. **`src/lib/verification/criteria-loader.ts`** — line-anchored regex with multiline flag. `<criteria>` and `</criteria>` MUST now be on their own lines. Inline-prose mentions no longer trigger extraction. All 12 PLAN files verified line-anchored at standalone-tag positions; behavior preserved for everything except Plan 8a (now picks up the real block) and apparently Plans 5, 10 (which had similar prose-mention ambiguity).
+
+2. **Plan 8a PLAN.md updates:**
+   - Real `<criteria>` block (line 503) `semantic:` items converted to single `N/A — …` entry (template/spec-checker design = misauthored, same anti-pattern as FIX 6).
+   - Drop-in template (line 145-165) updated to use REAL explicit routes (`/design-system/philosophy`, `/design-system/palette`, `/design-system/patterns`, `/financials/invoices/[id]`).
+   - New "Route convention" callout added: explicit routes required; `<route>` placeholder deprecated; backward-compat fallback to `/` preserved but discouraged.
+
+3. **`src/lib/verification/layer3/README.md`** — extended "Page URL routing" with route-extraction contract table covering 5 representative shapes (explicit, dynamic-segment, missing-prefix, deprecated placeholder, fallback).
+
+### Verdict counts
+
+- **PASS: 63** (was 64; −1 — the previous Layer 3 PASS was AC-08a-93 / Slate palette, which was a template example. Plan 8a's real visual: is N/A, so no Layer 3 PASS from there now.)
+- **FAIL: 3** (was 3; same count, **completely different ACs** — the 3 template-derived Category 2 FAILs disappeared, replaced by 3 newly-unmasked misauthored ACs from Plans 5 and 10)
+- **SKIP: 1** (Layer 2 introspection — Wave 1.1 dep, unchanged)
+- **Vision cost:** $0.0201 (3 calls × ~$0.0067; cumulative $0.203)
+
+### The 3 newly-unmasked FAILs — same Category 1 anti-pattern as FIX 6
+
+| ID | Plan | Vision reason | Actually about |
+|---|---|---|---|
+| AC-10-29 | 10 (Documentation) | "internal documentation design pattern (VERIFICATION-PIPELINE.md canonical doc role)" | Doc structure/architecture |
+| AC-10-30 | 10 (Documentation) | "internal documentation files (VERIFICATION-PIPELINE.md, MASTER-PLAN, PHILOSOPHY, CLAUDE.md, CONTEXT.md) … cross-document consistency check that is not verifiable visually" | Cross-doc consistency |
+| AC-05-100 | 5 (Orchestrator) | "internal test documentation (orchestrator.test.md, Plan 11, Scenario 4)" | Test doc claim |
+
+**Same authoring anti-pattern as FIX 6** — `semantic:` ACs describing docs / cross-doc / test files, none vision-evaluable. They were hidden by the criteria-loader bug; now visible because the regex correctly extracts each PLAN's real `<criteria>` block.
+
+The proper fix is the same playbook: convert these 3 to `N/A — <reason>` entries citing this run + explaining that doc/test correctness is verified by integration or by `behavioral:` content checks, not by vision API.
+
+### Halting per nwrp64 step 6 + nwrp65 directive
+
+> "HALT for Jake regardless of outcome — Wave 4 dispatch is the next decision after FIX 7 lands."
+
+**Authorized scope is fully consumed.** nwrp64 authorized FIX 6 + FIX 7; nwrp65 authorized FIX 7 execution. Both have shipped. The 3 newly-unmasked findings are CATEGORY 1 work — applying the FIX 6 playbook (~10 min phase-spec edits in Plans 5 and 10) — but **not in nwrp65's authorized scope**.
+
+### Three options for Jake's call
+
+1. **FIX 6.1 — Apply N/A cleanup to AC-10-29, AC-10-30, AC-05-100** (~10 min phase-spec edits, ~1 attempt). Brings the report to PASS=63 / FAIL=0 / SKIP=1 — clean signal. Then Wave 4 dispatch.
+
+2. **Dispatch Wave 4 (Plan 7) now.** The 3 new FAILs are AC-quality issues, not real Plans 1-5 application bugs; workflow gate will continue reporting failure but the harness signal integrity is solid. Cleanup can ride alongside or after Wave 4.
+
+3. **Author proper Layer 3 ACs against `/design-system/patterns`** (where Document Review pattern actually renders with Caldwell fixture data including cost codes on invoice line items). New ACs would be REAL verification of WI-004 and the Document Review template — the milestone we'd been pursuing before discovering the template-extraction bug. ~30 min spec work. Then Wave 4.
+
+**Recommendation:** Option 1 (~10 min cleanup) → confirm clean → then Option 3 (~30 min real ACs against `/design-system/patterns`) → confirm WI-004 verdict → then Wave 4. End-state: harness verifying real surfaces, not template examples.
+
+**Budget status:** Attempts 8 + 9 used (nwrp64 + nwrp65). Zero remaining without new authorization.
+
+**Cost-cap status:** $0.0201 this run; cumulative **$0.203** across all productive vision runs. Well under $1/run cap. Idempotency cache will keep cost flat on subsequent runs against same commit.
