@@ -873,3 +873,109 @@ The good news: every other piece of the harness is **operating correctly**. Rout
 **Budget status:** Attempt 10 of nwrp envelope (continuous block per nwrp66). Cumulative vision spend $0.230 — well under the $5 ceiling Jake authorized. Plenty of room for FIX 8 once authorized.
 
 **Cost-cap status:** $0.0264 this run; cumulative **$0.230** across 5 productive vision runs.
+
+---
+
+## 2026-05-07T21:18:56Z — Run #25522448412 on `572280f`: nwrp67 FIX 8 STEP 1 worked. HALT for platform_admin architectural decision.
+
+**Action (continuous block per nwrp67 STEP 1 — cookie attachment, no role-gate work):**
+
+Implemented Supabase session cookie attachment to Playwright contexts. 7 files changed; typecheck clean. Pushed at `572280f`.
+
+### Architecture summary
+
+1. **`HarnessSession`** (auth-strategy.ts) gained `supabase_url` + `raw_session` fields. `raw_session` is the opaque session object from `supabase.auth.signInWithPassword` — kept opaque so future Supabase auth schema additions flow through automatically.
+2. **`Layer{1,3}Context`** (types.ts) gained optional `harness_session?: HarnessSessionLike`. `HarnessSessionLike` is the runner-needed subset (supabase_url + raw_session); declared in types.ts to keep dependency direction clean.
+3. **`_browser.ts`** added `supabaseSessionCookies(supabaseUrl, previewUrl, rawSession): PlaywrightCookie[]`. Constructs the SSR auth cookie matching `@supabase/ssr` defaults:
+   - name: `sb-<projectRef>-auth-token` (chunked `.0`/`.1`/... if > 3180 chars)
+   - value: `base64-` + base64URL(JSON.stringify(rawSession))
+   - sameSite Lax, secure (https previews), httpOnly false
+   - 400-day expiry (matches `DEFAULT_COOKIE_OPTIONS.maxAge`)
+   - Project-ref derivation: `hostname.split(".")[0]` (matches `@supabase/supabase-js` SupabaseClient.ts:369)
+   - Returns empty array if session/url undefined → `context.addCookies([])` is a no-op (idempotent with local-mode runs)
+4. **`orchestrator.ts`** threads `harnessSession` into Layer{1,3}Context.
+5. **`layer3/runner.ts`** + **`layer1/dom-assertions.ts`** call `supabaseSessionCookies` + `context.addCookies` after `newContext()` (mirrors `vercelBypassHeaders` pattern).
+
+### Verdict counts (Run #25522448412)
+
+- **PASS: 63** (Layer 1: 60 routes + 3 mechanical synthetic — unchanged)
+- **FAIL: 4** (all 4 Layer 3 ACs still FAIL — but for a *different reason* now)
+- **SKIP: 1** (Layer 2 introspection — Wave 1.1 dep, unchanged)
+- **Vision cost:** $0.0258 (cumulative **$0.256**)
+
+### A. Cookie attachment confirmation — VERIFIED WORKING
+
+**Reasoning shifted from "Nightwork login page" → "404 'This page could not be found'"** across all 4 Layer 3 ACs:
+
+> AC-08a-130 (palette): "screenshot shows a 404 error page ('This page could not be found'), meaning the /design-system/palette page does not exist or is inaccessible"
+>
+> AC-08a-131 (typography): "404 error page... /design-system/typography page did not load"
+>
+> AC-08a-138 (Document Review pattern): "404 'This page could not be found' error, meaning the /design-system/patterns page does not exist and no Document Review pattern or any UI content is visible"
+>
+> AC-08a-139 (cost-code WI-004 surface): "404 'This page could not be found' error page, so no invoice or cost code metadata is visible at the /design-system/patterns URL"
+
+**Why this proves cookie attachment works:** if cookies were missing/malformed, Nightwork's middleware would redirect to `/login` (the prior nwrp66 behavior). Instead, the middleware now *successfully recognizes the auth*, looks up membership, identifies the harness-fixture user as **org-admin in fixture-harness-org** (not platform_admin), and applies the design-system role gate per CLAUDE.md:
+
+> "Components playground at `/design-system`. Gated to platform_admin in production via middleware (404 to non-staff per Stage 1.5a SPEC B7)."
+
+Cookie attachment is functioning correctly. Auth, project-ref derivation, base64URL encoding, chunking thresholds all verified by behavioral observation (404 path, not /login redirect path).
+
+### B. Layer 3 verdict status — still 4 FAILs, but role-gated not auth-gated
+
+The 4 newly-authored ACs targeting `/design-system/{palette,typography,patterns}` cannot succeed regardless of how good the harness gets, because the harness-fixture user is **non-staff** by design and `/design-system/*` 404s non-staff in all environments. The harness is correctly surfacing the role gate.
+
+WI-004 remains AMBIGUOUS — same reason as nwrp66 (we cannot evaluate the cost-code surface) but with a clearer diagnostic now (role gate, not auth gate).
+
+### C. Architectural question — HALT for Jake decision
+
+> Per nwrp67 STEP 2: "HALT FOR JAKE before any platform_admin seed work. The seed is a real D-30 architectural question worth one halt."
+
+The harness-fixture user needs to verify content on `/design-system/*` (where prototypes render). Three architectural paths, each with D-30 / multi-tenant safety implications:
+
+#### P1 — Grant `platform_admin` to harness-fixture
+
+**What it does:** Insert `harness-fixture` into `public.platform_admins` (per CLAUDE.md the platform-admin grant is direct SQL with `notes` column documenting purpose). Harness gains cross-tenant-readable scope on every major tenant table (per migration 00049 `*_platform_admin_read` SELECT policies). On `/design-system/*`, the middleware no longer 404s.
+
+**D-30 implications:**
+- Any future authoring error or drift in the harness could read across all customer tenants. The harness today operates only on fixture-harness-org by design (D-30 amendment), but `platform_admin` would weaken that "by construction" tenant boundary at the DB level.
+- CLAUDE.md states platform_admin grants are auditable via `platform_admin_audit` and intended for "operators (Jake, Andrew, future support / engineering)". A *system account* with cross-tenant SELECT is a different posture than an operator account; would need a fresh D-30 amendment plus an audit-log row explaining the grant.
+- Mitigation: the harness's auth-strategy already asserts membership.org_id === FIXTURE_ORG_UUID at line 147 (defense-in-depth — fails loudly on D-30 breach). Extending to also assert "platform_admin reads ONLY occur on /design-system/* routes" would require harness-side scope-narrowing; current harness has no such enforcement.
+
+#### P2 — Add Caldwell-like fixture data to fixture-harness-org
+
+**What it does:** Migration that seeds invoices, jobs, cost-codes into fixture-harness-org so that production routes (e.g. `/jobs/[id]/budget`, `/financials/invoices/[id]`) render meaningful content for the org-admin harness-fixture user. Layer 3 ACs target those routes instead of `/design-system/*`.
+
+**D-30 implications:**
+- Cleanest by-construction posture: harness sees only fixture-org data; tenant boundary is preserved.
+- Cost: more migration work + more fixture maintenance + the design-system playground stays out of automated verification. Some criteria (Slate palette, tracking-eyebrow tokens) are most directly verified ON the design-system pages — verifying them through production routes is indirect.
+- The CLAUDE.md "Components playground" was explicitly designed to be platform_admin-only; using a different verification surface honors that design intent.
+
+#### P3 — Add `/design-system/*` verification-bypass middleware path
+
+**What it does:** Add a header-based bypass to the `/design-system/*` middleware (similar to `VERCEL_AUTOMATION_BYPASS_SECRET`): if a special header `x-nightwork-verification-bypass: <secret>` is present, the middleware skips the platform_admin gate. Layer 3 / dom-assertions add the header alongside vercel bypass + cookies.
+
+**D-30 implications:**
+- Touches `src/middleware.ts` (Plans 1-5 application code, **CATEGORY-X — outside nwrp envelope** without explicit Jake authorization).
+- Risk: the bypass secret leaking would expose `/design-system/*` (sample-data only per CLAUDE.md, so disclosure risk is low). But it sets a precedent for header-based middleware-skip flags.
+- Cleanest from harness-side; preserves harness-fixture's org-admin posture (no cross-tenant grant).
+- CLAUDE.md note: "Sample data only — no Drummond, no real Ross Built records — so the playground is safe to share for design feedback." So the design-system pages are already considered low-sensitivity. Adding a verification-bypass is consistent with that posture.
+
+#### Recommendation
+
+**P3 > P2 > P1** by D-30 alignment:
+
+- **P3 is the cleanest match for the existing pattern** (Vercel bypass via env-var-controlled header). The /design-system/* middleware is already declared "404 to non-staff per Stage 1.5a SPEC B7" — adding a verification-bypass for CI is conceptually identical to "404 to non-staff EXCEPT verified-automation."
+- **P2 is the most thorough by-construction fix** but requires fixture-data work.
+- **P1 weakens D-30 the most** — granting platform_admin to a system account breaks the operator-vs-system distinction the platform_admin role was built for.
+
+**Recommend Jake reads:**
+1. CLAUDE.md "Platform admin (cross-tenant)" section — confirm whether granting platform_admin to a system account fits the design.
+2. `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-CONTEXT.md` D-30 ("Tenant safety boundary") — confirm which path the D-30 amendment was envisioning.
+3. `src/middleware.ts` — assess the surface area for adding a verification-bypass code path.
+
+**Halting per nwrp67 STEP 2. Awaiting Jake decision on P1/P2/P3.**
+
+**Budget status:** Attempt 11 (continuous block per nwrp66/67 framing). Cumulative vision spend **$0.256** (well under $5 ceiling).
+
+**Cost-cap status:** $0.0258 this run.
