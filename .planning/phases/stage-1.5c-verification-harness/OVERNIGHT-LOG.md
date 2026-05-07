@@ -476,3 +476,103 @@ Recommended fix path when authorized:
 **Budget status:** Attempt 5/5 used; nwrp54 envelope exhausted. nwrp61 authorized one-time corrective execution (set secret + trigger run + triage). No new authorization yet for SKIP-B fix or Wave 4 dispatch.
 
 **Cost-cap status remains $0** (Layer 3 vision API never successfully ran — all calls 404'd before incurring spend; Anthropic doesn't bill on 404s).
+
+---
+
+## 2026-05-07T18:30:24Z — Run #25514368735 on `0ffb9a9`: nwrp62 FIX 4 worked — vision API now operational. NEW failure mode surfaced. Outcome C, HALT.
+
+**Action (attempt 6/6 — nwrp54 envelope, nwrp62 FIX 4 single-line vision-client model update):**
+
+Updated two literal occurrences of `claude-3-5-sonnet-20241022` → `claude-sonnet-4-6`:
+- `src/lib/verification/layer3/vision-client.ts:31` (DEFAULT_MODEL)
+- `src/lib/verification/layer3/runner.ts:64` (VISION_MODEL_ID)
+
+Pushed at `0ffb9a9`. Run #25514368735 completed in 199.1s.
+
+### Verdict counts
+
+- **PASS: 63** (Layer 1 unchanged — all 60 routes + build + typecheck + drummond)
+- **FAIL: 12** (was 0; ALL 12 Layer 3 vision criteria FAIL)
+- **SKIP: 1** (`layer2-conservation-money-line-items-sum` — Wave 1.1 dependency, unchanged)
+
+### What worked (nwrp62 FIX 4 success)
+
+- ✓ Anthropic vision API reachable on `claude-sonnet-4-6`
+- ✓ Vision calls returning 200 (no more 404s)
+- ✓ Cost cap operational: **$0.0782 spent**, well under the $1/run cap (~$0.0066/call × 12 calls)
+- ✓ Cost recorded per-criterion in report and idempotency cache
+- ✓ Confidence scores returning real values (0.50–0.95)
+- ✓ Reasoning text populated in harness JSON
+
+### NEW infrastructure failure mode (outcome C)
+
+**Every Layer 3 screenshot shows a Vercel SSO login page**, not the Nightwork app. The vision model is correctly identifying that the screenshot does not contain the criterion subject — but the screenshot is the wrong page. Sample reasoning:
+
+> AC-04-60 (conf 0.95): "The screenshot shows a Vercel login page with no README documentation… The criterion requires Layer 3 README documentation which is entirely absent from this login page."
+>
+> AC-08a-97 (conf 0.95): "The screenshot shows a Vercel login page, not the Nightwork platform content. No 'Site Office' signature, tracking-eyebrow styling, or UPPERCASE eyebrow text elements are visible anywhere on the page."
+>
+> AC-08a-98 (conf 0.95): "Default black/white/gray styling and no Slate Set B palette… No construction platform UI or slate-blue color tokens are visible."
+>
+> AC-08a-103 (conf 0.95): "Not a Document Review interface. There is no file preview panel, right-rail panel, or audit timeline visible anywhere on the page."
+
+(All 12 vision reasoning entries describe the same thing: a Vercel login page where the actual app should be.)
+
+### Root cause
+
+Layer 1 `route-status.ts` (FIX 1) attaches the Vercel bypass header on every `fetch()` call → all 60 routes return 200/3xx as expected.
+
+But **Layer 3's `runner.ts:181` calls `browser.newContext({ viewport: { width: 1280, height: 800 } })` without `extraHTTPHeaders`** — so when Playwright/chromium navigates to the preview URL, it does NOT attach `x-vercel-protection-bypass`. Vercel's deployment protection redirects the browser to the Vercel SSO login page. Playwright takes a screenshot of that login page. Vision API correctly says "this isn't your app." 12 FAILs.
+
+This is the same class of problem FIX 1 solved for the `fetch()` path, just hadn't surfaced on the Playwright path because Layer 3 had been blocked by the deprecated model ID.
+
+### Halting — DO NOT FIX per nwrp62 directive
+
+> "DO NOT modify auth-strategy.ts, RLS policies, Plans 1-5 application code, or dispatch Wave 4 without Jake authorization. Stay scoped to vision-client model ID update + run triage."
+
+The fix is in `src/lib/verification/layer3/` (in-envelope for Plan 6.1 amendment) but **not in nwrp62's authorized scope** — model-ID-update only. Halting per outcome C.
+
+### Candidate fix paths for Jake's decision (nwrp63 territory)
+
+#### Option A — Recommended: chromium.newContext extraHTTPHeaders (single-file, minimal)
+
+Edit `src/lib/verification/layer3/runner.ts:181` to thread the bypass header into the chromium context when set:
+
+```ts
+const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+const context = await browser.newContext({
+  viewport: { width: 1280, height: 800 },
+  ...(bypassSecret && {
+    extraHTTPHeaders: {
+      "x-vercel-protection-bypass": bypassSecret,
+      "x-vercel-set-bypass-cookie": "true",
+    },
+  }),
+});
+```
+
+After the first navigation, Vercel sets a session cookie (per `x-vercel-set-bypass-cookie: true`) so subsequent requests in the same context carry the bypass automatically — no per-request overhead. Behavior with secret unset: no headers attached (works for unprotected local dev URLs).
+
+**Same pattern should be applied to `src/lib/verification/layer1/dom-assertions.ts`** — it also calls `chromium.launch()` and will hit the same issue once a future phase authors a real DOM convention v1 criterion. Both runners share the `_browser.ts` helper for launch args; either extend that helper to include extraHTTPHeaders or duplicate the pattern in each runner.
+
+Estimated change size: ~5–10 lines. ~5 min including grep + edit. Cost on next run: another ~$0.0782 (12 vision calls).
+
+#### Option B — Query param fallback
+
+Append `?x-vercel-protection-bypass=<secret>` to each `pageUrl` before `page.goto()`. Works without modifying browser context, but pollutes URLs in screenshots/logs and clashes with route-specific query params.
+
+#### Option C — Defer Layer 3 verification until Wave 1.1+ in production
+
+Mark Layer 3 as known-broken-against-protected-previews; rely on Layer 1 + Layer 2 for now; revisit when Vercel auth is removed from preview environments or a different verification path is set up. Loses the harness's vision capability for this phase but unblocks Wave 4 dispatch.
+
+### Recommendation
+
+**Option A** is the canonical fix for the harness's stated design (Layer 3 vision against protected Vercel previews). One file edit, ~5–10 lines, idempotent with the secret-unset path, sets up a clean precedent for `dom-assertions.ts` to follow when needed. Estimated cost on first re-run: ~$0.0782 (cached subsequent runs would be $0 per existing idempotency cache).
+
+After Option A: expected next run shape if Layer 3 surfaces real Plans 1-5 issues = MIXED (some PASSes for criteria where the rendered surface satisfies the criterion, some FAILs surfacing actual gaps). If 0 vision FAILs: full PASS=75, FAIL=0, SKIP=1. Wave 4 dispatch confirmed unblocked at that point.
+
+**Halting per nwrp62 outcome C. Awaiting Jake fix-path decision.**
+
+**Budget status:** Attempt 6/6 used. Zero remaining. nwrp62 envelope exhausted.
+
+**Cost-cap status:** **$0.0782 spent on vision API in this run** (first non-zero spend across all attempts). Well under $1/run cap; idempotency cache will prevent re-spend on identical (commit, criterion) pairs.
