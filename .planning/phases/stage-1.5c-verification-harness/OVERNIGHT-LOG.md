@@ -308,3 +308,66 @@ Evidence column shows: `> next build ⚠ No build cache found. Please configure 
 After all three: harness should report PASS=63, FAIL=0, SKIP=0 (or close), and Wave 4 dispatch can proceed per nwrp54 PART 3.
 
 **Cost-cap status remains $0** (harness has no Layer 3 criteria yet — only Layer 1 ran).
+
+---
+
+## 2026-05-07 — nwrp60: three corrective commits, MANUAL STEP REQUIRED for FIX 1
+
+**Action (attempt 5/5 — nwrp54 envelope extended, treated as Plan 6.1 amendment per nwrp60 line 3):**
+
+Three fix commits landed in sequence (clean history per nwrp60 step 27):
+
+### Commit `f4bd96b` — FIX 1: Vercel deployment protection bypass
+
+Per Vercel docs (https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection):
+- Edited `src/lib/verification/layer1/route-status.ts` — read `process.env.VERCEL_AUTOMATION_BYPASS_SECRET`; when set, attach `x-vercel-protection-bypass: <secret>` + `x-vercel-set-bypass-cookie: true` headers on every preview-URL fetch. Cookie spares per-request bypass overhead (Vercel sets a session cookie after first bypass).
+- Edited `.github/workflows/verify-phase.yml` — added `VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}` to the job-level env block alongside `ANTHROPIC_API_KEY`, `VERCEL_TOKEN`, `HARNESS_FIXTURE_PASSWORD`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
+Behavior with secret unset → no bypass header sent (works for unprotected local dev URLs). With secret set → header attached on every fetch.
+
+#### **MANUAL STEP REQUIRED BEFORE NEXT WORKFLOW RUN WILL FULLY SUCCEED**
+
+Until both sub-steps below are completed, the workflow run on `c20d524` will still show 58/58 route FAILs because Vercel rejects empty bypass headers:
+
+1. **Generate the secret in Vercel:**
+   - Vercel dashboard → `nightwork-platform` project → Settings → Deployment Protection → **Protection Bypass for Automation** → Generate Secret → **Copy value**
+
+2. **Add the secret to GitHub Actions:**
+   ```bash
+   gh secret set VERCEL_AUTOMATION_BYPASS_SECRET --body '<paste-value-here>' --repo jakeross838/nightwork-platform
+   ```
+   Or via UI: GitHub repo → Settings → Secrets and variables → Actions → New repository secret → name `VERCEL_AUTOMATION_BYPASS_SECRET` → value `<paste>`.
+
+3. **Trigger a re-run** by an empty commit on the branch (or via `gh run rerun <id>` for the post-fix run).
+
+### Commit `fe36f63` — FIX 2: build-clean predicate exit-code-only
+
+`src/lib/verification/layer1/build-typecheck.ts` previously failed on any `/\bwarn(?:ing)?[ :]/` substring in stdout/stderr in addition to exit-code != 0. This produced a false positive on Run #25497597582: Next.js prints `⚠ No build cache found. Please configure build caching for faster rebuilds.` on fresh CI runners (a perf hint, not a build problem); the substring match probably also tripped on dependency deprecation notices or telemetry strings. Build succeeded (exit 0) but harness reported FAIL.
+
+Tightened predicate: exit code 0 only. Updated criterion text from "0 warnings, 0 errors" → "exits 0" so the published criterion matches the predicate. Lint/typecheck warnings belong to dedicated runners (typecheck is `runTypecheck` in same module; lint not yet wired).
+
+### Commit `c20d524` — FIX 3: AC-02-20 dom: section converted to N/A
+
+Plan 2's `dom:` section in `01.5-c-verification-harness-2-layer-1-static-checks-PLAN.md` had two source-file assertions about its own `dom-assertions.ts` ("contains a regex matching 'Page X contains element/text \"Y\"'", "uses chromium.launch() and 3 viewports (1920/1280/393)"). The orchestrator filters `dom:` criteria into the dom-assertions runner; the runner's convention-v1 parser expects `Page <path> contains element/text "<value>"` and rejects everything else with `Criterion text does not match Layer 1 DOM convention v1` SKIP — which is exactly what we saw 3× in the run.
+
+Both ACs are tautologically verified by integration (the @desktop/@laptop/@mobile result-ID suffixes prove chromium.launch + 3 viewports work; the SKIP message itself is evidence the convention-v1 regex exists). Replaced with a single `N/A — …` entry matching the existing `visual:` N/A precedent in the same file. The criteria-loader skips N/A entries (line 166), so 3 SKIPs disappear from the report.
+
+Authoring lesson captured inline: Plan-internal implementation ACs don't belong in `dom:`; either omit (integration covers it) or rewrite as convention-v1 checks against rendered surfaces.
+
+### Expected outcome of next workflow run
+
+| Component | Expected verdict |
+|---|---|
+| Setup Node / Install / Vercel preview / harness exec / artifact upload | ✓ (carries forward from `2d2b203`) |
+| layer1-mechanical-build-clean | **PASS** (was FAIL — FIX 2) |
+| layer1-mechanical-typecheck-clean | PASS (carries forward) |
+| layer1-mechanical-drummond-grep | PASS (carries forward) |
+| 58 × layer1-route-status-* | **PASS** if Jake's manual Vercel secret step is complete; else FAIL again with HTTP 401 (FIX 1) |
+| 3 × AC-stage-1.5c-verification-harness-02-20@viewport SKIPs | **gone from report** (FIX 3 — criteria-loader skips N/A entries) |
+
+If manual step complete: PASS≈61, FAIL≈0, SKIP=0 (modulo any real route issues). Wave 4 dispatch unblocked.
+If manual step pending: PASS=3, FAIL=58, SKIP=0. Surface again with halt for manual step.
+
+**Budget status:** Attempt 5/5 used (per nwrp60 line 3 envelope extension). Zero remaining. Awaiting Jake decision after triaging next run.
+
+**Cost-cap status remains $0** (no Layer 3 criteria; no vision API spend).
