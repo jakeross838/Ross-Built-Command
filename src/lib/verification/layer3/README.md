@@ -52,12 +52,26 @@ Convention v1: criterion text starts with `Page <path>:` for non-root assertions
 
 ```yaml
 visual:
-  - "Page /financials/invoices/[id]: Site Office signature visible (tracking-eyebrow 0.18em UPPERCASE eyebrows)"
+  - "Page /design-system/philosophy: Site Office signature visible (tracking-eyebrow 0.18em UPPERCASE eyebrows)"
 semantic:
-  - "Page /financials/invoices/[id]: cost code is visible on each line item (no blank cells)"
+  - "Page /design-system/patterns: cost code is visible on each line item (no blank cells)"
 ```
 
 Without `Page <path>:` prefix, the runner uses preview_url root.
+
+### Route-extraction contract (per nwrp65 FIX 7)
+
+`runner.ts` parses route from criterion text via `/^Page\s+(\S+):/`. Test cases:
+
+| Criterion text | Extracted route | Outcome |
+|---|---|---|
+| `Page /dashboard: hero text visible` | `/dashboard` | Navigates to `<preview>/dashboard` |
+| `Page /design-system/patterns: Document Review pattern present` | `/design-system/patterns` | Navigates to `<preview>/design-system/patterns` |
+| `Page /financials/invoices/[id]: cost code visible` | `/financials/invoices/[id]` | Navigates literally; Plan 5 route-substitution may resolve `[id]` against fixture |
+| `Document Review pattern present (no Page prefix)` | `/` (fallback) | Navigates to preview root |
+| `Page <route>: anything` (deprecated placeholder) | `<route>` (literal) | Navigates to `<preview>/<route>` → 401/redirect; criterion will FAIL on wrong page. **Authoring lesson — never ship this.** |
+
+Backward compat: criteria authored without explicit route still work (fallback to `/`); use explicit routes to avoid wrong-page FAILs.
 
 ## Cost guidance
 

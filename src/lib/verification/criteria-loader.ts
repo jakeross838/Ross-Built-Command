@@ -204,10 +204,20 @@ export async function loadCriteriaFromPhase(opts: {
  *   ```
  *
  *   </criteria>
+ *
+ * Per nwrp65 FIX 7: opening and closing tags MUST be on their own lines.
+ * The previous regex matched any `<criteria>` substring anywhere in the file
+ * — including inline-prose mentions like `"...require <criteria> yaml block..."`
+ * — which then made the loader extract the FIRST ```yaml block after the
+ * inline mention (typically a TEMPLATE example showing what a criterion
+ * looks like) instead of the actual criteria block at the bottom of the
+ * PLAN. Plan 8a was the canonical victim: 4 "Plan 8a ACs" surfaced in run
+ * #25515440465 were template-derived placeholders (`Page <route>: …`),
+ * never the real criteria. The line-anchored regex below disambiguates.
  */
 function extractCriteriaBlock(content: string): string | null {
   const m = content.match(
-    /<criteria>[\s\S]*?```yaml\s+([\s\S]*?)```[\s\S]*?<\/criteria>/
+    /^<criteria>\s*$[\s\S]*?```yaml\s+([\s\S]*?)```[\s\S]*?^<\/criteria>\s*$/m
   );
   return m?.[1] ?? null;
 }
