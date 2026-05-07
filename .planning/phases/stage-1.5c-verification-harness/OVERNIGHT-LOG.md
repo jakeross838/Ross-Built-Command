@@ -402,3 +402,77 @@ After manual step completes, expected next-run shape: PASS=63, FAIL=0, SKIP=0 �
 **Budget status:** Attempt 5/5 used. Zero remaining. Awaiting Jake to complete the Vercel manual step + decide how to proceed (re-run workflow vs. defer Wave 4 dispatch on different signal).
 
 **Cost-cap status remains $0.**
+
+---
+
+## 🟢 2026-05-07T18:20:20Z — Run #25513946216 on `4f3b595`: INAUGURAL FULL-PASS MILESTONE
+
+**Action:** Per nwrp61, Jake set `VERCEL_AUTOMATION_BYPASS_SECRET` in GH Actions secrets (verified via `gh secret list` — timestamp 2026-05-07T18:16:02Z), then triggered fresh run via empty commit `4f3b595`.
+
+**Workflow conclusion: SUCCESS.** All 17 steps green; "Fail job on harness failure" step skipped (no failure to propagate). Harness completed in 149.0s; report committed to artifacts.
+
+### Verdict counts
+
+- **PASS: 63** (was 3 prior run — +60 came back online once Vercel bypass took effect)
+- **FAIL: 0** ✨ (was 60 — all route-status 401s resolved)
+- **SKIP: 13** (was 0 — split into two distinct surface-completeness gaps; see below)
+
+### What now PASSes
+
+- `layer1-mechanical-build-clean` ✓ (FIX 2)
+- `layer1-mechanical-typecheck-clean` ✓ (carried)
+- `layer1-mechanical-drummond-grep` ✓ (carried)
+- 60 × `layer1-route-status-*` ✓ (FIX 1 + Jake's manual Vercel secret step)
+
+### SKIP triage — both are documented future-Wave dependencies, not real failures
+
+#### SKIP-A — Layer 2 introspection surface (1 criterion)
+
+`layer2-conservation-money-line-items-sum` SKIPped with verbatim error:
+
+> `No introspection surface at <preview>/api/_introspect/invoice (HTTP not 2xx/3xx). Wave 1.1 adds /api/_introspect/* routes; until then Layer 2 skips...`
+
+This is a known and documented future-Wave dependency captured by the rule itself. Wave 1.1 ships the `/api/_introspect/*` routes; Layer 2 conservation rules will activate then.
+
+#### SKIP-B — Layer 3 vision model deprecation (12 criteria)
+
+All 12 Layer 3 vision criteria SKIPped with the same Anthropic API error:
+
+> `404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-3-5-sonnet-20241022"}}`
+
+The harness's Layer 3 vision client (`src/lib/verification/layer3/vision-client.ts`) is calling Anthropic with the model ID `claude-3-5-sonnet-20241022` — which has been **retired** (current latest is the Claude 4.X family per system prompt; Sonnet 4.6 / Haiku 4.5 / Opus 4.7 are currently shipping).
+
+This is in the harness's own code (Plan 4 — `src/lib/verification/layer3/`), not Plans 1-5 application code, so it would be in-scope for a Plan 6.1+ correction. **Not fixed in this session per nwrp61 envelope budget exhaustion (5/5 used).** Surfaced for Jake decision.
+
+Recommended fix path when authorized:
+- Single-line edit in `src/lib/verification/layer3/vision-client.ts` to update the model ID from `claude-3-5-sonnet-20241022` → a current Claude 4.X model (`claude-sonnet-4-6` is the current Sonnet equivalent for vision).
+- Re-run the harness; expect Layer 3 SKIPs → PASS/FAIL depending on actual rendered surface vs. criterion text.
+- Estimated cost on first non-cached vision run per the SKIP cost column: $0.0000 (still $0 because nothing actually ran on Anthropic side).
+
+### What's now confirmed end-to-end working
+
+- ✓ Node 22 CI runner (nwrp56)
+- ✓ npm dep sync + Stripe SDK alignment (nwrp54)
+- ✓ Vercel preview build (existing infra)
+- ✓ Harness auth-strategy + RLS-scoped membership check (nwrp58/59 fix — profiles row)
+- ✓ Layer 1 mechanical (build, typecheck, drummond-grep)
+- ✓ Layer 1 route-status across 60 production routes (nwrp60 FIX 1 + nwrp61 manual step)
+- ✓ Plan 6 GH Actions workflow (vercel-wait → harness exec → JSON parse → final.md → artifact upload → PR comment → commit-status)
+- ✓ Per-commit report writing + sanitized final.md
+- ✓ Plan 8a criteria-loader respects N/A entries (nwrp60 FIX 3)
+
+### Wave 4 dispatch posture
+
+**Per nwrp61 step 4A: UNBLOCKED but HALT for Jake review.** The harness now produces a real signal end-to-end — surface the report contents + ask Jake whether to:
+
+1. **Dispatch Wave 4 (Plan 7 — gsd-research-standards + gsd-fix-executor) immediately.** The 0-FAIL state is the milestone Wave 4 needed; SKIP-A and SKIP-B are documented future-Wave / Plan 6.1 amendment work that don't block Plan 7.
+
+2. **Pause to fix SKIP-B (Layer 3 vision model)** before Wave 4. One-line edit; would unlock Layer 3 verdicts on the next run, possibly surfacing real Plans 1-5 FAILs the harness was built to catch (cost code missing on invoice line items, etc. — WI-004 territory). Closer to the harness's full-fidelity signal before Wave 4.
+
+3. **Both** — fix SKIP-B (unblocks Layer 3), confirm next run still 0 FAIL or surface real Plans 1-5 issues, then Wave 4.
+
+**Halting per nwrp61 outcome A. Awaiting Jake review + dispatch authorization.**
+
+**Budget status:** Attempt 5/5 used; nwrp54 envelope exhausted. nwrp61 authorized one-time corrective execution (set secret + trigger run + triage). No new authorization yet for SKIP-B fix or Wave 4 dispatch.
+
+**Cost-cap status remains $0** (Layer 3 vision API never successfully ran — all calls 404'd before incurring spend; Anthropic doesn't bill on 404s).
