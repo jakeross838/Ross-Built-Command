@@ -233,3 +233,78 @@ This means the `harness-fixture` user authenticates fine (so all 5 GH secrets + 
 **Budget status:** Attempt 4/4 used (nwrp54 envelope extended by 1 per nwrp59 line 8 — corrective fix for nwrp57+nwrp58 diagnostic chain, not a new attempt at a previously-unsolved issue). Zero remaining if subsequent failure surfaces.
 
 **Cost-cap status:** $0 spent on Anthropic vision (harness still hasn't run end-to-end).
+
+---
+
+## 2026-05-07T13:09:00Z — Run #25497597582 on `2d2b203`: HARNESS RAN END-TO-END. Three real findings, HALT per nwrp59 step 7.
+
+**Action:** Triaged.
+
+**Outcome — harness now runs end-to-end (root cause from nwrp58 fixed):**
+- Setup Node ✓ (Node 22)
+- Install dependencies ✓
+- Vercel preview Ready ✓
+- **Run verification harness ✓ (3m46s — real execution; previous run was 2s fast-fail at auth-strategy)**
+- Parse harness JSON output ✓
+- Read final report ✓
+- Upload artifacts ✓
+- Post PR comment ✓
+- Set commit status (final) ✓
+- Fail job on harness failure X (the harness's own report has FAIL verdicts)
+
+The "Fail job on harness failure" gate failure is the harness *reporting* — not infrastructure. The harness completed, produced `.planning/verification/reports/stage-1.5c-verification-harness/final.md`, summary: **PASS=2, FAIL=61, SKIP=3**. This is the "real Plans 1-5 issues surfaced" branch of nwrp59 step 7.
+
+**Three categorical findings:**
+
+### Finding 1 — Vercel deployment protection blocks all 58 route-status checks (HTTP 401)
+
+Every `layer1-route-status-*` criterion FAILED with `→ HTTP 401 | expected: HTTP 2xx or 3xx | actual: HTTP 401`. Sample: root, /admin, /admin/platform/*, /cost-intelligence/*, /dashboard, /design-system/*, /draws, /financials, /invoices, /jobs, /login, /onboard, /pricing, /settings/*, /signup, /vendors — all 58 routes the harness probes return 401.
+
+**Root cause (high confidence):** Vercel's *Deployment Protection* feature gates preview URLs by default — unauthenticated requests to a preview URL return 401 unless authenticated via Vercel SSO or unless the request carries the `x-vercel-protection-bypass: <secret>` header (or `?x-vercel-protection-bypass=<secret>` query param) with a value matching `VERCEL_AUTOMATION_BYPASS_SECRET`.
+
+The harness's `layer1/route-status` runner fetches raw URLs without credentials; Vercel returns 401 before the Next.js app even runs. INFRASTRUCTURE gap — likely unaccounted for in Plan 6's design and not surfaced earlier because the harness never ran end-to-end before this run.
+
+**Candidate fix paths (for Jake's decision):**
+- **A.** Disable Vercel Deployment Protection for the project's preview environment (Vercel dashboard → Settings → Deployment Protection → toggle off for Preview). Simplest, but exposes preview URLs to anyone with the URL.
+- **B.** Configure `VERCEL_AUTOMATION_BYPASS_SECRET` on the Vercel project, store as a GH Actions secret, and update Plan 6's `layer1/route-status` runner to attach the `x-vercel-protection-bypass` header on every preview fetch. Most secure; preserves preview privacy. Single-file edit + 1 new GH secret + 1 Vercel setting.
+- **C.** Use Vercel's *Protection Bypass for Automation* feature (similar to B but managed via Vercel's UI, generates a long-lived bypass token).
+
+### Finding 2 — `layer1-mechanical-build-clean` FAIL appears to be a false positive
+
+Evidence column shows: `> next build ⚠ No build cache found. Please configure build caching for faster rebuilds. ... Attention: Next.js now collects completely anonymous telemetry...` — this is `next build`'s normal stdout for a fresh CI runner. The build *almost certainly succeeded* (Vercel preview built green on this same commit; harness step ran). But the harness's "build-clean" check is matching against this stdout pattern and returning FAIL.
+
+**Likely root cause:** Plan 2's `layer1/mechanical/build-clean` predicate is probably either (a) checking exit code AND stdout for "✓ Compiled successfully" OR (b) flagging any `⚠`/warning emoji as a fail. Without reading the predicate source: this is a HARNESS RULE TUNING issue — Plan 2 work, not a real failure.
+
+**Candidate fix:** read `src/lib/verification/layer1/mechanical/build-clean.ts` (or wherever the predicate lives) and verify the success criterion is "process exit code = 0", not a stdout substring match. Likely a 1–3 line edit.
+
+### Finding 3 — Three AC SKIPs: criterion text in wrong layer
+
+`AC-stage-1.5c-verification-harness-02-20@desktop|laptop|mobile` all SKIPped with: `Criterion text does not match Layer 1 DOM convention v1: 'src/lib/verification/layer1/dom-assertions.ts uses chromium.launch() and 3 viewports (1920/1280/393)'`.
+
+**Root cause:** This AC is written about a SOURCE FILE assertion (Plan 2 implementation detail — "uses chromium.launch() and 3 viewports") but registered as Layer 1 DOM-convention which expects DOM-element-presence assertions. Either the AC was registered in the wrong layer in the phase spec, or its text needs rewording into the DOM convention.
+
+**Candidate fix:** rewrite AC-02-20 in PLAN.md (or wherever phase ACs live) as either: (a) a Layer 1 *mechanical* check (grep `src/lib/verification/layer1/dom-assertions.ts` for `chromium.launch` + check viewport array contains [1920, 1280, 393]); or (b) move the AC to a different verification mechanism entirely. Single-spec edit.
+
+### What's confirmed working
+
+- Node 22 CI runner ✓
+- npm dep sync ✓
+- Stripe SDK apiVersion alignment ✓
+- Vercel preview build ✓
+- Harness auth-strategy + RLS-scoped membership check ✓ (post nwrp58/59 fix)
+- Layer 1 mechanical/typecheck-clean ✓ (PASS — 0 errors in src/)
+- Layer 1 mechanical/drummond-grep ✓ (PASS — hook exit 0)
+- Plan 6 workflow infrastructure (vercel-wait + harness execution + JSON parse + report read + artifact upload + PR comment + commit-status) ✓
+
+**Per nwrp59 step 7:** HALT — real Plans 1-5 issues surfaced. NOT in scope for nwrp54 autonomous envelope (these are CATEGORY-X product/planning fixes, not CATEGORY-A/B/C mechanical fixes).
+
+**Budget status:** Attempt 4/4 used. Zero remaining. Awaiting Jake decision.
+
+**Recommended fix sequencing (for Jake):**
+1. **Finding 1 (Vercel auth)** is highest-leverage — fixing it unblocks 58 of 61 FAILs in one move. Suggest Path B (`VERCEL_AUTOMATION_BYPASS_SECRET` + harness header). Likely ~30–60 min including Vercel UI + GH secret + harness code edit.
+2. **Finding 2 (build-clean predicate)** likely 5–15 min — single-file predicate fix in `src/lib/verification/layer1/`.
+3. **Finding 3 (AC-02-20 rewrite)** likely 5 min — phase-spec edit.
+
+After all three: harness should report PASS=63, FAIL=0, SKIP=0 (or close), and Wave 4 dispatch can proceed per nwrp54 PART 3.
+
+**Cost-cap status remains $0** (harness has no Layer 3 criteria yet — only Layer 1 ran).
