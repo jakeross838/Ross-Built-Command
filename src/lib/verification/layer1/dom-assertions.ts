@@ -26,7 +26,7 @@ import type {
   VerificationResult,
 } from "../types";
 import { deriveIdempotencyKey } from "../idempotency";
-import { chromiumLaunchArgs } from "../_browser";
+import { chromiumLaunchArgs, vercelBypassHeaders } from "../_browser";
 
 interface Viewport {
   name: string;
@@ -80,8 +80,14 @@ export async function runDomAssertions(
   try {
     // Run each DOM criterion across all 3 viewports
     for (const viewport of VIEWPORTS) {
+      // Per nwrp63 FIX 5: thread Vercel bypass into chromium context (same
+      // pattern as Layer 3 runner.ts). DOM convention v1 criteria don't
+      // currently exist in this phase (Plan 2's were N/A'd in nwrp60 FIX 3),
+      // but applying here closes the gap before any future phase authors a
+      // real DOM criterion against a protected preview.
       const context = await browser.newContext({
         viewport: { width: viewport.width, height: viewport.height },
+        extraHTTPHeaders: vercelBypassHeaders(),
       });
       const page: Page = await context.newPage();
 

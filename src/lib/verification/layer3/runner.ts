@@ -59,7 +59,7 @@ import {
   redactApiKey,
 } from "./vision-client";
 import { CostCap } from "./cost-cap";
-import { chromiumLaunchArgs } from "../_browser";
+import { chromiumLaunchArgs, vercelBypassHeaders } from "../_browser";
 
 // Updated 2026-05-07 per nwrp62 FIX 4: see vision-client.ts DEFAULT_MODEL.
 const VISION_MODEL_ID = "claude-sonnet-4-6";
@@ -178,8 +178,12 @@ export async function runLayer3(
 
       let visionResult: VisionResult;
       try {
+        // Per nwrp63 FIX 5: thread Vercel deployment-protection bypass into
+        // Playwright. Without this the chromium navigation hits Vercel SSO
+        // login and the screenshot captures that page, not the app.
         const context = await browser.newContext({
           viewport: { width: 1280, height: 800 },
+          extraHTTPHeaders: vercelBypassHeaders(),
         });
         const page = await context.newPage();
         await page.goto(pageUrl, {
