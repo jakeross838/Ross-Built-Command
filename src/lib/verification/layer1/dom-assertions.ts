@@ -26,7 +26,13 @@ import type {
   VerificationResult,
 } from "../types";
 import { deriveIdempotencyKey } from "../idempotency";
-import { chromiumLaunchArgs, vercelBypassHeaders } from "../_browser";
+import {
+  chromiumLaunchArgs,
+  vercelBypassHeaders,
+  supabaseSessionCookies,
+  type PlaywrightCookie,
+} from "../_browser";
+import type { HarnessSessionLike } from "../types";
 
 interface Viewport {
   name: string;
@@ -67,7 +73,8 @@ export async function runDomAssertions(
   preview_url: string,
   commit_sha: string,
   criteria: VerificationCriterion[],
-  org_id?: string
+  org_id?: string,
+  harness_session?: HarnessSessionLike
 ): Promise<VerificationResult[]> {
   const domCriteria = criteria.filter((c) => c.category === "dom");
   if (domCriteria.length === 0) return [];
@@ -76,6 +83,15 @@ export async function runDomAssertions(
     args: chromiumLaunchArgs(),
   });
   const results: VerificationResult[] = [];
+
+  // Per nwrp67 FIX 8: build the Supabase auth cookies once (per harness run)
+  // rather than reconstructing on each viewport context. Empty array if no
+  // session — context.addCookies([]) is a no-op.
+  const authCookies: PlaywrightCookie[] = supabaseSessionCookies(
+    harness_session?.supabase_url,
+    preview_url,
+    harness_session?.raw_session
+  );
 
   try {
     // Run each DOM criterion across all 3 viewports
@@ -89,6 +105,11 @@ export async function runDomAssertions(
         viewport: { width: viewport.width, height: viewport.height },
         extraHTTPHeaders: vercelBypassHeaders(),
       });
+      // Per nwrp67 FIX 8: attach Supabase auth cookies after newContext()
+      // so the Nightwork app middleware doesn't redirect to /login.
+      if (authCookies.length > 0) {
+        await context.addCookies(authCookies);
+      }
       const page: Page = await context.newPage();
 
       for (const criterion of domCriteria) {

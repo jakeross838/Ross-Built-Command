@@ -147,6 +147,13 @@ export interface Layer1Context {
   // every check runs in the canonical signal path.
   skip_build?: boolean;
   skip_typecheck?: boolean;
+  // nwrp67 FIX 8: Supabase auth session for Playwright cookie attachment.
+  // Without this, dom-assertions hits the Nightwork app's middleware
+  // redirect-to-/login on protected routes. Threaded by the orchestrator
+  // from createHarnessSession; opaque to runners other than for cookie
+  // construction (see `_browser.ts` supabaseSessionCookies helper).
+  // Optional so locally-invoked runners without Supabase still work.
+  harness_session?: HarnessSessionLike;
 }
 
 export interface Layer2Context {
@@ -168,4 +175,26 @@ export interface Layer3Context {
   cost_cap_remaining_usd?: number; // ITER-1 C4: hoisted from Plan 4 — runLoop passes the live remaining budget so iter-N is bounded across iterations (NOT multiplied 3×)
   repo_root: string;
   api_key?: string;
+  // nwrp67 FIX 8: Supabase auth session for Playwright cookie attachment.
+  // See Layer1Context.harness_session note for rationale.
+  harness_session?: HarnessSessionLike;
+}
+
+/**
+ * Subset of HarnessSession that runners need for cookie attachment. Defined
+ * here (not imported from auth-strategy.ts) to keep the runner modules
+ * dependency-direction clean: types.ts is the leaf; auth-strategy depends on
+ * it, not the other way. The shape matches HarnessSession's relevant fields
+ * exactly. Added per nwrp67 FIX 8.
+ */
+export interface HarnessSessionLike {
+  supabase_url: string;
+  raw_session: {
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    expires_at?: number;
+    token_type: string;
+    user: unknown;
+  };
 }

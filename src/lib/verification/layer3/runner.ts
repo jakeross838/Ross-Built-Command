@@ -59,7 +59,11 @@ import {
   redactApiKey,
 } from "./vision-client";
 import { CostCap } from "./cost-cap";
-import { chromiumLaunchArgs, vercelBypassHeaders } from "../_browser";
+import {
+  chromiumLaunchArgs,
+  vercelBypassHeaders,
+  supabaseSessionCookies,
+} from "../_browser";
 
 // Updated 2026-05-07 per nwrp62 FIX 4: see vision-client.ts DEFAULT_MODEL.
 const VISION_MODEL_ID = "claude-sonnet-4-6";
@@ -185,6 +189,18 @@ export async function runLayer3(
           viewport: { width: 1280, height: 800 },
           extraHTTPHeaders: vercelBypassHeaders(),
         });
+        // Per nwrp67 FIX 8: attach Supabase auth cookies so the Nightwork
+        // Next.js middleware doesn't redirect to /login. Without this every
+        // protected route screenshot captures the login page instead of the
+        // targeted app surface (run #25520633491 surfaced this).
+        const authCookies = supabaseSessionCookies(
+          ctx.harness_session?.supabase_url,
+          ctx.preview_url,
+          ctx.harness_session?.raw_session
+        );
+        if (authCookies.length > 0) {
+          await context.addCookies(authCookies);
+        }
         const page = await context.newPage();
         await page.goto(pageUrl, {
           waitUntil: "networkidle",

@@ -169,6 +169,7 @@ export async function runHarness(opts: HarnessOptions): Promise<HarnessReport> {
         routes_to_check: opts.routes ?? [],
         dom_criteria: criteria.filter((c) => c.category === "dom"),
         repo_root: opts.repo_root,
+        harness_session: harnessSession, // nwrp67 FIX 8 — Playwright cookie auth
       };
       results_by_layer.layer1 = await runLayer1(l1ctx);
     }
@@ -216,6 +217,7 @@ export async function runHarness(opts: HarnessOptions): Promise<HarnessReport> {
         // to ctx.cost_cap_usd ?? $1.
         cost_cap_remaining_usd: undefined,
         repo_root: opts.repo_root,
+        harness_session: harnessSession, // nwrp67 FIX 8 — Playwright cookie auth
       };
       results_by_layer.layer3 = await runLayer3(l3ctx);
     }

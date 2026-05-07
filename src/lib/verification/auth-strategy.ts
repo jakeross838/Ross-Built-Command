@@ -56,6 +56,28 @@ export interface HarnessSession {
    * the session's `org_id` claim against the live row.
    */
   org_uuid: string;
+  /**
+   * The Supabase project URL (e.g. `https://abc123.supabase.co`). Used by
+   * `attachSupabaseSession()` (in `_browser.ts`) to construct the Supabase
+   * SSR auth-cookie name (`sb-<project-ref>-auth-token`) so Playwright
+   * navigation carries the user's session and clears Nightwork app
+   * middleware redirects to `/login`. Added per nwrp67 FIX 8.
+   */
+  supabase_url: string;
+  /**
+   * Raw session object from `supabase.auth.signInWithPassword`. Serialized
+   * as the value of the SSR auth cookie. Kept opaque (no field-by-field
+   * extraction) so future Supabase auth schema additions flow through
+   * automatically. Added per nwrp67 FIX 8.
+   */
+  raw_session: {
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    expires_at?: number;
+    token_type: string;
+    user: unknown; // Supabase User object — opaque pass-through to the cookie
+  };
 }
 
 /**
@@ -159,5 +181,14 @@ export async function createHarnessSession(
     user_id: data.user.id,
     org_id: FIXTURE_ORG_ID, // slug — what Layer*Context carries
     org_uuid: FIXTURE_ORG_UUID, // UUID — what RLS filters on
+    supabase_url: supabaseUrl, // for SSR cookie construction (nwrp67 FIX 8)
+    raw_session: {
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_in: data.session.expires_in,
+      expires_at: data.session.expires_at,
+      token_type: data.session.token_type,
+      user: data.session.user,
+    },
   };
 }

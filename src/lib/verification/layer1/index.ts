@@ -63,7 +63,8 @@ export async function runLayer1(
       ctx.preview_url,
       ctx.commit_sha,
       ctx.dom_criteria,
-      ctx.org_id
+      ctx.org_id,
+      ctx.harness_session // nwrp67 FIX 8 — Playwright cookie auth
     ))
   );
 
