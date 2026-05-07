@@ -17,12 +17,17 @@ import type {
 import { deriveIdempotencyKey } from "../idempotency";
 
 // Synthetic criterion for build (mechanical category). Always present in Layer 1.
+//
+// Per nwrp60 FIX 2: criterion text updated from "0 warnings, 0 errors" to
+// "exit code 0" — the predicate now matches the criterion. Build warnings
+// (lint, deprecation, info notices) belong to dedicated runners, not the
+// build-clean check.
 const BUILD_CRITERION: VerificationCriterion = {
   id: "layer1-mechanical-build-clean",
   phase: "(any)",
   plan: "(synthetic)",
   category: "mechanical",
-  text: "npm run build clean (0 warnings, 0 errors)",
+  text: "npm run build exits 0",
   layer: 1,
 };
 
@@ -74,26 +79,24 @@ export async function runBuild(
   org_id?: string
 ): Promise<VerificationResult> {
   const result = await runCmd("npm", ["run", "build"], repo_root);
+  // Per nwrp60 FIX 2: build-clean = exit code 0. The previous predicate also
+  // failed on any "warn"/"warning" stdout substring, which produced false
+  // positives on Next.js info notices like "⚠ No build cache found. Please
+  // configure build caching for faster rebuilds." (a CI-runner hint, not a
+  // build problem). Real build issues surface as exit-code != 0; lint and
+  // typecheck warnings are the responsibility of dedicated runners (lint
+  // not yet wired; typecheck is runTypecheck below).
   const verdict = result.exitCode === 0 ? "PASS" : "FAIL";
-  // Detect warnings — Next.js prints "warn" lines; treat any as PASS-but-noted
-  // (build CLEAN per CLAUDE.md is exit 0 + 0 warnings).
-  const hasWarnings =
-    /\bwarn(?:ing)?[ :]/i.test(result.stdout) ||
-    /\bwarn(?:ing)?[ :]/i.test(result.stderr);
-  const finalVerdict = verdict === "PASS" && hasWarnings ? "FAIL" : verdict;
   return {
     criterion_id: BUILD_CRITERION.id,
     layer: 1,
-    verdict: finalVerdict,
+    verdict,
     evidence:
-      finalVerdict === "PASS"
-        ? "exit 0; no warnings"
+      verdict === "PASS"
+        ? "exit 0"
         : truncate(result.stdout + result.stderr, 2000),
-    expected: "exit 0, 0 warnings",
-    actual:
-      finalVerdict === "PASS"
-        ? undefined
-        : `exit ${result.exitCode}${hasWarnings ? "; warnings present" : ""}`,
+    expected: "exit 0",
+    actual: verdict === "PASS" ? undefined : `exit ${result.exitCode}`,
     duration_ms: result.durationMs,
     idempotency_key: deriveIdempotencyKey(commit_sha, BUILD_CRITERION, org_id)
       .composite,
