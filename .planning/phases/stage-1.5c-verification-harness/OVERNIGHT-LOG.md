@@ -148,3 +148,52 @@ Root cause: my CATEGORY-A autofix `npm install` (lockfile resync at `4afdef7`) t
 **Next step:** Commit + push the three files. Trigger triage on resulting workflow run per nwrp56 step 5. If meta-test passes on Node 22, resume Wave 4 dispatch (Plan 7 — gsd-research-standards + gsd-fix-executor) interactively per nwrp56 (Jake awake). If run fails differently, HALT immediately with new diagnostic and surface candidate next actions.
 
 **Budget status:** Fix attempt 3/3 used after this commit pushes. Zero remaining if subsequent failure surfaces — must HALT for Jake.
+
+---
+
+## 2026-05-07T12:47:00Z — Run #25496484364 on `128a973`: Node 22 bump WORKED, new failure mode at auth-strategy step. HALT.
+
+**Action:** Triaged.
+
+**Node 22 bump SUCCESS — root-cause WebSocket issue resolved:**
+- Setup Node ✓ (Node 22)
+- Install dependencies ✓
+- Install Playwright browsers ✓
+- Determine phase ✓
+- Set commit status (pending) ✓
+- Wait for Vercel preview to be Ready ✓ (Vercel build green on `128a973`, preview `https://nightwork-platform-8vb5m83h1-jakeross838s-projects.vercel.app`)
+- Run verification harness ✓ (step itself ran — meta-test/import-time WebSocket failure GONE — but harness exited code 4 internally)
+
+**New failure (different):** Harness exited fast with FATAL on its own auth-strategy step. Verbatim from log:
+
+> `[verify-phase] FATAL: [auth-strategy] User harness-fixture@nightwork.local signed in but has NO active org membership. Re-run migration 00092 (the org_members INSERT is gated on the user existing in auth.users — if the user was bootstrapped AFTER the migration ran, re-running 00092 binds the membership). See Plan 5 README "Chicken-and-egg setup" for the full bootstrap flow.`
+>
+> `[harness] verify-phase.ts exited with code 4`
+
+This means the `harness-fixture` user authenticates fine (so all 5 GH secrets + Supabase URL + anon key are correct) but has no `org_members` row binding it to an org. The error message itself points to remediation and a documented runbook (Plan 5 README "Chicken-and-egg setup").
+
+**Outcome:** HALT per nwrp56 line 24-27 (failed differently → halt immediately + document + surface candidates). Autonomous budget exhausted (attempt 3/3 used on the Node 22 bump). NOT proceeding to fix without explicit Jake authorization.
+
+**Candidate next actions for Jake:**
+
+- **Option A — Re-run migration 00092 via Supabase MCP.** The fix the FATAL message itself recommends. Tool: `mcp__supabase__apply_migration` with the 00092 SQL (or a small "rebind harness-fixture membership" migration). Safe assuming 00092 is idempotent; would need to verify by reading the migration file. Single tool call. Lowest risk if migration is idempotent.
+
+- **Option B — Direct SQL: insert the missing `org_members` row for harness-fixture.** Tool: `mcp__supabase__execute_sql`. Bypasses migration; faster but skips the "Plan 5 bootstrap flow" the runbook prescribes. Acceptable as a one-shot if Jake confirms which org_id to bind to.
+
+- **Option C — Run the full Plan 5 bootstrap flow.** Tear down harness-fixture user, re-create via Plan 5 README's documented sequence (auth.users INSERT → migration 00092 → org_members INSERT in correct order). Most thorough; longest path. Use if A and B both fail or if there's reason to suspect harness-fixture state is corrupted beyond just the missing membership.
+
+- **Option D — Defer harness end-to-end until Wave 4+.** The harness has now demonstrated CI infrastructure works (auth/CI/Vercel/Node 22/setup-node/install/Playwright). Move forward with Wave 4 (Plan 7 — gsd-research-standards + gsd-fix-executor) without resolving harness-fixture today; resolve harness end-to-end on the way to Wave 6/7 when the harness gets exercised against real phase output.
+
+**Recommendation:** Option A is the fix the error message itself prescribes. Suggest reading `supabase/migrations/00092_*.sql` first to confirm idempotency before re-applying.
+
+**Budget status:** 0/3 autonomous fix attempts remaining for nwrp54 envelope. New authorization required for any next-step fix.
+
+**Cost-cap status:** $0 spent on Anthropic vision (harness still hasn't run end-to-end). Well under the $5 stop condition.
+
+**State at halt:**
+- HEAD `128a973` (Node 22 bump), all commits pushed
+- Vercel build green on `128a973`
+- CI Node infrastructure now correctly aligned at Node 22 (matches Jake's local Node 24 modulo minor version)
+- harness-fixture user authenticates but has no org_members row → harness exits 4
+- Wave 4–7 still NOT dispatched
+- HALT-FOR-JAKE-2.md NOT written this round (this OVERNIGHT-LOG entry IS the halt artifact per nwrp56 line 26)
