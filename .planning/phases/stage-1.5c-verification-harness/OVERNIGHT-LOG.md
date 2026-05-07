@@ -680,3 +680,48 @@ No further fixes attempted. Awaiting Jake decision on:
 **Budget status:** Attempt 7/7 used. Zero remaining. nwrp54 + nwrp62 + nwrp63 envelopes exhausted.
 
 **Cost-cap status:** **$0.0788 spent this run; cumulative $0.157** ($0.0782 + $0.0788) across two productive Layer 3 runs. All under $1/run cap. Idempotency cache will short-circuit re-runs against same (commit, criterion) pairs at $0 vision cost.
+
+---
+
+## 2026-05-07T19:53:18Z — Run #25518393171 on `d552e97`: nwrp64 FIX 6 cleared Category 1 cleanly. HALT for Jake before FIX 7.
+
+**Action (attempt 8/9 — nwrp64 FIX 6):**
+
+- 5 PLAN files edited (Plans 4/6/7/8b/9): 8 misauthored visual:/semantic: ACs replaced with single `N/A — <reason>` entries citing the run that surfaced each FAIL and explaining where the criterion's truth actually lives (behavioral category, code review, or integration).
+- Plan 8a (criteria-mandate) extended with new "Common authoring errors (post-mortem)" section codifying the pattern (Documentation/CI/Agent design/Code architecture/Schema rules/Source-file claims) with concrete examples and the rule: visual:/semantic: MUST describe something visible on a rendered web page.
+
+Pushed at `d552e97`. Run #25518393171 completed in 178.2s; vision cost $0.0260 (down from $0.0788 — fewer criteria run, ~4 calls × $0.0065 each).
+
+### Verdict counts
+
+- **PASS: 64** (unchanged — Layer 1 60 routes + 3 mechanical + 1 Layer 3 vision)
+- **FAIL: 3** (was 11; −8 — exactly the predicted Category 1 cleanup)
+- **SKIP: 1** (Layer 2 introspection — Wave 1.1 dep, unchanged)
+
+### Layer 3 detail (4 criteria total — AC-IDs renumbered after 8 ACs removed from loaded set)
+
+| ID (this run) | Was (nwrp63) | Verdict | Conf | Notes |
+|---|---|---|---|---|
+| AC-08a-92 | AC-08a-97 | FAIL | 0.90 | "Site Office signature" — Category 2: rendered login page (`<route>` placeholder unsubstituted) |
+| **AC-08a-93** | **AC-08a-98** | **PASS** | **0.72** | **"Slate Set B palette" — preserved across renumbering ✨** |
+| AC-08a-97 | AC-08a-102 | FAIL | 0.50 | "cost code on invoice line items" (**WI-004 territory**) — Category 2: rendered login page |
+| AC-08a-98 | AC-08a-103 | FAIL | 0.95 | "Document Review pattern" — Category 2: rendered marketing `/` (no route specified) |
+
+The renumbering is mechanical: criteria-loader uses `AC-${phase}-${plan}-${criteria.length + 1}` so removing 8 entries from the loaded set shifts the global sequence number for everything after. Only the 4 Plan 8a Layer 3 ACs survived the cleanup; their relative ordering is intact.
+
+### What FIX 6 confirmed
+
+- ✓ N/A pattern works as designed — criteria-loader skips N/A entries silently (line 166 of criteria-loader.ts: `if (/^\s*N\/A/i.test(text)) continue;`).
+- ✓ The PASS for Slate palette compliance (AC-08a-93, conf 0.72) is durable across cleanup — vision API stably identified `#5B8699 stone-blue` accents on SIGN IN button and links.
+- ✓ Vision cost dropped proportionally (4 calls vs 12) — the harness only spends on criteria that survive sanitization + N/A filtering.
+- ✓ Plan 8a now codifies the authoring lesson with concrete examples — future PLAN authors have a reference to consult.
+
+### Halting per nwrp64 step 6
+
+> "HALT for Jake — confirm Category 1 cleared cleanly before Category 2 dispatch."
+
+Category 1 cleared cleanly. The 3 remaining FAILs are exactly the Category 2 (route/page targeting) criteria. **Awaiting Jake confirmation before dispatching FIX 7** (Plan 8a criteria-mandate update for explicit routes + Plan 5 orchestrator route-resolver implementation + sweep existing ACs for `<route>` placeholder usage).
+
+**Budget status:** Attempt 8/9 used (nwrp64 authorized two attempts). 1 remaining for FIX 7.
+
+**Cost-cap status:** $0.0260 this run; cumulative $0.183 across three productive Layer 3 runs. Well under $1/run cap. Idempotency cache should short-circuit AC-08a-93 (PASS) on subsequent runs against the same commit at $0 vision cost.
