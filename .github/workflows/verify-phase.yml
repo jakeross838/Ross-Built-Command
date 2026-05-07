@@ -60,6 +60,14 @@ jobs:
       HARNESS_FIXTURE_PASSWORD: ${{ secrets.HARNESS_FIXTURE_PASSWORD }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      # Vercel Deployment Protection bypass (added per nwrp60 FIX 1).
+      # Generated in Vercel project Settings → Deployment Protection →
+      # Protection Bypass for Automation. Threaded into route-status.ts as
+      # x-vercel-protection-bypass header so the harness can probe protected
+      # preview URLs (default returns HTTP 401 without this).
+      # If unset, route-status sends no bypass header (works for unprotected
+      # local dev URLs).
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
     steps:
       - name: Checkout

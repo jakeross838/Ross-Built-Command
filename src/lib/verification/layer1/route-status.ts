@@ -9,6 +9,22 @@
 //
 // Per D-23: never force-kill anything. fetch() respects the AbortController if
 // passed; Plan 5 orchestrator owns timeout/abort policy.
+//
+// Vercel Deployment Protection bypass (added 2026-05-07 per nwrp60 FIX 1):
+// Vercel preview URLs return HTTP 401 to unauthenticated requests by default.
+// To let the harness probe protected previews, we attach the bypass header
+// `x-vercel-protection-bypass: <VERCEL_AUTOMATION_BYPASS_SECRET>` and
+// `x-vercel-set-bypass-cookie: true` (the cookie spares per-request bypass
+// overhead — Vercel sets a session cookie after the first bypass).
+//
+// Source: https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection
+// The secret is generated in Vercel project Settings → Deployment Protection →
+// Protection Bypass for Automation. It must also be set as a GitHub Actions
+// secret of the same name (VERCEL_AUTOMATION_BYPASS_SECRET) and passed through
+// to the harness step in .github/workflows/verify-phase.yml.
+//
+// If the env var is unset, no bypass header is sent (harness behaves as
+// before — useful for local dev against an unprotected URL).
 
 import { readdir, stat } from "node:fs/promises";
 import * as path from "node:path";
@@ -70,6 +86,17 @@ export async function runRouteStatusCheck(
 ): Promise<VerificationResult[]> {
   const results: VerificationResult[] = [];
 
+  // Vercel Deployment Protection bypass: read once per check rather than per
+  // route. Empty/unset → no bypass header sent (local dev against unprotected
+  // URL still works).
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  const protectionHeaders: Record<string, string> = bypassSecret
+    ? {
+        "x-vercel-protection-bypass": bypassSecret,
+        "x-vercel-set-bypass-cookie": "true",
+      }
+    : {};
+
   for (const route of routes) {
     const start = Date.now();
     // Skip routes with unsubstituted [param] segments — orchestrator (Plan 5) is
@@ -89,6 +116,7 @@ export async function runRouteStatusCheck(
       const url = `${preview_url.replace(/\/$/, "")}${route}`;
       const res = await fetch(url, {
         method: "GET",
+        headers: protectionHeaders,
         // Don't follow redirects — log them as PASS-with-redirect; downstream criteria
         // may require redirect chains for auth flows.
         redirect: "manual",
