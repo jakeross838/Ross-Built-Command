@@ -790,3 +790,86 @@ The proper fix is the same playbook: convert these 3 to `N/A — <reason>` entri
 **Budget status:** Attempts 8 + 9 used (nwrp64 + nwrp65). Zero remaining without new authorization.
 
 **Cost-cap status:** $0.0201 this run; cumulative **$0.203** across all productive vision runs. Well under $1/run cap. Idempotency cache will keep cost flat on subsequent runs against same commit.
+
+---
+
+## 2026-05-07T20:40:49Z — Run #25520633491 on `8e4ead1`: nwrp66 STEP 1+2 landed. NOVEL FAILURE MODE — app-middleware auth gating. WI-004 verdict = AMBIGUOUS. HALT.
+
+**Action (continuous block per nwrp66 — STEP 1 + STEP 2 in single commit `8e4ead1`):**
+
+### STEP 1 — FIX 6.1 cleanup ✓
+3 unmasked Category-1 ACs converted to N/A:
+- Plan 5: AC-05-100 (orchestrator.test.md / Plan 11 Scenario 4 cross-ref)
+- Plan 10: AC-10-29 (VERIFICATION-PIPELINE.md canonical doc role)
+- Plan 10: AC-10-30 (cross-doc consistency across 5 internal MD files)
+
+Same authoring anti-pattern as nwrp64 FIX 6 + nwrp65 FIX 7. All 3 dropped from harness reports cleanly.
+
+### STEP 2 — Authored 4 real Layer 3 ACs ✓
+Targeted actually-rendered design-system surfaces (Jake's `/design-system/prototypes/{invoices,documents}/*` don't exist; the patterns/typography/palette pages render the canonical content):
+
+- AC-08a-130 visual: `/design-system/palette` — Slate Set B swatches + #5B8699 hex code
+- AC-08a-131 visual: `/design-system/typography` — tracking-eyebrow row 0.14em UPPERCASE
+- AC-08a-138 semantic: `/design-system/patterns` — Document Review pattern visible
+- AC-08a-139 semantic: `/design-system/patterns` — cost code metadata visible (single-invoice WI-004 surface)
+
+Plus two latent loader bugs found and fixed inline:
+1. Plan 8a mechanical AC #3 contained literal triple-backticks which prematurely closed the `\`\`\`yaml` code fence and truncated criteria-loader extraction. Rephrased.
+2. Plan 8a behavioral AC mentioned `<criteria>` tag literally in prose; rephrased to "structured criteria block".
+
+Verified 15/15 ACs extract cleanly post-fix; all under 200-char SEC-HIGH-2 cap.
+
+### Run #25520633491 verdict counts
+
+- **PASS: 63** (Layer 1: 60 routes + 3 mechanical synthetic; no Layer 3 PASS)
+- **FAIL: 4** (all 4 newly-authored Layer 3 ACs)
+- **SKIP: 1** (Layer 2 introspection — Wave 1.1 dep, unchanged)
+- **Vision cost:** $0.0264 (4 calls × ~$0.0066); cumulative **$0.230**
+
+### NOVEL FAILURE MODE — app-middleware auth gating
+
+All 4 vision calls FAIL with confidence 0.95 — and all 4 say the same thing: **the screenshot shows the Nightwork login page, not the `/design-system/*` page that the criterion targeted.**
+
+Verbatim reasoning (all 4 ACs):
+
+> AC-08a-130 (palette): "screenshot shows a login page, not the /design-system/palette page. No palette swatches, hex codes, or color system UI are visible — only email/password fields and sign-in controls."
+>
+> AC-08a-131 (typography): "screenshot shows the Nightwork login page… There is no token table, no tracking-eyebrow row, and no typographic samples visible."
+>
+> AC-08a-138 (Document Review pattern): "screenshot shows a Nightwork login page, not the /design-system/patterns page. No Document Review pattern, file preview, or structured invoice fields are visible."
+>
+> AC-08a-139 (cost-code WI-004 surface): "screenshot shows a Nightwork login page with email/password fields and a Sign In button. There is no invoice WI-004, no 'Cost code' label, and no design-system/patterns content visible; **the page has not authenticated to display the required content**."
+
+#### Diagnosis
+
+- ✓ Layer 3 route extraction worked — `evidence.pageUrl` shows the correct `/design-system/palette`, `/design-system/typography`, `/design-system/patterns` URLs.
+- ✓ Vercel deployment-protection bypass worked (nwrp65 FIX 5) — Playwright got past Vercel SSO.
+- ✗ **The Nightwork app's own Next.js middleware redirected to `/login`** because the Playwright browser context has no Supabase auth cookie.
+
+Per CLAUDE.md "Components playground at `/design-system`": "Gated to platform_admin in production via middleware (404 to non-staff per Stage 1.5a SPEC B7)." So `/design-system/*` requires authentication AND platform_admin role.
+
+The harness's `auth-strategy.ts` calls `supabase.auth.signInWithPassword` and gets an `access_token` + `refresh_token` — but those credentials are scoped to the Layer 3 runner's Supabase client, NOT to the Playwright browser context. The browser navigates as an unauthenticated user, hits the middleware, gets redirected to `/login`.
+
+#### WI-004 verdict: **AMBIGUOUS**
+
+We cannot evaluate the WI-004 cost-code surface (or any `/design-system/*` page) until the harness's Layer 3 runner attaches the Supabase auth session to the Playwright browser context. **The harness's "find what's broken" fidelity is intact** — it's correctly surfacing that the screenshots are wrong-page — but it can't yet *evaluate* protected surfaces.
+
+### Three candidate fix paths (all in src/lib/verification/, in-envelope for Plan 6.5 amendment)
+
+**A — Recommended: attach Supabase session cookie to Playwright context.** The harness already authenticates via `auth-strategy.ts` and gets `access_token` + `refresh_token`. Convert these to Supabase's session-cookie format and add via `context.addCookies()` after `browser.newContext()`. Same pattern as Vercel bypass header — once cookie is set, all subsequent requests in that context carry the auth. Estimated change: ~20 lines in `runner.ts` + maybe a helper in `auth-strategy.ts`. Requires platform_admin role for `/design-system/*` per CLAUDE.md — would need to either (a) seed harness-fixture user as platform_admin, OR (b) target post-login routes that org-admin can reach.
+
+**B — Authenticate via Playwright (UI flow).** Have Layer 3 runner navigate to `/login` first, fill email/password (HARNESS_FIXTURE_PASSWORD), submit, wait for redirect, then navigate to target route. More fragile (depends on login UI structure) but matches "real user" testing posture.
+
+**C — Change `/design-system/*` middleware to allow public read in non-production.** Per CLAUDE.md the playground is "Sample data only — no Drummond, no real Ross Built records — so the playground is safe to share." Could relax the middleware to skip auth for non-prod environments. Touches src/middleware.ts (Plans 1-5 product code, CATEGORY-X — outside nwrp envelope).
+
+#### Halt for Jake — per nwrp66 explicit halt criterion
+
+> "Novel failure mode (not template-extraction, not misauthored AC, not route placeholder)"
+
+This is novel — app-middleware-auth, distinct from the Vercel-deployment-protection bypass we already solved. Halting.
+
+The good news: every other piece of the harness is **operating correctly**. Route extraction parses properly, Vercel bypass holds, vision API hits real models with real screenshots, cost is bounded, idempotency presumably works. Just need one more layer of session attachment to unlock protected app routes.
+
+**Budget status:** Attempt 10 of nwrp envelope (continuous block per nwrp66). Cumulative vision spend $0.230 — well under the $5 ceiling Jake authorized. Plenty of room for FIX 8 once authorized.
+
+**Cost-cap status:** $0.0264 this run; cumulative **$0.230** across 5 productive vision runs.
