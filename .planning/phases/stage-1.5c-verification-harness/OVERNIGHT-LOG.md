@@ -371,3 +371,34 @@ If manual step pending: PASS=3, FAIL=58, SKIP=0. Surface again with halt for man
 **Budget status:** Attempt 5/5 used (per nwrp60 line 3 envelope extension). Zero remaining. Awaiting Jake decision after triaging next run.
 
 **Cost-cap status remains $0** (no Layer 3 criteria; no vision API spend).
+
+---
+
+## 2026-05-07T17:03:00Z — Run #25510202433 on `104636c`: FIX 2 + FIX 3 verified clean. FIX 1 blocked on Jake manual step.
+
+**Action:** Triaged.
+
+**Outcome — exact prediction match for "manual step pending" branch:**
+
+| Metric | Prior run (`2d2b203`) | This run (`104636c`) | Δ | Cause |
+|---|---|---|---|---|
+| PASS | 2 | **3** | +1 | FIX 2 ✓ — `layer1-mechanical-build-clean` now PASS with `evidence: "exit 0"` (was FAIL on warn-substring false positive) |
+| FAIL | 61 | 60 | −1 | build-clean moved to PASS; route-status FAILs unchanged |
+| SKIP | 3 | **0** | −3 | FIX 3 ✓ — AC-02-20 N/A entry skipped by criteria-loader; 3 viewport-multiplied SKIPs gone |
+
+All 60 remaining FAILs are `layer1-route-status-*` returning HTTP 401 — confirms FIX 1 code is wired correctly but `VERCEL_AUTOMATION_BYPASS_SECRET` is not yet present in GitHub Actions secrets, so route-status sends an empty bypass header → Vercel rejects.
+
+**Manual step still required (un-blocking action):**
+1. Vercel project Settings → Deployment Protection → Protection Bypass for Automation → Generate Secret → Copy value
+2. `gh secret set VERCEL_AUTOMATION_BYPASS_SECRET --body '<value>' --repo jakeross838/nightwork-platform`
+3. Trigger re-run (empty commit on branch, or `gh run rerun 25510202433`)
+
+After manual step completes, expected next-run shape: PASS=63, FAIL=0, SKIP=0 — assuming no real route-status issues underneath the 401s. Wave 4 dispatch unblocked at that point.
+
+**Code-side scope is closed.** All in-envelope corrective fixes for the three findings from run #25497597582 have landed and are verified working in CI. No further code/spec changes pending in nwrp60 scope.
+
+**Halting per nwrp60 scope completion + manual-step gate.**
+
+**Budget status:** Attempt 5/5 used. Zero remaining. Awaiting Jake to complete the Vercel manual step + decide how to proceed (re-run workflow vs. defer Wave 4 dispatch on different signal).
+
+**Cost-cap status remains $0.**
