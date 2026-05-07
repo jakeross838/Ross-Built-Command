@@ -197,3 +197,39 @@ This means the `harness-fixture` user authenticates fine (so all 5 GH secrets + 
 - harness-fixture user authenticates but has no org_members row → harness exits 4
 - Wave 4–7 still NOT dispatched
 - HALT-FOR-JAKE-2.md NOT written this round (this OVERNIGHT-LOG entry IS the halt artifact per nwrp56 line 26)
+
+---
+
+## 2026-05-07 — nwrp57 + nwrp58 + nwrp59: root cause found, surgical fix applied
+
+**Diagnostic chain (read-only, no fix attempts):**
+
+- **nwrp57** (read-only DB query): confirmed harness-fixture user exists in auth.users (id `5eb26edc-…`), org_members row exists (org_id=FIXTURE_ORG_UUID, role=admin, is_active=true), org exists (slug=fixture-harness-org, deleted_at=null). DB state matched pre-overnight expected state perfectly. Migration 00092 idempotent (ON CONFLICT DO NOTHING throughout). No migrations applied since 00092. → Original 4 candidate fixes (re-run 00092 / direct membership insert / full bootstrap / defer) all addressed a non-problem; the membership row was already correct. Surfaced new hypothesis: harness's RLS-scoped read fails despite correct DB state.
+
+- **nwrp58** (read-only code + RLS audit): read `src/lib/verification/auth-strategy.ts` (auth-strategy uses anon-key + signInWithPassword JWT — same client reused for membership check, RLS applies). Read RLS policies on org_members via pg_policy: `members read org_members USING (org_id = app_private.user_org_id())`. Read `app_private.user_org_id()` via pg_get_functiondef: **`SELECT org_id FROM public.profiles WHERE id = auth.uid()` — reads from PROFILES, not org_members.** Final check: `LEFT JOIN profiles` on harness-fixture user returned `profile_id=NULL`. **Root cause confirmed: harness-fixture has no profiles row → user_org_id() returns NULL → RLS predicate `org_id = NULL` hides the user's own membership row → auth-strategy.ts emits FATAL even though org_members row is present and correct.**
+
+- **nwrp59** (authorize attempt 4 — corrective fix):
+
+**Action (attempt 4/4):**
+
+1. Verified `public.profiles` schema: id (uuid NOT NULL), full_name (text NOT NULL), email (text), role (text NOT NULL), org_id (uuid NOT NULL), created_at/updated_at (default now()).
+2. **Amended `supabase/migrations/00092_verification_harness_fixture_org.sql`** in place — added new step 3 with `INSERT INTO public.profiles … SELECT … FROM auth.users WHERE email = 'harness-fixture@nightwork.local' ON CONFLICT (id) DO NOTHING`, mirroring the same SELECT-from-auth.users guard pattern used for org_members. Plus a long comment block explaining the chicken-and-egg gap and why this INSERT is required (links to nwrp58 diagnostic). Renumbered step 3 RLS-sanity comment to step 4. → Future cold-bootstraps of a fresh project will run amended 00092 once and seed all three rows (organizations, org_members, profiles) in one transaction.
+3. **Created `supabase/migrations/00093_harness_fixture_profile_corrective.sql`** — corrective patch for the already-bootstrapped live DB where 00092 v1 was recorded as applied. Same idempotent INSERT.
+4. **Applied 00093 via `mcp__supabase__apply_migration` → `{success: true}`**.
+5. Verified live DB state with `SELECT u.email, p.id IS NOT NULL AS has_profile, p.role, p.org_id, om.role, om.is_active FROM auth.users u LEFT JOIN profiles p ON p.id=u.id LEFT JOIN org_members om ON om.user_id=u.id WHERE u.email='harness-fixture@nightwork.local'`:
+   - `has_profile = true`
+   - `profile.role = admin`
+   - `profile.org_id = 00000000-0000-0000-0000-fb1ce0a55e55`
+   - `member.role = admin`
+   - `member.is_active = true`
+   - All four post-fix invariants satisfied.
+
+**Outcome:** The harness's RLS-scoped membership check (auth-strategy.ts:127-133) should now return the org_members row when run with harness-fixture's JWT. `user_org_id()` will resolve to FIXTURE_ORG_UUID via the new profiles row, RLS predicate `org_id = FIXTURE_ORG_UUID` will match, and the membership SELECT will succeed.
+
+**Per nwrp59 explicit guidance:** auth-strategy.ts and RLS policies were NOT modified. The harness pattern (defense-in-depth via session-scoped RLS path) is correct; migration 00092 v1 was incomplete.
+
+**Next step:** Commit amended 00092 + new 00093 + this log entry. Push. Triage new workflow run on resulting commit per nwrp59 step 7.
+
+**Budget status:** Attempt 4/4 used (nwrp54 envelope extended by 1 per nwrp59 line 8 — corrective fix for nwrp57+nwrp58 diagnostic chain, not a new attempt at a previously-unsolved issue). Zero remaining if subsequent failure surfaces.
+
+**Cost-cap status:** $0 spent on Anthropic vision (harness still hasn't run end-to-end).
