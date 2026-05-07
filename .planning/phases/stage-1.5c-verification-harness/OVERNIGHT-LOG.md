@@ -576,3 +576,107 @@ After Option A: expected next run shape if Layer 3 surfaces real Plans 1-5 issue
 **Budget status:** Attempt 6/6 used. Zero remaining. nwrp62 envelope exhausted.
 
 **Cost-cap status:** **$0.0782 spent on vision API in this run** (first non-zero spend across all attempts). Well under $1/run cap; idempotency cache will prevent re-spend on identical (commit, criterion) pairs.
+
+---
+
+## 2026-05-07T18:53:08Z — Run #25515440465 on `a476a03`: nwrp63 FIX 5 worked. Layer 3 reaching real app. 11 real findings, HALT outcome B.
+
+**Action (attempt 7/7 — nwrp63 FIX 5):**
+
+Threaded Vercel deployment-protection bypass into Playwright contexts via new `vercelBypassHeaders()` helper in `src/lib/verification/_browser.ts`. Used in:
+- `src/lib/verification/layer3/runner.ts:181` (Layer 3 vision context)
+- `src/lib/verification/layer1/dom-assertions.ts:83` (Layer 1 DOM assertions context — preventive; no DOM criteria active in this phase)
+
+Pushed at `a476a03`. Run #25515440465 completed in 200.0s; vision cost $0.0788.
+
+### Verdict counts
+
+- **PASS: 64** (was 63; +1 — first Layer 3 vision PASS!)
+- **FAIL: 11** (was 12; −1)
+- **SKIP: 1** (`layer2-conservation-money-line-items-sum` — Wave 1.1 dependency, unchanged)
+
+### What FIX 5 accomplished
+
+Vision screenshots now show **real app content** instead of Vercel SSO login page. Sample reasoning shifts:
+- Before (`0ffb9a9`): "The screenshot shows a Vercel login page, not the Nightwork platform content."
+- After (`a476a03`): "The screenshot shows a Nightwork marketing homepage with a hero section, CTA buttons, and a capabilities section."
+
+The app is reachable. The harness is now signaling at full fidelity through all three layers.
+
+### The PASS — AC-08a-98 (conf 0.72): Slate palette ✓
+
+> "Page `<route>`: Slate Set B palette only (#5B8699 stone-blue accents; no off-token hex)"
+>
+> Vision (PASS, 0.72): "The visible accent color on the SIGN IN button and 'Forgot password?'/'Start a free trial' links appears to be a slate/stone-blue consistent with #5B8699; no obviously off-token accent colors are visible…"
+
+The harness vision-confirmed the brand-token compliance the design system mandates. ✨ Inaugural Layer 3 PASS.
+
+### The 11 FAILs split into two clean categories
+
+#### Category 1 — Authoring error: criteria describe non-UI things (8 FAILs)
+
+These criteria were authored under `visual:` or `semantic:` (Layer 3 vision) in their PLAN files, but their text describes documentation, CI workflow internals, agent design, code architecture, or schema rules — none of which are evaluable from a UI screenshot. **Same authoring bug Plan 2 had with AC-02-20 (fixed in nwrp60 FIX 3 by converting to `N/A — …` with rationale).**
+
+| Criterion | Plan | Vision verdict + reasoning | What this AC is actually about |
+|---|---|---|---|
+| AC-04-60 | 4 (Layer 3 Vision) | FAIL 0.5 — "non-UI/documentation criterion" | "Layer 3 README documents the idempotency contract…" → README docs |
+| AC-06-76 | 6 (GH Actions) | FAIL 0.5 — "repo-level artifacts not visible" | "workflows/README.md documents this milestone (D-29 anchor)" → repo file |
+| AC-06-77 | 6 (GH Actions) | FAIL 0.5 — "CI/CD workflow concern unrelated to UI" | "PR comment includes both run link and artifact link" → CI artifact |
+| AC-07-91 | 7 (New Agents) | FAIL 0.5 — "internal agent design standards… not in UI" | "Agent design: gsd-research-standards… caching strategy + TTL + authority hierarchy" → agent design |
+| AC-07-92 | 7 (New Agents) | FAIL 0.5 — "internal agent design/engineering constraint" | "Agent design: gsd-fix-executor scope-narrowed…" → agent design |
+| AC-08b-126 | 8b (Loop) | FAIL 0.5 — "code/design criterion not visible" | "Loop design: state machine bounded (MAX_ITERATIONS=3…)" → code architecture |
+| AC-08b-127 | 8b (Loop) | FAIL 0.5 — "internal CI/orchestration system design requirement" | "Loop design: Claude-in-the-loop default mode…" → CI orchestration |
+| AC-09-140 | 9 (Calibration Log) | FAIL 0.5 — "schema design rule… not in UI" | "Schema design: machine-readable JSON + human-readable markdown hybrid…" → schema |
+
+**Recommended fix path:** rewrite each as one of:
+- (a) `behavioral:` Layer 2 standards rule (with a corresponding registry entry) — for design/architecture invariants that can be checked by introspection or grep
+- (b) `mechanical:` Layer 1 grep-style check (would require extending Layer 1 mechanical category to support source-file ACs — Plan 6.3+ work)
+- (c) `N/A — <reason>` — match the pattern from nwrp60 FIX 3 / AC-02-20 — for criteria that are tautologically verified by integration / build / phase shipping
+
+Most of these (4 of 8) are about agent or loop *design*, which is best captured as a Plan-2-style narrative AC tracked outside the harness. (b) requires harness extension work; (c) is a 30-minute phase-spec edit. Recommend (c) for now to clear the noise, with (a) deferred to a future "extend Layer 2 to cover design-invariant ACs" plan.
+
+#### Category 2 — Route/page targeting gaps (3 FAILs)
+
+These are real visual/semantic claims, but the harness rendered the wrong page so vision can't evaluate them.
+
+| Criterion | Plan | Vision verdict + reasoning | What's wrong |
+|---|---|---|---|
+| AC-08a-97 | 8a (Criteria Mandate) | FAIL 0.9 — "login page with no 'Site Office' signature visible…" | Criterion text uses `<route>` placeholder unsubstituted; defaulted to login page |
+| AC-08a-102 | 8a (Criteria Mandate) | FAIL 0.5 — "login page with no invoice line items visible" | Criterion text uses `<route>` placeholder; should target an invoice review page (this is WI-004 territory!) |
+| AC-08a-103 | 8a (Criteria Mandate) | FAIL 0.95 — "marketing homepage… no Document Review pattern with file preview, right-rail, audit timeline" | Criterion text doesn't specify a route; defaults to `/`; should target `/invoices/[id]/review` |
+
+These are the harness doing what it was built to do — surfacing that **even authoring-correct criteria can't be evaluated until route binding works**. AC-08a-102 in particular is the WI-004 cost-code criterion: it would PASS or genuinely FAIL once it's pointed at an actual invoice review page with line items.
+
+**Recommended fix path:** two distinct fixes
+- (i) **Plan 8a criteria mandate update** — require explicit route paths in criterion text; deprecate `<route>` placeholder syntax (or define route-substitution semantics).
+- (ii) **Plan 5 orchestrator route-resolver** — implement `<route>` substitution against either a phase-config map or a deterministic page (e.g. fixture-org's first invoice). This is real Plan 5 implementation work; not in nwrp54 envelope.
+
+### Summary card
+
+| Category | Count | Severity | Fix scope |
+|---|---|---|---|
+| 1 — Authoring errors (Plans 4, 6, 7, 8b, 9) | 8 | Low — noise, not real failures | Phase-spec edits (~30 min total) |
+| 2 — Route/page targeting (Plan 8a × 3) | 3 | Medium — blocks real verification | Plan 8a spec + Plan 5 implementation work |
+| **Real Plans 1-5 issues surfaced** | **0 confirmed yet** | — | Will surface once Category 2 routing fixed |
+
+The harness has demonstrated end-to-end signal integrity. **Zero confirmed Plans 1-5 application bugs surfaced yet** — but Category 2 prevents AC-08a-102 (WI-004 cost-code) from evaluating against a real invoice page, so a real WI-004 issue could still be lurking.
+
+### Wave 4 dispatch posture
+
+The original harness purpose (find real Plans 1-5 issues) is partially blocked on Category 2 routing fixes. But Wave 4 (Plan 7 — gsd-research-standards + gsd-fix-executor agents) doesn't depend on Layer 3 fidelity — it's about agent infrastructure for the loop-with-executor (Plan 8b). Wave 4 dispatch is unblocked from a workflow-gate standpoint (the harness reports SUCCESS gate-wise; FAILs are surfaced for review, not blocking).
+
+**Per nwrp63 outcome B: HALT for Jake findings review.**
+
+### Halting per nwrp63 directive
+
+> "DO NOT modify auth-strategy.ts, RLS policies, Plans 1-5 application code, or dispatch Wave 4 without Jake authorization. Stay scoped to bypass-header-in-Playwright fix + run triage."
+
+No further fixes attempted. Awaiting Jake decision on:
+1. **Wave 4 dispatch now** (Plan 7 — agents) — Category 1/2 are spec-quality work that can run in parallel or after.
+2. **Category 1 cleanup first** (~30 min phase-spec edits to N/A the 8 misauthored ACs) — clears noise from harness reports going forward.
+3. **Category 2 fix first** (Plan 5 route resolver + Plan 8a criteria mandate update) — unblocks real Layer 3 verification, but is non-trivial implementation.
+4. **All three in some order.**
+
+**Budget status:** Attempt 7/7 used. Zero remaining. nwrp54 + nwrp62 + nwrp63 envelopes exhausted.
+
+**Cost-cap status:** **$0.0788 spent this run; cumulative $0.157** ($0.0782 + $0.0788) across two productive Layer 3 runs. All under $1/run cap. Idempotency cache will short-circuit re-runs against same (commit, criterion) pairs at $0 vision cost.
