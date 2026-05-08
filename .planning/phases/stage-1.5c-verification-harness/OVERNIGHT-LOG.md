@@ -1143,3 +1143,102 @@ The bypass code is correct and tested fail-closed. The remaining work is operati
 **Budget:** $0.308 cumulative; well under $5 ceiling. The bypass-inert run cost is small ($0.026) but adds up if we keep iterating without secret in place — please verify before triggering another run.
 
 **Cost-cap status:** $0.0258 this run.
+
+---
+
+## 🟢 2026-05-08T14:34:20Z — Run #25561061677 on `4d14504`: BYPASS FIRING. Layer 3 reaching real /design-system content. Mixed verdicts. HALT (outcome A — finds real issues).
+
+**Action:** Jake set `VERIFICATION_BYPASS_SECRET` correctly in GH Actions (verified at `2026-05-08T14:26:15Z` via `gh secret list`); fresh harness run via empty commit `4d14504`.
+
+### Verdict counts
+
+- **PASS: 63** (Layer 1 unchanged)
+- **FAIL: 4** (all 4 Layer 3 ACs — but **for completely different reasons now**)
+- **SKIP: 1**
+- **Vision cost:** $0.0268 (cumulative **$0.361**)
+
+### Workflow log evidence — bypass fired
+
+```
+verify  Run verification harness  ...   VERIFICATION_BYPASS_SECRET: ***
+```
+
+`***` redaction (vs. prior empty-string) confirms the secret resolved. Plus the vision reasoning (below) confirms the harness reached real `/design-system/*` content past the platform_admin gate.
+
+### Per-AC verdict shape — three distinct categories of "real issue"
+
+#### Category 1 — Real content reached, criterion expectation mismatch (2 ACs)
+
+These are the harness's actual purpose: real content rendered, vision describes what's there, criterion compares against expectation.
+
+**AC-08a-130** `/design-system/palette` — FAIL conf 0.85:
+
+> *"The visible Set B slate swatches show #3B5864 (slate-tile), #1A2830 (slate-deep), and #132028 (slate-deeper) — none match the criterion's required #5B8699 stone-blue accent hex code, which is not visible in the screenshot."*
+
+Either:
+- The criterion's expected `#5B8699` is wrong (Set B palette uses `#3B5864` for stone-blue, or the stone-blue token is named differently than I expected when authoring the AC)
+- OR the palette page is genuinely missing the stone-blue accent
+- Earlier nwrp63 PASS on AC-08a-93 (when the harness was rendering the LOGIN page!) showed conf 0.72 for "slate/stone-blue consistent with #5B8699." That was vision matching slate-ish colors loosely. Now with real palette content, vision sees the *actual* hex codes and they don't include #5B8699.
+
+**Likely root cause:** the harness's authoring assumed `#5B8699` was the canonical Set B stone-blue. The actual Set B uses `#3B5864`/`#1A2830`/`#132028`. The criterion needs to be re-authored against the real palette, OR the design-system docs (CLAUDE.md / Stage 1.5a SYSTEM.md) need to clarify which Set the `#5B8699` value belongs to.
+
+**AC-08a-131** `/design-system/typography` — FAIL conf 0.75:
+
+> *"The type scale table shows --FS-LABEL (10px JetBrains Mono, Eyebrow size UPPERCASE) with sample 'STATUS TIMELINE', but there is no explicit 'tracking-eyebrow' row showing a value of 0.14em in the visible token table; tracking tokens are not displayed as separate rows in the screenshot."*
+
+Vision sees the type scale (font-size tokens) table but the **tracking-eyebrow** token isn't a separate row in that table. Looking at the source (typography page line 69 from earlier grep): `{ token: "--tracking-eyebrow", value: "0.14em", ... uppercase: true }` IS defined but vision says it's not visible as a separate row at the screenshot resolution.
+
+**Likely root cause:** typography page may render tracking tokens in a different table/section that the screenshot didn't capture (1280×800 viewport may not show below-the-fold content), OR they're rendered as inline annotations rather than table rows. Authoring needs more precision OR full-page screenshot needed.
+
+#### Category 2 — Real runtime error on /design-system/patterns (2 ACs, blocks WI-004)
+
+**AC-08a-138** + **AC-08a-139** `/design-system/patterns` — both FAIL conf 0.95:
+
+> *"The screenshot shows an error page ('We hit an unexpected error') instead of the /design-system/patterns page content with a Document Review pattern…"*
+>
+> *"The screenshot shows an error page ('We hit an unexpected error') instead of the /design-system/patterns page with invoice WI-004 content, so no cost code metadata is visible."*
+
+This is a **real runtime bug on the patterns page in the Vercel preview** for commit `4d14504`. NOT an auth/bypass/routing issue. Local `npm run build` is clean (just verified — 1715-line patterns page builds without errors, route bundle 855 B). The error is preview-runtime-specific.
+
+**WI-004 verdict status: STILL UNRESOLVED** — but for a *different, real, actionable reason* now. The patterns page is broken in this preview; until the runtime error is diagnosed and fixed, WI-004 (cost code on invoice line items in the Document Review pattern) cannot be evaluated.
+
+### What's confirmed working end-to-end
+
+- ✓ Vercel deployment-protection bypass (FIX 1 + FIX 5)
+- ✓ Supabase session cookie attachment (FIX 8)
+- ✓ Nightwork app verification-bypass header on /design-system/* (FIX 9 / nwrp68)
+- ✓ Layer 3 vision API (FIX 4)
+- ✓ Layer 3 reaching real protected `/design-system/*` content for the first time
+- ✓ Vision reasoning produces real, falsifiable, specific verdicts on real content
+
+The harness has finally arrived at its **core operational state** — surfacing real signal on real surfaces. The auth chain is complete.
+
+### Halt for Jake — outcome A "finds real issues"
+
+Three categories of next-step work:
+
+**1. Investigate `/design-system/patterns` runtime error (highest priority, blocks WI-004):**
+- Look at Vercel build/runtime logs for commit `4d14504` deployment `nightwork-platform-qzljxasrq…` — what's the unhandled exception on `/design-system/patterns`?
+- Likely candidates: env-var dependency missing in Preview but present locally; React Server Component runtime issue; an import that breaks with the prod build optimizer; runtime-only side effect on the long Document Review render.
+- Local `npm run build` is clean, so it's not a compile-time issue.
+- This is **Plans 1-5 application code (CATEGORY-X)** — out of nwrp envelope without Jake authorization to debug.
+
+**2. Re-author AC-08a-130 (palette) against real Set B hex codes:**
+- Vision reports actual rendered colors are `#3B5864`/`#1A2830`/`#132028`, not `#5B8699`. Update criterion to expect what the page actually shows, OR investigate whether `#5B8699` should be present (a stone-blue accent token that's missing from rendered Set B).
+- Quick fix: phase-spec edit, no code changes. ~5 min.
+
+**3. Refine AC-08a-131 (typography) precision:**
+- Vision sees type-scale table but not the tracking-eyebrow row at 1280×800 viewport. Either (a) lower the precision threshold of the criterion to "tracking-eyebrow token defined on the page" rather than "row in the type-scale table", or (b) add a route to a typography subsection that exposes tracking tokens as primary content, or (c) increase Layer 3 viewport size + fullPage screenshot.
+- Quick fix: phase-spec edit. ~5 min.
+
+### Recommendation
+
+The harness is **operationally complete** — the remaining FAILs are real, actionable signal exactly as designed. Suggest:
+1. **You investigate the `/design-system/patterns` runtime error** (Vercel logs for `nightwork-platform-qzljxasrq…`). This is the only blocker for WI-004 evaluation.
+2. Once that's surfaced, decide whether it's a real bug to fix (CATEGORY-X) or an environment config issue (CATEGORY-A/B).
+3. ACs 130 + 131 are quick phase-spec re-authoring; can ride alongside or after the patterns fix.
+4. Wave 4 dispatch (Plan 7) is unblocked from a *workflow-gate* standpoint — the FAILs surface real findings, not infrastructure problems. But Wave 4's harness self-test (Plan 11) will hit the same patterns runtime error if it's not fixed first.
+
+**Cumulative vision spend:** $0.361 across 7 productive runs. Well under $5 ceiling. Idempotency cache will short-circuit on the same commit.
+
+**Cost-cap status:** $0.0268 this run.
