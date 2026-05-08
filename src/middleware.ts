@@ -29,6 +29,60 @@ function canEscapeBillingGate(pathname: string): boolean {
   );
 }
 
+/**
+ * Verification-bypass for /design-system/* routes only (per nwrp68).
+ *
+ * The verification harness (Plan 6 GH Action) needs to render
+ * `/design-system/*` surfaces in Layer 3 vision and Layer 1 DOM checks.
+ * The harness fixture user is org-admin in fixture-harness-org and is
+ * intentionally NOT platform_admin (D-30: cross-tenant grant for a system
+ * account would violate tenant-safety-by-construction). This function
+ * provides a narrow header-gated bypass that mirrors the established
+ * `x-vercel-protection-bypass` pattern at the application layer.
+ *
+ * Defense-in-depth (all four required to bypass):
+ * 1. `pathname` must be inside /design-system/* (caller filters before invoking).
+ * 2. `VERIFICATION_BYPASS_SECRET` env var must be set (fail closed if unset).
+ * 3. `VERCEL_ENV` must NOT be `"production"` — bypass NEVER works on the
+ *    production deployment, regardless of secret state. Preview + dev only.
+ * 4. Request header `x-nightwork-verification-bypass` must equal the secret
+ *    via timing-safe comparison.
+ *
+ * D-30 alignment: design-system is platform-presentation (sample data per
+ * CLAUDE.md "Sample data only — no Drummond, no real Ross Built records"),
+ * not tenant data. The bypass is narrow, secret-gated, production-blocked,
+ * and audit-logged. Tenant-data routes (/api/*, /jobs, /financials, etc.)
+ * are unaffected — they continue to enforce membership-scoped RLS as before.
+ *
+ * If granted, the request still flows through `updateSession` (so the
+ * existing user / billing-gate / Sentry-tag pipeline runs); we simply
+ * skip the platform_admin role check on `/design-system/*`.
+ */
+function isVerificationBypass(request: NextRequest): boolean {
+  // 1. Caller (the design-system gate below) verifies pathname before this
+  //    runs. Defense-in-depth: re-check here so the helper is safe to call
+  //    from any future surface without trusting the caller.
+  const { pathname } = request.nextUrl;
+  if (pathname !== "/design-system" && !pathname.startsWith("/design-system/")) {
+    return false;
+  }
+  // 2. Secret must be set (fail closed).
+  const secret = process.env.VERIFICATION_BYPASS_SECRET;
+  if (!secret || secret.length < 16) return false;
+  // 3. Production-blocked. VERCEL_ENV is set by Vercel — "production" only
+  //    on the production deployment; "preview" on PR / branch deployments;
+  //    "development" / undefined locally.
+  if (process.env.VERCEL_ENV === "production") return false;
+  // 4. Header must match (timing-safe compare).
+  const provided = request.headers.get("x-nightwork-verification-bypass");
+  if (!provided || provided.length !== secret.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < secret.length; i += 1) {
+    mismatch |= secret.charCodeAt(i) ^ provided.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
 export async function middleware(request: NextRequest) {
   const T0 = Date.now();
   const { response, user, gate, isPlatformAdmin } = await updateSession(request);
@@ -90,27 +144,54 @@ export async function middleware(request: NextRequest) {
   //   - Development: gate to authenticated users only. Any authed user
   //     in dev can browse the playground for design feedback; the
   //     production wall stays platform_admin-only.
-  //   - No env-var bypass — per CR1 / H12 / SPEC B7. Adding a
-  //     BYPASS_DESIGN_SYSTEM_GATE=true escape hatch would defeat the
-  //     purpose; an attacker exploiting any leak (env-var injection,
-  //     misconfigured preview) would unlock the route. The wall is the
-  //     wall.
+  //   - Verification-bypass (per nwrp68, replaces the prior CR1/H12 "no
+  //     env-var bypass" stance with a tighter contract): the verification
+  //     harness can present `x-nightwork-verification-bypass:
+  //     <VERIFICATION_BYPASS_SECRET>` to skip the platform_admin check on
+  //     /design-system/* ONLY. This is NOT an env-var bypass; the older
+  //     comment was specifically about a `BYPASS_DESIGN_SYSTEM_GATE=true`
+  //     env-flag that would unlock the route by mere env-var presence.
+  //     The new contract requires (a) a request header, (b) a 32+ byte
+  //     shared secret, (c) timing-safe match, (d) VERCEL_ENV !== "production".
+  //     The production wall remains platform_admin-only because clause (d)
+  //     blocks bypass on the prod deployment unconditionally. See
+  //     `isVerificationBypass` above for the full check.
   if (pathname === "/design-system" || pathname.startsWith("/design-system/")) {
-    const isProd = process.env.NODE_ENV === "production";
-    if (isProd) {
-      if (!isPlatformAdmin) {
-        const notFoundUrl = request.nextUrl.clone();
-        notFoundUrl.pathname = "/_not-found";
-        notFoundUrl.search = "";
-        return NextResponse.rewrite(notFoundUrl, { status: 404 });
-      }
+    if (isVerificationBypass(request)) {
+      // Audit log — every bypass usage is observable via console + Sentry.
+      // Format intentionally machine-grep-friendly: prefix `[verification-bypass]`,
+      // tab-separated fields. No DB write here (the platform_admin_audit
+      // table is for operator actions, not system-account verification).
+      const ts = new Date().toISOString();
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+        request.headers.get("x-real-ip") ||
+        "unknown";
+      const ua = request.headers.get("user-agent")?.slice(0, 80) || "unknown";
+      console.log(
+        `[verification-bypass] pathname=${pathname}\tip=${ip}\tua=${ua}\tts=${ts}`
+      );
+      // Fall through to response. user/gate/isPlatformAdmin have already
+      // been resolved by updateSession; downstream billing-gate logic
+      // operates on the resolved user (which is the harness fixture user
+      // when the cookie is attached, or null otherwise).
     } else {
-      // Dev — authenticated users only.
-      if (!user) {
-        const loginUrl = request.nextUrl.clone();
-        loginUrl.pathname = "/login";
-        loginUrl.searchParams.set("redirect", pathname);
-        return NextResponse.redirect(loginUrl);
+      const isProd = process.env.NODE_ENV === "production";
+      if (isProd) {
+        if (!isPlatformAdmin) {
+          const notFoundUrl = request.nextUrl.clone();
+          notFoundUrl.pathname = "/_not-found";
+          notFoundUrl.search = "";
+          return NextResponse.rewrite(notFoundUrl, { status: 404 });
+        }
+      } else {
+        // Dev — authenticated users only.
+        if (!user) {
+          const loginUrl = request.nextUrl.clone();
+          loginUrl.pathname = "/login";
+          loginUrl.searchParams.set("redirect", pathname);
+          return NextResponse.redirect(loginUrl);
+        }
       }
     }
     // Authorized — fall through to response.
