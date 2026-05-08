@@ -979,3 +979,81 @@ The harness-fixture user needs to verify content on `/design-system/*` (where pr
 **Budget status:** Attempt 11 (continuous block per nwrp66/67 framing). Cumulative vision spend **$0.256** (well under $5 ceiling).
 
 **Cost-cap status:** $0.0258 this run.
+
+---
+
+## 2026-05-08T13:49Z — nwrp68 FIX 9 STEP 1+2 landed; HALT for manual VERIFICATION_BYPASS_SECRET setup
+
+**Action (continuous block — STEPs 1 + 2 in two clean commits, attempt 12):**
+
+### Commit `a3f22b1` — STEP 1: middleware bypass
+
+`src/middleware.ts` updated. `isVerificationBypass(request)` helper added with four-clause defense in depth:
+
+1. `pathname` inside `/design-system/*` (caller filters; helper re-checks)
+2. `VERIFICATION_BYPASS_SECRET` env var set + length ≥ 16 (fail closed)
+3. `VERCEL_ENV !== "production"` — bypass NEVER works on production deployment, regardless of secret state
+4. `x-nightwork-verification-bypass` header equals secret via timing-safe compare (constant-time XOR loop)
+
+Replaced prior CR1/H12 "no env-var bypass" comment block with rationale: this contract is materially different — header + secret + production-block, not env-var-presence-flag. Audit log: every bypass usage emits `[verification-bypass]` to stdout (tab-separated pathname / ip / ua / ts) which flows through Sentry breadcrumb. No DB write — `platform_admin_audit` is for operator actions, not system-account verification.
+
+D-30 alignment: `/design-system/*` is platform-presentation (sample data per CLAUDE.md), not tenant data. Bypass is narrow-scope, secret-gated, production-blocked, audit-logged. Tenant-data routes (`/api/*`, `/jobs`, `/financials`, `/people`, `/company`, `/reports`) unaffected — RLS continues to enforce tenant boundary.
+
+### Commit `829d6e3` — STEP 2: harness wiring
+
+`src/lib/verification/_browser.ts` gains two helpers:
+- `nightworkVerificationBypassHeaders()` — returns `{x-nightwork-verification-bypass: <secret>}` when env set; empty object otherwise
+- `harnessBrowserHeaders()` — convenience wrapper merging Vercel + Nightwork bypass headers
+
+`layer3/runner.ts` + `layer1/dom-assertions.ts`: replace standalone `vercelBypassHeaders()` with `harnessBrowserHeaders()`. Both layers now attach Vercel SSO bypass + Nightwork verification bypass in a single `extraHTTPHeaders` pass.
+
+`.github/workflows/verify-phase.yml`: add `VERIFICATION_BYPASS_SECRET: ${{ secrets.VERIFICATION_BYPASS_SECRET }}` to job-level env block.
+
+### Run #25559090719 on `829d6e3`: fail-closed confirmation
+
+PASS=63 / FAIL=4 / SKIP=1 — **identical verdicts and 404 reasoning to the prior run** because `VERIFICATION_BYPASS_SECRET` isn't yet set in GH Actions. The middleware bypass code is wired but **inert without the secret** — exactly the fail-closed posture the design demands.
+
+Sample vision reasoning (AC-08a-130, conf 0.95): *"The screenshot shows a 404 'This page could not be found.' error, so the /design-system/palette page did not load."* Same as nwrp67's run. The bypass needs both server-side and client-side secret presence to fire; we shipped both code paths but the shared secret hasn't been generated yet.
+
+Vision cost: $0.0259; cumulative **$0.282**.
+
+### MANUAL STEP REQUIRED — Jake, before next harness run will reach `/design-system/*`
+
+```
+1. Generate the shared secret locally:
+   openssl rand -base64 32
+
+2. Add to Vercel project env vars:
+   - Vercel → nightwork-platform → Settings → Environment Variables → Add
+   - Name:   VERIFICATION_BYPASS_SECRET
+   - Value:  <paste from step 1>
+   - Environments: Preview, Development
+     (DO NOT add to Production — server-side middleware unconditionally
+      blocks bypass when VERCEL_ENV=production, but defense-in-depth
+      says: don't even surface the secret to the prod environment)
+
+3. Add to GitHub Actions secrets:
+   gh secret set VERIFICATION_BYPASS_SECRET \
+     --body '<same value>' \
+     --repo jakeross838/nightwork-platform
+
+4. (Optional, for local-mode harness runs):
+   echo 'VERIFICATION_BYPASS_SECRET=<same value>' >> .env.local
+
+5. Trigger fresh harness run:
+   git -C nightwork-platform commit --allow-empty \
+     -m "ci: trigger harness with VERIFICATION_BYPASS_SECRET configured"
+   git push
+```
+
+### Halt for Jake — manual step gate
+
+After step 3, Layer 3's vision reasoning should shift from "404 page" → real `/design-system/*` content (palette swatches, typography token table, Document Review pattern, cost-code metadata). All 4 ACs become evaluable. WI-004 surfaces with a real verdict (PASS / FAIL on actual rendered content).
+
+If anything goes wrong post-secret-setup (bypass not firing, new 404, vision misread the content) — that's outcome B/C territory and a fresh halt-for-Jake.
+
+**Halting per nwrp68 STEP 2 manual-step gate.** Code is shipped; awaiting Jake secret setup + run trigger.
+
+**Budget status:** Attempt 12 (continuous block per nwrp66/67/68 framing). Cumulative vision spend **$0.282** (well under $5 ceiling). The bypass-inert run cost the same as a normal run because vision still ran and 404'd; idempotency cache will keep cost flat on the next run if criteria don't change.
+
+**Cost-cap status:** $0.0259 this run.
