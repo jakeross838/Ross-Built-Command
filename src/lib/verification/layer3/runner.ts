@@ -61,7 +61,7 @@ import {
 import { CostCap } from "./cost-cap";
 import {
   chromiumLaunchArgs,
-  vercelBypassHeaders,
+  harnessBrowserHeaders,
   supabaseSessionCookies,
 } from "../_browser";
 
@@ -182,12 +182,13 @@ export async function runLayer3(
 
       let visionResult: VisionResult;
       try {
-        // Per nwrp63 FIX 5: thread Vercel deployment-protection bypass into
-        // Playwright. Without this the chromium navigation hits Vercel SSO
-        // login and the screenshot captures that page, not the app.
+        // Per nwrp63 FIX 5 + nwrp68 FIX 9: thread Vercel + Nightwork
+        // verification bypass headers into Playwright. harnessBrowserHeaders()
+        // merges both — Vercel SSO bypass for protected previews and
+        // Nightwork app verification bypass for /design-system/* routes.
         const context = await browser.newContext({
           viewport: { width: 1280, height: 800 },
-          extraHTTPHeaders: vercelBypassHeaders(),
+          extraHTTPHeaders: harnessBrowserHeaders(),
         });
         // Per nwrp67 FIX 8: attach Supabase auth cookies so the Nightwork
         // Next.js middleware doesn't redirect to /login. Without this every

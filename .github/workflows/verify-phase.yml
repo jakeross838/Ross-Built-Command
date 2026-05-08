@@ -68,6 +68,14 @@ jobs:
       # If unset, route-status sends no bypass header (works for unprotected
       # local dev URLs).
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      # Nightwork app-layer verification bypass for /design-system/* routes
+      # (per nwrp68 FIX 9). Generated locally with `openssl rand -base64 32`,
+      # set in Vercel project env (Preview environment only — never in
+      # Production), and passed here so the harness can attach the header.
+      # Server-side gate in src/middleware.ts requires this secret +
+      # x-nightwork-verification-bypass header + VERCEL_ENV != production.
+      # If unset, harness behaves as before (fail-closed; no bypass).
+      VERIFICATION_BYPASS_SECRET: ${{ secrets.VERIFICATION_BYPASS_SECRET }}
 
     steps:
       - name: Checkout

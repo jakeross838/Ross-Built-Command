@@ -52,6 +52,53 @@ export function vercelBypassHeaders(): Record<string, string> {
 }
 
 /**
+ * Nightwork application-layer verification-bypass header for
+ * `/design-system/*` routes (per nwrp68; pairs with `isVerificationBypass`
+ * in `src/middleware.ts`, commit a3f22b1).
+ *
+ * The harness fixture user is org-admin (not platform_admin) and the
+ * design-system playground is gated to platform_admin in production.
+ * Without the bypass, navigation to `/design-system/*` returns 404 (the
+ * middleware's "404 to non-staff" wall). This header tells the middleware
+ * the request is from the verification harness and short-circuits the
+ * platform_admin check on `/design-system/*` only.
+ *
+ * Defense-in-depth (all enforced server-side in middleware):
+ * - Header value must equal `VERIFICATION_BYPASS_SECRET` (timing-safe)
+ * - Bypass only applies to `/design-system/*` (server checks pathname)
+ * - Bypass NEVER works in `VERCEL_ENV=production`
+ * - Audit-logged on every bypass use (server-side console.log)
+ *
+ * Returns empty object when `VERIFICATION_BYPASS_SECRET` is unset —
+ * harness behaves as before, fail-closed.
+ *
+ * Combined with `vercelBypassHeaders()` and `supabaseSessionCookies()`,
+ * the harness now has the full auth chain: Vercel SSO bypass → Nightwork
+ * Supabase cookie auth → Nightwork app verification bypass on
+ * /design-system/*.
+ */
+export function nightworkVerificationBypassHeaders(): Record<string, string> {
+  const secret = process.env.VERIFICATION_BYPASS_SECRET;
+  if (!secret) return {};
+  return {
+    "x-nightwork-verification-bypass": secret,
+  };
+}
+
+/**
+ * Combined extra-HTTP-headers for Playwright `browser.newContext()`.
+ * Convenience wrapper that merges Vercel + Nightwork verification bypass
+ * headers in one call. Both helpers are idempotent with their respective
+ * secrets unset.
+ */
+export function harnessBrowserHeaders(): Record<string, string> {
+  return {
+    ...vercelBypassHeaders(),
+    ...nightworkVerificationBypassHeaders(),
+  };
+}
+
+/**
  * Attaches the Supabase auth session as a cookie on a Playwright BrowserContext
  * so that subsequent `page.goto(...)` requests authenticate as the harness
  * fixture user. Without this, the Nightwork Next.js middleware redirects

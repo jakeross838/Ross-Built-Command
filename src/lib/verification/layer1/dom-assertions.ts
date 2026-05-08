@@ -28,7 +28,7 @@ import type {
 import { deriveIdempotencyKey } from "../idempotency";
 import {
   chromiumLaunchArgs,
-  vercelBypassHeaders,
+  harnessBrowserHeaders,
   supabaseSessionCookies,
   type PlaywrightCookie,
 } from "../_browser";
@@ -103,7 +103,7 @@ export async function runDomAssertions(
       // real DOM criterion against a protected preview.
       const context = await browser.newContext({
         viewport: { width: viewport.width, height: viewport.height },
-        extraHTTPHeaders: vercelBypassHeaders(),
+        extraHTTPHeaders: harnessBrowserHeaders(),
       });
       // Per nwrp67 FIX 8: attach Supabase auth cookies after newContext()
       // so the Nightwork app middleware doesn't redirect to /login.
