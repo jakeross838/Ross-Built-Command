@@ -1242,3 +1242,106 @@ The harness is **operationally complete** — the remaining FAILs are real, acti
 **Cumulative vision spend:** $0.361 across 7 productive runs. Well under $5 ceiling. Idempotency cache will short-circuit on the same commit.
 
 **Cost-cap status:** $0.0268 this run.
+
+---
+
+## 2026-05-08T14:55Z — nwrp69 diagnostic: /design-system/patterns runtime error root-caused. HALT before fix.
+
+**Action (CATEGORY-X investigation authorized; diagnose-only):**
+
+### STEP 1 — Vercel runtime logs
+
+Pulled via `vercel logs https://nightwork-platform-qzljxasrq... --no-follow --level error`:
+
+```
+10:34:09.88  ε GET /design-system/patterns
+TypeError: n.useRef is not a function
+    at /var/task/.next/server/app/design-system/patterns/page.js:1:12289
+    at em (.../next-server/app-page.runtime.prod.js:12:134808)
+    at e (.../next-server/app-page.runtime.prod.js:12:138055)
+    at e_ (.../next-server/app-page.runtime.prod.js:12:138168)
+    at em (...:135321)
+    at e (...:138055)
+    at e_ (...:138168)
+    at Array.toJSON (...:135777)
+    at stringify (<anonymous>)
+    at eE (...:142242)
+{ digest: '1373416667' }
+```
+
+`ε` glyph in Vercel logs = Edge/middleware. The error is thrown during **Server-Component rendering** of `/design-system/patterns/page.js` — specifically during JSON serialization (`stringify` in stack trace) when React tries to serialize a Client Component element that has hooks attached.
+
+### STEP 2 — Diagnose
+
+The patterns page (`src/app/design-system/patterns/page.tsx:1715 lines, no "use client" directive`) is a **Server Component** that imports several UI components. Of those imports:
+
+| Import | File | Has `"use client"`? | Uses hooks? |
+|---|---|---|---|
+| `Card` | `@/components/nw/Card.tsx` | NO | NO (just types from React) |
+| `Eyebrow` | `@/components/nw/Eyebrow.tsx` | NO | NO |
+| `Badge` | `@/components/nw/Badge.tsx` | NO | NO |
+| `Button` | `@/components/nw/Button.tsx` | **YES** ✓ | uses `forwardRef` |
+| `Money` | `@/components/nw/Money.tsx` | NO | NO |
+| `DataRow` | `@/components/nw/DataRow.tsx` | NO | NO |
+| `StatusDot` | `@/components/nw/StatusDot.tsx` | NO | NO |
+| **`Textarea`** | **`@/components/ui/textarea.tsx`** | **NO** ✗ | **uses `React.forwardRef` + `TextareaAutosize`** |
+
+**Root cause: `src/components/ui/textarea.tsx` is missing the `"use client"` directive.**
+
+Verbatim head -3 of `textarea.tsx`:
+```ts
+import * as React from "react"
+import TextareaAutosize, {
+  type TextareaAutosizeProps,
+```
+
+vs. `Button.tsx` (correctly authored):
+```ts
+"use client";
+
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+```
+
+`Textarea` uses `React.forwardRef` (line 36) and re-exports `TextareaAutosize` from `react-textarea-autosize` — a library that calls `useRef` internally. When the patterns page (Server Component) imports `Textarea` without the boundary directive, Next.js tries to render the textarea server-side → `TextareaAutosize` calls `useRef()` → **server-side React doesn't have hook implementations → `n.useRef is not a function`**.
+
+Why local `npm run build` doesn't catch it: Next.js's static-analysis check for missing `"use client"` doesn't cover all hook-using libraries (especially via re-exports through `react-textarea-autosize`). The error only manifests at runtime during prod-mode serialization.
+
+Why other design-system pages render OK: they don't import `Textarea`. Only the patterns page does (line 40, used in the Document Review demo for the inline-edit "Note" field).
+
+### Confidence: VERY HIGH
+
+The error message + stack trace + import analysis converge on this single cause. Fix verification would be:
+1. Add `"use client";` as line 1 of `src/components/ui/textarea.tsx`
+2. Push, deploy, fetch /design-system/patterns — should render without runtime error
+
+### Recommended fix path
+
+**Single-line fix in `src/components/ui/textarea.tsx`:** prepend `"use client";` (with semicolon, blank line after, before `import * as React...`).
+
+This is a CATEGORY-X change (touches `src/components/ui/`, application code outside `src/lib/verification/`). Per nwrp69: **HALT for Jake authorization before applying**.
+
+### Side effects of the fix
+
+Adding `"use client"` to `textarea.tsx`:
+- ✓ Fixes the runtime error on /design-system/patterns
+- ✓ Aligns with the existing pattern for shadcn/ui components that use forwardRef + autoresize lib
+- Side effect: any Server Component importing Textarea will treat it as a Client Component (which it already effectively is — server rendering was always broken). No semantic change for already-correct callers; eliminates the runtime crash.
+- This does NOT affect the typecheck or local dev mode (both worked before; the error was prod-build-specific).
+
+### Other potentially-affected components
+
+If the same pattern exists elsewhere, the harness should surface it via similar runtime errors. Worth a sweep:
+```bash
+grep -rL '"use client"' src/components/ui/*.tsx | xargs -I{} grep -l "forwardRef\|useRef\|useState\|useEffect" {}
+```
+But that's incremental hardening — not needed to unblock WI-004.
+
+### Halt for Jake — fix authorization needed
+
+Single-line addition to `src/components/ui/textarea.tsx`. Touches Plans 1-5 application code. Per nwrp69 STEP 27: "DO NOT FIX YET. Halt with diagnostic for Jake review. The fix authorization is separate."
+
+Awaiting Jake decision:
+1. **Authorize the 1-line fix** + trigger fresh harness run → expect /design-system/patterns to render → AC-138 (Document Review pattern) and AC-139 (cost-code metadata = WI-004) get real verdicts.
+2. **OR** Jake fixes locally + pushes, harness picks up automatically.
+
+**Cumulative vision spend:** $0.361. No additional spend incurred during this diagnostic (no harness re-run).
