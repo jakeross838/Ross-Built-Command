@@ -1057,3 +1057,89 @@ If anything goes wrong post-secret-setup (bypass not firing, new 404, vision mis
 **Budget status:** Attempt 12 (continuous block per nwrp66/67/68 framing). Cumulative vision spend **$0.282** (well under $5 ceiling). The bypass-inert run cost the same as a normal run because vision still ran and 404'd; idempotency cache will keep cost flat on the next run if criteria don't change.
 
 **Cost-cap status:** $0.0259 this run.
+
+---
+
+## 2026-05-08T14:20Z — Run #25560571687 on `fa3be66`: bypass still not firing — GH secret missing. HALT (outcome B).
+
+**Action:** Triggered fresh harness run via empty commit per Jake's instruction after he configured `VERIFICATION_BYPASS_SECRET` in Vercel (Preview only) and stated GH Actions secrets were set.
+
+### Verdict counts (Run #25560571687)
+
+- **PASS: 63** (unchanged)
+- **FAIL: 4** (all 4 Layer 3 ACs — *identical 404 reasoning to prior 3 runs*)
+- **SKIP: 1**
+- **Vision cost:** $0.0258 (cumulative **$0.308**)
+
+Vision reasoning verbatim (sample): *"The screenshot shows a 404 'This page could not be found.' error page, meaning /design-system/palette does not exist."* — same as nwrp67 + nwrp68 STEP-2 runs.
+
+### Diagnosis (outcome B — bypass not working as intended)
+
+**Root cause: `VERIFICATION_BYPASS_SECRET` is NOT present in GitHub Actions secrets.**
+
+#### Evidence #1 — workflow log inspection
+
+Every step header prints the resolved env var. For un-set secrets, GitHub Actions resolves to empty string (rather than redacting with `***`):
+
+```
+verify  Run verification harness  2026-05-08T14:17:56...   VERIFICATION_BYPASS_SECRET:
+verify  Setup Node                                          VERIFICATION_BYPASS_SECRET:
+verify  Install dependencies                                VERIFICATION_BYPASS_SECRET:
+... (every step shows empty value)
+```
+
+By comparison, properly-set secrets in the same job env block render as `***`. So the `${{ secrets.VERIFICATION_BYPASS_SECRET }}` reference resolved to undefined → empty string → harness `nightworkVerificationBypassHeaders()` returned `{}` (fail-closed) → no header attached → middleware fell through to the 404 path.
+
+#### Evidence #2 — `gh secret list` direct query
+
+```
+$ gh secret list --repo jakeross838/nightwork-platform | grep VERIFICATION
+(no output)
+
+$ gh secret list --repo jakeross838/nightwork-platform | grep -E "VERIFICATION|VERCEL"
+VERCEL_AUTOMATION_BYPASS_SECRET   2026-05-07T18:16:02Z
+VERCEL_TOKEN                      2026-05-06T16:29:59Z
+```
+
+Only `VERCEL_AUTOMATION_BYPASS_SECRET` (set during nwrp61) and `VERCEL_TOKEN` exist. `VERIFICATION_BYPASS_SECRET` is missing from GH.
+
+#### Evidence #3 — middleware bypass code is correct
+
+The middleware code itself (`a3f22b1`) and harness wiring (`829d6e3`) are working as designed. Run #25559090719 (immediately after STEP 2 push, before any secret config) showed the same fail-closed posture, confirming the code path is wired but inert without both server-side AND CI-side secrets.
+
+### Three possible causes
+
+1. **Secret set in wrong scope** — GH supports secrets at org / repo / environment levels. If Jake added it to a repository **environment** (e.g. "production") rather than at the repo level, it wouldn't be available to the workflow which doesn't use `environment:` blocks.
+
+2. **Different secret name** — the workflow expects exactly `VERIFICATION_BYPASS_SECRET` (`.github/workflows/verify-phase.yml:78`). A typo (e.g., `NIGHTWORK_VERIFICATION_BYPASS_SECRET`, `VERIFICATION_BYPASS`, trailing whitespace) would silently resolve empty.
+
+3. **GH UI didn't save** — occasionally the "Add secret" form fails silently if the value contains characters the form misinterprets, or if the user navigates away before submission completes.
+
+### Recommended remediation (one of three paths)
+
+**A. Verify + retry via gh CLI (fastest, ~30s):**
+```bash
+gh secret set VERIFICATION_BYPASS_SECRET \
+  --body '<paste the same value used in Vercel>' \
+  --repo jakeross838/nightwork-platform
+
+# Verify:
+gh secret list --repo jakeross838/nightwork-platform | grep VERIFICATION_BYPASS_SECRET
+# Should show: VERIFICATION_BYPASS_SECRET   2026-05-08T...
+```
+
+**B. Check GH UI for misnamed secret:** Settings → Secrets and variables → Actions → look for any secret with a similar name (typos / case mismatch / trailing whitespace).
+
+**C. Paste the secret value back to me:** I can run `gh secret set` directly (same redaction protocol as nwrp61 — no echo, no log, no commit).
+
+### Important: secret value MUST match Vercel's
+
+The middleware compares the harness-provided header against `process.env.VERIFICATION_BYPASS_SECRET` *on the deployed Vercel preview*. If Jake's Vercel env value differs from the GH Actions secret value, the timing-safe compare will fail mismatch → 404 still. The two values must be **byte-identical**.
+
+### Halting per nwrp68 outcome B
+
+The bypass code is correct and tested fail-closed. The remaining work is operational secret config. Awaiting Jake to confirm secret state via one of the three paths above.
+
+**Budget:** $0.308 cumulative; well under $5 ceiling. The bypass-inert run cost is small ($0.026) but adds up if we keep iterating without secret in place — please verify before triggering another run.
+
+**Cost-cap status:** $0.0258 this run.
