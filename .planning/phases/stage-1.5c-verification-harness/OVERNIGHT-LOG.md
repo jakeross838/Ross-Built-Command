@@ -1345,3 +1345,58 @@ Awaiting Jake decision:
 2. **OR** Jake fixes locally + pushes, harness picks up automatically.
 
 **Cumulative vision spend:** $0.361. No additional spend incurred during this diagnostic (no harness re-run).
+
+---
+
+## 🟢 2026-05-09T19:46:03Z — Run #25610086532 on `3416bb4`: FIX 10 worked. WI-004 verdict surfaces. First Layer 3 PASS on real content. HALT per stop condition.
+
+**Action (nwrp70 PART 1, autonomous CATEGORY-A):**
+
+Prepended `"use client";` to `src/components/ui/textarea.tsx` (single-line fix per nwrp69 diagnostic). Sweep across `src/components/**/*.tsx` for similar missing-directive cases on hook-using files returned **zero additional matches** — targeted fix complete. Local typecheck clean. Pushed at `3416bb4`.
+
+### Verdict counts (Run #25610086532)
+
+- **PASS: 64** (was 63; **+1 — first Layer 3 PASS on real /design-system content** ✨)
+- **FAIL: 3** (was 4; −1 — Document Review pattern AC moved to PASS)
+- **SKIP: 1**
+- **Vision cost:** $0.0271 (cumulative **$0.388**)
+
+### Layer 3 verdict shape
+
+| AC | Page | Verdict | Conf | Reasoning |
+|---|---|---|---|---|
+| AC-08a-130 | `/design-system/palette` | FAIL | 0.85 | Vision sees Set B swatches `#3B5864 (slate-tile)`, `#1A2830 (slate-deep)`, `#132028 (slate-deeper)` — **no `#5B8699` accent visible** |
+| AC-08a-131 | `/design-system/typography` | FAIL | 0.82 | Type scale table shows `--fs-label (eyebrow)` with UPPERCASE 'STATUS TIMELINE' sample, but **no explicit `0.14em` tracking value** displayed in token-table rows |
+| **AC-08a-138** | `/design-system/patterns` | **PASS** | **0.95** | **Patterns page renders cleanly. Document Review pattern visible — file preview LEFT, right-rail panels (Invoice details, Cost code allocation, AI extraction, Lien release), gold-standard layout confirmed.** ✨ |
+| AC-08a-139 | `/design-system/patterns` | FAIL | 0.9 | "While 'Cost code allocation' appears as a label in the ASCII layout diagram, there is no actual invoice surface (WI-004) displaying a 'Cost code' field with a non-empty value — **this is documentation, not a live invoice record**." |
+
+### WI-004 verdict (AC-08a-139): **FAIL conf 0.9 — page is documentation, not a live invoice surface**
+
+The harness has finally produced a substantive WI-004 verdict on real content. Vision reasoning is clear and actionable:
+
+- The `/design-system/patterns` page renders the Document Review pattern as **documentation** — it shows ASCII layout diagrams + named labels ("Cost code allocation") + structural descriptions.
+- It does NOT render an **actual rendered invoice record** with a populated cost-code field on each line item.
+- WI-004's claim ("cost code visible on each invoice line item — no blank cells") **cannot be evaluated against a documentation surface**. It needs a real invoice review surface (production route or an interactive prototype) where line items render with real fixture data.
+
+This matches what I noticed during nwrp66 STEP 2 authoring: the patterns page renders single-invoice METADATA via `DataRow label="Cost code"` (Pattern1DocumentReview), not a multi-row line-items table. The criterion was always going to surface this gap — and now it has.
+
+### What's confirmed working
+
+- ✓ Vercel deployment-protection bypass
+- ✓ Supabase session cookie attachment
+- ✓ Nightwork app verification-bypass header
+- ✓ Layer 3 vision API
+- ✓ Real `/design-system/*` content rendering (FIX 10 unblocked patterns)
+- ✓ **First Layer 3 PASS on real content** — pattern recognition + vision reasoning vs. real screenshot
+
+### Halt for Jake — per nwrp70 stop condition
+
+> "WI-004 verdict surfaces (any conf level — Jake reviews)"
+
+WI-004 surfaced. Halting.
+
+**Cumulative vision spend $0.388** (well under $4 ceiling; well under $5 cumulative).
+
+**Cost-cap status:** $0.0271 this run. Next run on same commit would be ≈ $0 (idempotency cache).
+
+**HALT-FOR-JAKE.md written separately with the full picture for review.**
