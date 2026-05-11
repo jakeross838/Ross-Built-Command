@@ -1647,3 +1647,32 @@ Layer 3 PASS detail:
 Plan 8b is shipped. State machine + halt-artifact emission + iter-3 bounding + CostCap singleton are all in place. **However**, the actual runLoop transitions get exercised by Plan 11 self-test (Wave 8 — not yet run). GATE 1's "Plan 11 self-test outcome on loop transitions" is forthcoming, not surfaced yet.
 
 HALT-FOR-JAKE.md updated with GATE 1 review.
+
+---
+
+## 2026-05-11T15:00Z — Wave 6 + Wave 7 shipped autonomously. GATE 2 reached.
+
+### Wave 6 (Plan 9 — calibration log)
+
+2 commits:
+- `4b4a81d` Task 1 — `.planning/calibration-log.md` + `.planning/calibration-log-schema.md` + .gitignore carve-outs. 14 JSON front-matter fields + 5 markdown body sections. Plan-review watchpoint #4 anchored.
+- `320a1fc` Task 2 — `nightwork-custodian.md` "Calibration log writer" section. 14-field extraction rules table + Don't list + watchpoint #4 self-check.
+
+### Wave 7 (Plan 10 — docs)
+
+2 commits:
+- `235312a` Task 1 — `.planning/architecture/VERIFICATION-PIPELINE.md` (420 lines, 20+ sections). Canonical pipeline doc.
+- `4219b63` Task 2 — MASTER-PLAN.md D-073..D-077 + PHILOSOPHY.md §9 + CLAUDE.md Testing Rule + CONTEXT.md Forward documents. deferred-items.md pre-existed (AC-10-19).
+
+### Wave 6 + 7 verification — Run #25677644825 on `4219b63`
+
+- PASS: 66 (unchanged from GATE 1)
+- FAIL: 1 (AC-139 documented WI-004 surface gap)
+- SKIP: 1 (Layer 2 introspection)
+- Vision cost: $0.0261; cumulative **$0.506** / $5 ceiling
+
+No regressions. Plans 9 + 10 are pure docs/agent updates; harness verdicts unchanged.
+
+### GATE 2 reached (per nwrp73)
+
+All canonical docs authored. HALT-FOR-JAKE.md updated with full GATE 2 summary, cross-reference cascade verification, recommended path (continue to Wave 8 + /nightwork-qa for GATE 3 merge auth).
