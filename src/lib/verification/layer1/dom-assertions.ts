@@ -30,6 +30,7 @@ import {
   chromiumLaunchArgs,
   harnessBrowserHeaders,
   supabaseSessionCookies,
+  supabaseLocalStorageInitScript,
   type PlaywrightCookie,
 } from "../_browser";
 import type { HarnessSessionLike } from "../types";
@@ -110,6 +111,15 @@ export async function runDomAssertions(
       if (authCookies.length > 0) {
         await context.addCookies(authCookies);
       }
+      // Per nwrp79 Y.2: also inject the session into localStorage so
+      // client-side hooks that call supabase.auth.getUser() can hydrate.
+      // Cookies cover server-side; localStorage covers client-side. No-op
+      // if no session.
+      const initScript = supabaseLocalStorageInitScript(
+        harness_session?.supabase_url,
+        harness_session?.raw_session
+      );
+      await context.addInitScript(initScript);
       const page: Page = await context.newPage();
 
       for (const criterion of domCriteria) {

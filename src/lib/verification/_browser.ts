@@ -203,3 +203,54 @@ export function supabaseSessionCookies(
     sameSite: "Lax",
   }));
 }
+
+/**
+ * Inject Supabase session into the browser's localStorage so client-side
+ * `@supabase/supabase-js` (and `@supabase/ssr`'s `createBrowserClient`,
+ * which also falls back to localStorage in some auth-state code paths)
+ * can hydrate `auth.getUser()` / `auth.getSession()` from the harness
+ * fixture user.
+ *
+ * Pairs with `supabaseSessionCookies()` (nwrp67 FIX 8) — cookies handle
+ * server-side `updateSession()`; this handles client-side hooks like
+ * `useCurrentRole()` that call `supabase.auth.getUser()` from the browser.
+ *
+ * Per Block N+1 diagnostic (nwrp78 finding): the cookie-only injection
+ * resolves server-side auth (route 200/308, body renders, RLS works)
+ * but leaves client-side `auth.getUser()` returning null on routes whose
+ * nav/permission UI depends on a client-side useCurrentRole hook (e.g.
+ * /today's 8-section nav). This injects the SAME session payload via
+ * `context.addInitScript()` so localStorage is populated BEFORE any
+ * `<script>` runs on the navigated page.
+ *
+ * Storage key convention: `sb-<project-ref>-auth-token` — same name as
+ * the SSR cookie, plain JSON (no `base64-` prefix; localStorage stores
+ * raw JSON per @supabase/supabase-js default LocalStorage adapter).
+ *
+ * Idempotent with rawSession=undefined: returns the empty no-op script
+ * so the caller can unconditionally attach without a branch.
+ *
+ * @returns The init-script source string ready for `context.addInitScript(string)`
+ */
+export function supabaseLocalStorageInitScript(
+  supabaseUrl: string | undefined,
+  rawSession: unknown | undefined
+): string {
+  if (!supabaseUrl || !rawSession) return "// supabase-localStorage no-op (no session)";
+
+  let projectRef: string;
+  try {
+    projectRef = new URL(supabaseUrl).hostname.split(".")[0];
+  } catch {
+    return "// supabase-localStorage no-op (bad URL)";
+  }
+  if (!projectRef) return "// supabase-localStorage no-op (no projectRef)";
+
+  const key = `sb-${projectRef}-auth-token`;
+  const value = JSON.stringify(rawSession);
+  // Embed via JSON.stringify so any quotes in the payload are escaped
+  // correctly into a JS string literal.
+  const keyLit = JSON.stringify(key);
+  const valueLit = JSON.stringify(value);
+  return `try { window.localStorage.setItem(${keyLit}, ${valueLit}); } catch (e) { /* localStorage unavailable (e.g. data: scheme); harmless */ }`;
+}
