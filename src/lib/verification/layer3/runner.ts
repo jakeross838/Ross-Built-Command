@@ -225,6 +225,93 @@ export async function runLayer3(
           waitUntil: "load",
           timeout: 45_000,
         });
+
+        // ── Y.1.D one-time diagnostic (nwrp80) ────────────────────────────
+        // TEMPORARY: will be reverted after Y.1.D analysis completes.
+        // Captures client-side auth state on /today (the route where AC-1-8
+        // fails) to determine whether cookies are reaching client JS, whether
+        // localStorage was populated, and whether @supabase/ssr's
+        // createBrowserClient can resolve a user. Redacted: names + sizes only,
+        // never raw token values.
+        if (route === "/today" || route.endsWith("/today")) {
+          try {
+            const probe = await page.evaluate(async () => {
+              const out: Record<string, unknown> = {};
+              // Cookies: parse names + lengths only (NO raw values)
+              const rawCookies = document.cookie || "";
+              const cookieEntries = rawCookies
+                .split(";")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .map((c) => {
+                  const eq = c.indexOf("=");
+                  return eq === -1
+                    ? { name: c, len: 0 }
+                    : { name: c.slice(0, eq), len: c.length - eq - 1 };
+                });
+              out.cookies_count = cookieEntries.length;
+              out.cookies = cookieEntries.map((c) => ({
+                name: c.name,
+                len: c.len,
+              }));
+              out.cookies_sb_only = cookieEntries
+                .filter((c) => c.name.startsWith("sb-"))
+                .map((c) => ({ name: c.name, len: c.len }));
+              // localStorage: sb-* keys with value lengths
+              const ls: Array<{ key: string; len: number }> = [];
+              try {
+                for (let i = 0; i < window.localStorage.length; i += 1) {
+                  const k = window.localStorage.key(i);
+                  if (k && k.startsWith("sb-")) {
+                    ls.push({
+                      key: k,
+                      len: (window.localStorage.getItem(k) || "").length,
+                    });
+                  }
+                }
+              } catch {
+                /* localStorage unavailable */
+              }
+              out.localStorage_sb = ls;
+              // sessionStorage: sb-* keys
+              const ss: Array<{ key: string; len: number }> = [];
+              try {
+                for (let i = 0; i < window.sessionStorage.length; i += 1) {
+                  const k = window.sessionStorage.key(i);
+                  if (k && k.startsWith("sb-")) {
+                    ss.push({
+                      key: k,
+                      len: (window.sessionStorage.getItem(k) || "").length,
+                    });
+                  }
+                }
+              } catch {
+                /* sessionStorage unavailable */
+              }
+              out.sessionStorage_sb = ss;
+              // Try to construct a one-off Supabase client and read getUser()
+              // — this mirrors what useCurrentRole does. If the SDK isn't
+              // available as a window global, just note that.
+              out.window_supabase_present = Boolean(
+                (window as unknown as { supabase?: unknown }).supabase
+              );
+              return out;
+            });
+            // Redacted log line — appears in GH Actions log under "Run verification harness"
+            // step. Has a distinctive marker so it's grep-able from the run log.
+            console.log(
+              "[Y.1.D-diagnostic] /today client-side auth state probe:",
+              JSON.stringify(probe)
+            );
+          } catch (probeErr) {
+            console.log(
+              "[Y.1.D-diagnostic] probe failed:",
+              probeErr instanceof Error ? probeErr.message : String(probeErr)
+            );
+          }
+        }
+        // ── end Y.1.D diagnostic ──────────────────────────────────────────
+
         // nwrp70/71 FIX 11: fullPage screenshot (capped at 7800px height) so
         // long-scroll design-system pages don't lose below-the-fold content.
         // Pre-flight diagnostic confirmed #5B8699 stone-blue (palette/page.tsx:63)
