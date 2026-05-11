@@ -3004,3 +3004,17 @@ Subsequent PHILOSOPHY.md changes (e.g., a Stage 1.5d re-evaluation) follow PROPA
 This document is the canonical CP2-picking document. Per SPEC E5 + nwrp16 — it ends with §7's locked-direction placeholder ("the marker file at `.planning/design/CHOSEN-DIRECTION.md` is the placeholder until Jake picks"). Once Jake picks at CP2, the marker file is populated and §6's downstream propagation triggers. The actual visual playground that Jake browses is at `/design-system/philosophy` once T18-T26 lands.
 
 **HALT — do not proceed to T18 (playground build) until this document is read and CP2 picking has happened.**
+
+---
+
+## 9. Verification-first development pattern (per stage-1.5c-verification-harness D-073)
+
+The Nightwork verification pipeline (`.planning/architecture/VERIFICATION-PIPELINE.md`) verifies design decisions made in this PHILOSOPHY document at every commit. The link is concrete:
+
+- **Direction lock (CP2 = Site Office + Set B per D-037)** is verified mechanically by `.claude/hooks/nightwork-post-edit.sh` (forbidden-token regex catches palette drift) and visually by the harness Layer 3 (Claude vision against `<criteria>` blocks like `"Page /design-system/philosophy: Site Office signature visible (tracking-eyebrow 0.14em UPPERCASE eyebrows)"`).
+- **Slate Set B palette tokens** are checked at hook level (no hardcoded hex outside `globals.css`/`tailwind.config.*`) AND at vision level (`"Page /design-system/palette: 'stone-blue' label visible on a slate-toned swatch"`).
+- **Document Review pattern** (file preview LEFT + right-rail panel + audit timeline BELOW) is a vision-criterion: `"Page /design-system/patterns: Document Review pattern visible — file preview LEFT, structured invoice fields right-rail"`.
+
+The implication for design changes: a new direction or palette pick (CP3, CP4) requires updating both the design tokens (mechanical) AND the Layer 3 vision criteria (semantic) so the harness verifies the new lock at every commit.
+
+The PHILOSOPHY document remains the design intent + constraints; the harness is the enforcement mechanism. Design drift is impossible if both are kept in sync.
