@@ -2,26 +2,30 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: halt-pending
-last_updated: "2026-05-06T22:00:00Z"
+status: shipped
+last_updated: "2026-05-11T16:26:00Z"
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 18
-  completed_plans: 10
-  percent: 56
+  completed_plans: 18
+  percent: 100
 ---
 
 # Nightwork — State
 
-**Updated:** 2026-05-06 (Plan 6 of stage-1.5c-verification-harness shipped — Wave 3 single-plan dispatch; first GH Action on main from this branch).
+**Updated:** 2026-05-11 (stage-1.5c-verification-harness SHIPPED — merged to main at `128d92a`).
 
-## Active phase
+## Phase shipped: stage-1.5c-verification-harness
 
-- Branch: `phase/1.5-c-verification-harness`
-- Phase: stage-1.5c-verification-harness — 3-layer verification pipeline runnable on `phase/*` branches via Vercel preview URL + GitHub Actions.
-- Wave: 3 — GitHub Actions workflow (Plan 6) shipped, `halt_after: true`. Awaiting Jake review before Wave 4 dispatch.
-- Status: Plan 6 SUMMARY at `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-6-github-actions-workflow-SUMMARY.md`. Wave 4 will dispatch Plan 7 (new agents — `gsd-research-standards` + planner mandate) after halt review. **First push to remote will trigger Plan 6 verifying Plan 6 (watchpoint #8 meta-test).**
+- **Branch:** `phase/1.5-c-verification-harness` (95 commits, 2026-05-06 → 2026-05-11)
+- **Merge commit:** `128d92a` (no-ff) on main, 2026-05-11T16:25:58-04:00
+- **Final harness baseline:** PASS=68 / FAIL=1 (documented WI-004 surface gap) / SKIP=1 (Wave 1.1 dep). Run #25682584177 on `e60a677`.
+- **Final /nightwork-qa verdict:** WARNING (single carry-forward NODE_ENV vs VERCEL_ENV one-liner; not blocking).
+- **Vision spend:** ~$0.573 / $5.00 ceiling (11.5% used).
+- **What shipped:** 3-layer verification harness (Layer 1 mechanical/DOM, Layer 2 industry-standards, Layer 3 Claude vision) with runLoop state machine + 3-iteration bounded fix loop + CostCap singleton; GitHub Actions workflow + Vercel preview discovery + auth chain (deployment-protection bypass → Supabase session cookie → /design-system gate); criteria mandate (D-17/D-18/D-19) with planner-prompt + plan-review + spec-checker enforcement; calibration-log; canonical VERIFICATION-PIPELINE.md doc; nightwork-smoke-tester deprecated; new gsd-research-standards + gsd-fix-executor agents; harness fixture org (migrations 00092 + 00093).
+- **GATE history:** GATE 1 (post-Wave-5 loop machinery review) → GATE 2 (post-Wave-7 doc phase complete) → GATE 3 (post-/nightwork-qa merge authorization).
+- **Follow-ups queued:** NODE_ENV → VERCEL_ENV one-line fix in `src/middleware.ts:179`; PLAN-REVIEW-security.md stale-artifact cleanup; gsd-planner.md manual sync per criteria-template.md instructions.
 
 ## Recent work shipped (per git log + canonical plan)
 

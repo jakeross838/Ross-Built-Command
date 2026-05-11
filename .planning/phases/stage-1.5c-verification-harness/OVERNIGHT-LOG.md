@@ -1771,3 +1771,61 @@ Run `#25682508130` queued on `e60a677` via auto-trigger on push. Expected baseli
 - Headroom: ~$4.461
 
 GATE 3 final state reached. Awaiting Jake merge authorization.
+
+---
+
+## 2026-05-11T16:26Z — GATE 3 COMPLETE. Phase SHIPPED to main.
+
+### Path B completion (per nwrp75)
+
+Run #25682584177 on `e60a677` completed at 16:24:24Z. Baseline confirmed:
+
+- **PASS: 68**
+- **FAIL: 1** (AC-139 / WI-004 — documented surface gap, intentional)
+- **SKIP: 1** (Wave 1.1 dep)
+
+Vision cost this run: $0.0336. Cumulative: ~$0.573 / $5.00.
+
+No regressions vs prior runs. Proceeded with merge per nwrp75 Option 2.
+
+### Merge sequence
+
+1. Committed untracked PREFLIGHT-PASS.md artifact (audit trail): `035c09a`.
+2. Pushed `035c09a` to origin/phase/1.5-c-verification-harness.
+3. `git checkout main` → `git pull origin main` (already up to date).
+4. `git merge --no-ff origin/phase/1.5-c-verification-harness` with full phase summary commit message.
+5. **Merge commit: `128d92a` at 2026-05-11T16:25:58-04:00.**
+6. Pushed to origin/main: `7607bbf..128d92a`.
+
+### Phase metrics
+
+| Metric | Value |
+|---|---|
+| Phase start | 2026-05-06T12:19:49-04:00 (commit `66f16e6` — EXPANDED-SCOPE.md APPROVED) |
+| Phase end (merge) | 2026-05-11T12:25:58-04:00 |
+| Elapsed | 5 days |
+| Total commits on branch | 95 |
+| Plans shipped | 11 (Plans 1, 2, 2-amend, 3, 4, 5, 6, 7, 8a, 8b, 9, 10, 11) |
+| Waves executed | 8 |
+| GATE checkpoints | 3 (post-Wave-5, post-Wave-7, post-QA) |
+| Cumulative vision spend | ~$0.573 / $5.00 (11.5% used) |
+| Final harness baseline | PASS=68 / FAIL=1 / SKIP=1 |
+| Final /nightwork-qa | WARNING (non-blocking carry-forward) |
+
+### STATE.md updated
+
+`.planning/STATE.md` status → `shipped`. Progress 18/18 plans (100%), 1/3 phases. Merge SHA + timestamp + final harness baseline captured in body. Follow-ups queued.
+
+### Known follow-ups (queued, post-ship)
+
+1. **NODE_ENV → VERCEL_ENV** one-line fix at `src/middleware.ts:179` (security WARNING-1). Not exploitable; 4-layer defense holds. One-line follow-up branch.
+2. **PLAN-REVIEW-security.md stale-artifact cleanup** — security-reviewer iter-2 inadvertently updated this pre-execute artifact instead of SECURITY-REVIEW.md. Queued for nightwork-custodian's next phase-archive sweep.
+3. **gsd-planner.md manual sync** — file is gitignored (upstream GSD plugin overlay). Manual per-PC sync path documented in `.planning/templates/criteria-template.md` lines 117-127. Enforcement intact via nightwork-plan-review.
+4. **1.5c IA retrofit** (per Q6=B) — Plans 1/2/2-amend/3 on `phase/1.5-c-information-architecture` branch are exempt from criteria mandate. ~1-hour follow-up after harness merges to main.
+5. **WI-004 surface gap** — `/design-system/prototypes/invoices/inv-caldwell-001` route lands with Stage 1.5b invoice-review prototype merge. AC-139 FAIL becomes PASS automatically once that ships.
+
+### Phase SHIPPED
+
+stage-1.5c-verification-harness is now part of main. The harness is live for Stage 1.5c IA, Wave 1.1, and every future phase.
+
+End of phase log.
