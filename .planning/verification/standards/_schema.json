@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nightwork-platform.local/.planning/verification/standards/_schema.json",
+  "title": "Nightwork Layer 2 Standards Rule",
+  "description": "Schema for a single industry-standards verification rule. One rule = one JSON file in .planning/verification/standards/<domain>/. The verifyFn referenced by string ID is resolved at runtime via src/lib/verification/registry.ts. Adding a new rule = drop a JSON file + register one function. Per D-02 forward-extensibility contract.",
+  "type": "object",
+  "required": ["$schema", "id", "domain", "title", "description", "verifyFn", "applies_to", "severity", "source", "tags"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": ".planning/verification/standards/_schema.json"
+    },
+    "id": {
+      "type": "string",
+      "description": "Globally unique rule ID. Convention: <domain>-<noun>-<test>. Example: conservation-money-line-items-sum.",
+      "pattern": "^[a-z]+(-[a-z0-9]+)+$"
+    },
+    "domain": {
+      "type": "string",
+      "enum": ["aia", "accounting", "lien-law", "dates", "conservation"],
+      "description": "Standards domain. New domains require a CONTEXT.md addition + plan-review approval."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable rule title. One sentence."
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description including the math/identity/regulation being verified. Cite the source canonical (GAAP, AIA G702 row 7, FL statute 713.20(2)(a), etc.)."
+    },
+    "verifyFn": {
+      "type": "string",
+      "description": "String ID of the registered verifyFn. Must match a key in src/lib/verification/registry.ts verifyFnRegistry. Convention: camelCase derived from rule id (e.g. conservation-money-line-items-sum -> conservationMoneyLineItemsSum).",
+      "pattern": "^[a-z][a-zA-Z0-9]+$"
+    },
+    "applies_to": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "description": "Entity name this rule verifies. Examples: invoice, draw, change_order, lien_release, purchase_order."
+      },
+      "description": "Entities this rule applies to. Layer 2 framework only invokes the rule when the relevant entity is in scope."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["blocking", "warning"],
+      "description": "blocking = halt the loop on FAIL; warning = report but continue."
+    },
+    "source": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "Source citations. At least one. Examples: 'GAAP — basic accounting identity', 'AIA G702 row 7', 'Florida statute 713.20(2)(a)'."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Free-form tags for filtering. Examples: money, conservation, line-items, retainage, draws."
+    }
+  },
+  "examples": [
+    {
+      "$schema": ".planning/verification/standards/_schema.json",
+      "id": "conservation-money-line-items-sum",
+      "domain": "conservation",
+      "title": "Line items must sum to total amount",
+      "description": "Sum of invoice.line_items[*].amount must equal invoice.total_amount within 1 cent tolerance. Basic accounting identity.",
+      "verifyFn": "conservationMoneyLineItemsSum",
+      "applies_to": ["invoice", "draw", "change_order"],
+      "severity": "blocking",
+      "source": ["GAAP — basic accounting identity"],
+      "tags": ["money", "conservation", "line-items"]
+    }
+  ]
+}

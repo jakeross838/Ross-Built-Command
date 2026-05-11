@@ -126,3 +126,36 @@ This lets GSD's `plan_gate: true` config halt advancement to execute.
 - If PLAN.md is missing, abort with a clear error pointing at `/gsd-plan-phase`.
 - A reviewer that fails to complete is treated as UNKNOWN = REVISE-PLAN.
 </failure_modes>
+
+## Criteria mandate enforcement (per stage-1.5c-verification-harness D-17/D-18)
+
+Every PLAN.md must include a `<criteria>` yaml block. Plan-review aggregates this check across all reviewers (architect, planner, enterprise-readiness, multi-tenant-architect, scalability, compliance, security, design-pushback) and surfaces as a discrete finding.
+
+### Check
+
+For each PLAN.md in the phase:
+1. Confirm `<criteria>` ... `</criteria>` block present (regex match the opening + closing tags).
+2. Confirm yaml block inside contains all 5 categories (mechanical, dom, visual, behavioral, semantic) — even if some are explicit `N/A`.
+3. Confirm at least one entry per applicable category (non-N/A).
+4. Specificity check: scan entries for vague patterns ("works", "good", "correct", "renders", "looks right" without specific selectors / state values / commands). Flag as REVISE.
+
+### Verdict integration
+
+- Missing block → BLOCKING finding (`PLAN_MISSING_CRITERIA_BLOCK`)
+- Missing category → REVISE finding (`PLAN_MISSING_CATEGORY:<name>`)
+- Vague entries (>2 detected) → REVISE finding (`PLAN_VAGUE_CRITERIA`)
+- All 5 categories with specific entries → no finding
+
+### 1.5c IA retrofit exemption (per Q6=B)
+
+Plans authored before stage-1.5c-verification-harness ships (specifically, 1.5c IA Plans 1/2/2-amend/3 on `phase/1.5-c-information-architecture` branch) are exempt from this check. The retrofit is a separate ~1-hour follow-up after the harness merges to main.
+
+To detect: check the PLAN's frontmatter `phase:` field. If `stage-1.5c-information-architecture` AND no `<criteria>` block, mark `EXEMPT — Q6=B retrofit pending`.
+
+### Friction-tax watchpoint (per D-18 / plan-review watchpoint #5)
+
+If plan-review iter-1 finds itself flagging >50% of new PLAN files as `PLAN_VAGUE_CRITERIA`, the template is failing — friction tax is real. Surface as a meta-finding: "criteria-template needs better default phrasings for <plan domain>" — extend the template (`.planning/templates/criteria-template.md`) in a follow-up rather than failing every plan.
+
+### Drop-in template
+
+Authors and the planner agent reference `.planning/templates/criteria-template.md` for the canonical drop-in template + 10+ example phrasings + worked examples from stage-1.5c-verification-harness Plans 1-11.

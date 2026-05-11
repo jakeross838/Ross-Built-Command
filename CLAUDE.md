@@ -496,6 +496,19 @@ See `docs/platform-admin-runbook.md` for common scenarios.
 
 Do NOT skip this step. A build passing does not mean the feature works. "It compiles" is not the same as "it works." If Chrome DevTools MCP is connected, use it. Every time.
 
+### Verification harness deprecation path (per stage-1.5c-verification-harness D-073 / Q2=C)
+
+Beginning 2026-05-XX, the 3-layer verification harness (`.planning/architecture/VERIFICATION-PIPELINE.md`) is the canonical CI signal for visual + mechanical verification. The localhost-walk-with-Chrome-DevTools-MCP pattern above remains the inner-loop dev tool during weeks 1-3 of harness adoption (currently 1.5c IA + 1.5c ship + Wave 1.1 onset).
+
+Re-evaluation: at end of Wave 3, decide whether the harness has stabilized enough to fully replace localhost walks for visual sign-off. Until then, hybrid posture:
+
+- **Local dev iteration:** localhost + Chrome DevTools MCP (above rule). Cheap, fast.
+- **Visual sign-off:** Vercel preview URL via harness. Authoritative; what production runtime sees.
+
+For verification-eligible surfaces (every UI change post-stage-1.5c-verification-harness): the harness's Layer 3 vision against PLAN-file `<criteria>` is the canonical pass/fail. Localhost-walk continues as a sanity check during code-write but does not substitute for the harness verdict.
+
+For non-UI changes (infra, types, agent files): localhost walks not applicable; harness Layer 1 + Layer 2 cover.
+
 ## Nightwork standing rules
 
 These rules are non-negotiable. Custom Nightwork agents, hooks, and orchestrator commands will reject work that violates them. They sit on top of the more specific Architecture Rules and Development Rules above — when the two overlap, the Development Rules win on specifics; this section sets the global posture.

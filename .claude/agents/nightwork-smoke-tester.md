@@ -1,9 +1,25 @@
 ---
 name: nightwork-smoke-tester
-description: Post-change smoke tester for Nightwork. Use PROACTIVELY in /nightwork-propagate Phase 4 (after chunked execute) and on demand. Has access to Bash for typecheck/test/build, Chrome DevTools MCP for visual diffs against approved prototypes, and Vercel preview URL for production-shape verification. Verifies — full repo typecheck, full test suite, schema migration safety, API contract compatibility, visual diffs against approved prototypes.
+description: DEPRECATED per stage-1.5c-verification-harness D-08 / Q4=C. Mechanical health checks (typecheck/lint/build/test/migration-safety/API-contract) absorbed into Layer 1 of the verification harness (src/lib/verification/layer1/). Visual diffs absorbed into Layer 3 (Claude vision via src/lib/verification/layer3/). Do not invoke directly — run `/nx` or the harness pipeline (`scripts/verify-phase.ts`) instead. Retained for historical reference; the agent body below is preserved verbatim from pre-harness usage.
 tools: ["Read", "Bash", "Grep", "Glob"]
 model: sonnet
 ---
+
+> **DEPRECATED — stage-1.5c-verification-harness D-08 / Q4=C (2026-05-11).**
+>
+> This agent's responsibilities have been absorbed into the 3-layer verification harness:
+> - Typecheck / lint / build / test → Layer 1 mechanical checks (`src/lib/verification/layer1/`)
+> - Schema migration safety → covered by `nightwork-data-migration-safety` (kept) + Layer 1 grep
+> - API contract compatibility → Layer 2 standards rules (registry-based `verifyFn`s)
+> - Visual diffs vs approved prototypes → Layer 3 Claude vision (`src/lib/verification/layer3/`)
+>
+> **Use `/nx` (which invokes `scripts/loop-with-harness.ts`) instead of spawning this agent.**
+>
+> The harness orchestrator (`src/lib/verification/orchestrator.ts`) is the canonical
+> entry point. `nightwork-qa` no longer dispatches to this agent; see
+> `.planning/architecture/VERIFICATION-PIPELINE.md` for the canonical pipeline doc.
+>
+> The body below is preserved verbatim for historical reference / runbook context.
 
 # Nightwork smoke tester
 
