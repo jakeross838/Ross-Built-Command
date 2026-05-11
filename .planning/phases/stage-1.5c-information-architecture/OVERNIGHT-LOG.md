@@ -334,3 +334,78 @@ Recommend **retain** for now (cheap, may help in F1+ when more client code paths
 Per nwrp79: "If Y.2 doesn't resolve the issue cleanly, halt and surface diagnostic so Y.1 can be authorized for deeper investigation."
 
 Awaiting: **Y.1.A / Y.1.B / Y.1.C / Y.1.D** (recommended) / other.
+
+---
+
+## 2026-05-11 — Y.1.D diagnostic results
+
+### Findings
+
+Probe fired 3x on /today (once per criterion targeting that route — AC-1-8, AC-1-9, AC-1-13). All three captures **identical**:
+
+```json
+{
+  "cookies_count": 1,
+  "cookies": [{"name": "sb-egxkffodxcefwpqmwrur-auth-token", "len": 2591}],
+  "cookies_sb_only": [{"name": "sb-egxkffodxcefwpqmwrur-auth-token", "len": 2591}],
+  "localStorage_sb": [{"key": "sb-egxkffodxcefwpqmwrur-auth-token", "len": 1938}],
+  "sessionStorage_sb": [],
+  "window_supabase_present": false
+}
+```
+
+### Analysis
+
+**A. Cookie state — PRESENT and correctly formatted**
+- Single cookie `sb-<project-ref>-auth-token`, 2591 chars
+- NOT chunked (2591 < 3180 SSR chunking threshold — correct)
+- Cookie IS visible to client JS via `document.cookie` (so `httpOnly: false` is working)
+- Length math: localStorage JSON is 1938 chars; cookie base64-encoded = 1938 × 4/3 ≈ 2584 chars + "base64-" prefix (7 chars) = **2591 — exact match**. Cookie format is correct.
+
+**B. Storage state — Y.2 IS working**
+- localStorage populated with `sb-<project-ref>-auth-token` (1938 chars plain JSON)
+- The localStorage init script from Y.2 DID execute successfully
+- sessionStorage empty (expected — @supabase/ssr doesn't use it)
+- No `window.supabase` global (expected — module-scoped client)
+
+**C. Hypothesized root cause**
+
+Both cookie + localStorage have valid auth data. Server-side accepts the cookie (page renders, RLS works). Client-side `useCurrentRole` still returns null.
+
+The most likely cause: **`@supabase/ssr` createBrowserClient does NOT auto-hydrate `auth.getUser()` from the cookie on first call** — it may require:
+1. Either an explicit `auth.initialize()` / `auth.getSession()` call to ingest the cookie
+2. Or the cookie was set AFTER the SSR client instantiated (client cached an empty session, never re-reads)
+3. Or `auth.getUser()` makes a network call to validate the token, which may be failing silently in the Playwright context
+
+Other (lower probability) possibilities:
+- Race condition: useCurrentRole's useEffect fires before SSR client reads cookie
+- Cookie attributes (Domain, Path, SameSite) mismatch between Playwright-set and what SSR client expects to find — but Playwright sets them per our `supabaseSessionCookies()` config (domain=previewHost, path=/, sameSite=Lax, secure=true)
+
+**D. Recommended next action**
+
+**Y.1.A** — Call `supabase.auth.setSession({ access_token, refresh_token })` explicitly via `page.evaluate()` AFTER `page.goto()` AND AFTER a brief delay for the client SDK to instantiate. This forces the SSR client to ingest the session regardless of cookie-read path.
+
+Implementation: `page.evaluate(async ({at, rt}) => { const c = await import('@supabase/supabase-js'); /* or fetch the client module and call setSession */ }, {at, rt})` — though that requires bundler config. **Simpler**: dispatch a custom DOM event the page can listen to and call setSession from page-side code. **Simpler still**: add a query param like `?_harness=1` that conditionally renders a tiny script setting up the session from URL fragment.
+
+Realistic Y.1.A path: use Playwright's `page.evaluate` to:
+1. Dynamically `import` the page's actual supabase client module by reading the bundled module path from the page
+2. OR use the same `@supabase/ssr` createBrowserClient available at runtime via webpack bundle
+
+This may turn out to be tricky. The cleanest fallback if Y.1.A becomes invasive:
+
+**Y.1.B (Playwright storageState)** — capture a REAL authenticated browser session's storageState via a bootstrap script (sign in headlessly once, dump cookies + localStorage + IndexedDB + sessionStorage). Reuse on each harness run. Bypasses the manual injection entirely.
+
+### Cost ceiling
+
+- Cumulative: $0.858 + $0.0933 = **~$0.951 / $5.00 (19.0% used)**
+- Headroom: ~$4.05
+
+### HALT — per nwrp80 STEP 3
+
+Awaiting Jake authorization: **Y.1.A** (setSession force-ingest) or **Y.1.B** (storageState capture) or other path.
+
+After fix authorized:
+- Apply fix
+- Re-run harness
+- Confirm AC-1-8 PASSes at high conf
+- Revert the Y.1.D diagnostic capture (temporary instrumentation, not permanent)
