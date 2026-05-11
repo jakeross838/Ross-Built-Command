@@ -205,7 +205,7 @@ export async function runLayer3(
         const page = await context.newPage();
         await page.goto(pageUrl, {
           waitUntil: "networkidle",
-          timeout: 20_000,
+          timeout: 45_000,
         });
         // nwrp70/71 FIX 11: fullPage screenshot (capped at 7800px height) so
         // long-scroll design-system pages don't lose below-the-fold content.

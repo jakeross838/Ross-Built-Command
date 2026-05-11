@@ -130,7 +130,7 @@ export async function runDomAssertions(
 
         try {
           const url = `${preview_url.replace(/\/$/, "")}${parsed.path}`;
-          await page.goto(url, { waitUntil: "networkidle", timeout: 20_000 });
+          await page.goto(url, { waitUntil: "networkidle", timeout: 45_000 });
           let found = false;
           if (parsed.kind === "element") {
             const count = await page.locator(parsed.needle).count();
