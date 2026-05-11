@@ -563,3 +563,101 @@ Before authorizing Z.1, Jake will run a real-browser test to determine whether t
 ~$1.028 / $5.00 (20.6%).
 
 **Holding position. Awaiting Jake's OBSERVATION A or OBSERVATION B report.**
+
+---
+
+## 2026-05-11 — Z.1 raw /auth/v1/user fetch: OUTCOME A CONFIRMED
+
+### Probe output (redacted per Z.1 design)
+
+```json
+{
+  "cookies_sb_only": [{"name": "sb-egxkffodxcefwpqmwrur-auth-token", "len": 2619}],
+  "localStorage_sb": [],
+  "sessionStorage_sb": [],
+  "z1_raw_supabase_fetch": {
+    "access_token_len": 814,
+    "access_token_prefix": "eyJhbGciOiJF",
+    "api_url": "https://egxkffodxcefwpqmwrur.supabase.co/auth/v1/user",
+    "fetch_ms": 389,
+    "http_status": 200,
+    "http_ok": true,
+    "body_len": 999,
+    "body_shape": {
+      "has_id": true,
+      "id_format_uuid": true,
+      "has_aud": true,
+      "aud_value": "authenticated",
+      "has_role": true,
+      "role_value": "authenticated",
+      "has_email_field": true,
+      "has_app_metadata": true
+    },
+    "outcome": "A_fetch_succeeds"
+  }
+}
+```
+
+### What this proves conclusively
+
+1. ✅ **Supabase API IS reachable** from headless Playwright Chromium (no CORS, no DNS, no egress firewall — HTTP 200 in 389ms)
+2. ✅ **The access_token in the cookie IS valid** — Supabase returns full user payload with `aud=authenticated`, UUID-format id, role=authenticated
+3. ✅ **Cookie decoding works** — `base64-` prefix → base64url → JSON.parse → `access_token` extracted cleanly (814-char JWT)
+4. ✅ **All required infrastructure is in place** — only the SDK call itself is failing
+
+### Eliminated hypotheses
+
+- ❌ Network unreachable from Playwright (B disproven)
+- ❌ Token invalid (C disproven)
+- ❌ Cookie not present at request time (Y.1.D already disproved this)
+- ❌ Cookie format wrong / undecodable (Z.1 just decoded it manually + got 200)
+- ❌ Supabase project/JWT signature issue (Z.1 just validated against the same project)
+
+### Confirmed root cause class
+
+**The bug is exclusively in `@supabase/ssr`'s `createBrowserClient` auth code path.** Specifically: when `useCurrentRole`'s `useEffect` calls `supabase.auth.getUser()`, something in the SDK's:
+- Cookie storage adapter read, OR
+- Internal session initialization, OR
+- The wrapper around the same HTTP request we just successfully made
+
+...returns null instead of the user.
+
+Possible mechanisms (any one or combination):
+- SDK's initial in-memory session cache is empty + first `getUser()` returns immediately with `{data: {user: null}}` without awaiting the storage read (race)
+- SDK's cookie storage adapter fails silently for the SSR-format cookie value in this headless context
+- SDK's internal token validation logic differs from the raw GET we just did
+- SDK auto-refresh fires + fails silently with a different code path than getUser
+
+### AC-1-8 verdict (this run)
+
+Still FAIL (vision sees minimal nav). Cookie length 2619 (fresh bootstrap each run produces a new token). No change to PASS=86/FAIL=1/SKIP=1.
+
+### Cost ceiling
+
+- Cumulative: $1.028 + $0.077 (this run) = **~$1.105 / $5.00 (22.1%)**
+- Headroom: ~$3.90
+
+### Recommendation matrix
+
+Given Z.1 proves Supabase API works and token is valid, the production code path IS correct (Jake's OBSERVATION A confirmed real users see full nav). The harness-only failure is an SDK quirk in headless Playwright Chromium.
+
+| Option | What | Effort | Production touch |
+|---|---|---|---|
+| **W.1 (recommended)** | Pivot to A2 (window global + env-gated setSession in `client.ts`). Now that Z.1 proves the token works, we know setSession will succeed. The harness writes the session token to `window.__nightwork_harness_session` via storageState's localStorage or via context.addInitScript; `client.ts` (env-gated to non-production) reads it on import and calls `supabase.auth.setSession()` which force-ingests the session into the SDK's in-memory cache. Bypasses whatever the SDK is doing wrong with cookie auto-hydration. | ~30 min | ~10 lines `client.ts`, env-gated |
+| **W.2** | Deep SDK investigation — add temporary console.log inside `useCurrentRole` hook + capture the exact getUser response. Read @supabase/ssr 0.10.2 source to find where the SDK's read path diverges from our successful raw fetch. May reveal a known bug + upstream fix. | ~1-2 hrs | None (temp instrumentation only) |
+| **W.3** | Accept AC-1-8 N/A; close Block N+1. Pros: cheapest. Cons: leaves a known harness limitation for future phases that test client-side-auth-dependent UI. | ~5 min | None |
+| **W.4** | Try cookie-decoding fix: maybe the SDK's `getAll()` cookie-read mishandles the URI-encoded cookie. Diagnostic-only: try `setSession()` via `addInitScript` BEFORE page navigation — same effect as W.1 but no production touch. Need to expose supabase client to window via init script. | ~30 min | None (harness-side only) |
+
+### Recommendation: W.1
+
+The Z.1 result removes the risk previously surrounding A2:
+- Before Z.1: A2 was "force-ingest a token we hope works"
+- After Z.1: A2 is "force-ingest a token we've PROVEN works (200 OK from /auth/v1/user)"
+
+A2 (= W.1) is now the lowest-risk path. ~10 lines in production `client.ts`, env-gated to `NEXT_PUBLIC_VERCEL_ENV !== 'production'`, picks up `window.__nightwork_harness_session` written by harness `addInitScript`. setSession() force-ingests the verified-valid session into the SDK's in-memory cache. `auth.getUser()` then returns the cached user without needing the auto-hydration path.
+
+### HALT per nwrp84
+
+Per directive: "DO NOT apply a fix. DO NOT modify production code. Diagnostic extension + structured findings + halt for Jake review."
+
+Awaiting authorization: **W.1 (A2 pivot) / W.2 (deep SDK investigation) / W.3 (accept N/A) / W.4 (harness-side setSession) / other.**
