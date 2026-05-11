@@ -30,7 +30,7 @@ criteria:
   mechanical: []
   dom: []
   visual:
-    - "Page /: marketing homepage renders with visible text content and at least one button or call-to-action element"
+    - "Page /: Nightwork app renders (onboarding, dashboard, or sign-in depending on session) with visible text + interactive button; not a 404 or error page"
   behavioral: []
   semantic: []
 ```
