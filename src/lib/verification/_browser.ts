@@ -322,3 +322,42 @@ export function supabaseLocalStorageInitScript(
   const valueLit = JSON.stringify(value);
   return `try { window.localStorage.setItem(${keyLit}, ${valueLit}); } catch (e) { /* localStorage unavailable (e.g. data: scheme); harmless */ }`;
 }
+
+/**
+ * Y.1.A / W.1 (per stage-1.5c-vh nwrp86) — sibling helper to
+ * `supabaseLocalStorageInitScript` that writes the access/refresh tokens
+ * to `window.__nightwork_harness_session` BEFORE any page `<script>`
+ * runs, so the production-side env-gated block in
+ * `src/lib/supabase/client.ts` can detect the global and call
+ * `supabase.auth.setSession({ access_token, refresh_token })` on the
+ * SAME (module-scoped) client instance the production hooks read from.
+ *
+ * Why this is necessary: Z.1 diagnostic (nwrp84) confirmed the cookie
+ * + token + Supabase API are all valid in headless Playwright Chromium
+ * (raw fetch returned HTTP 200), but @supabase/ssr's createBrowserClient
+ * fails to auto-hydrate `auth.getUser()` from the cookie in that
+ * specific runtime context. The setSession call is the SDK's canonical
+ * escape hatch: it force-ingests the session into the client's in-memory
+ * cache so subsequent getUser() reads succeed without exercising the
+ * broken auto-hydration code path.
+ *
+ * Why not a sibling client (W.4): nwrp85 research found Supabase emits
+ * a "Multiple GoTrueClient Instances Detected" warning and the multi-
+ * instance pattern is documented to cause deadlocks (Discussion #37755).
+ * Calling setSession on the production client (W.1) avoids that risk.
+ *
+ * Idempotent with tokens=undefined: returns no-op comment string.
+ *
+ * @returns The init-script source string ready for `context.addInitScript(string)`
+ */
+export function supabaseSetSessionBridgeInitScript(
+  accessToken: string | undefined,
+  refreshToken: string | undefined
+): string {
+  if (!accessToken || !refreshToken) {
+    return "// supabase-set-session bridge no-op (no tokens)";
+  }
+  const atLit = JSON.stringify(accessToken);
+  const rtLit = JSON.stringify(refreshToken);
+  return `try { window.__nightwork_harness_session = { access_token: ${atLit}, refresh_token: ${rtLit} }; } catch (e) { /* harmless */ }`;
+}

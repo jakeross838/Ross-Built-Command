@@ -30,6 +30,7 @@ import {
   chromiumLaunchArgs,
   harnessBrowserHeaders,
   harnessStorageStateOption,
+  supabaseSetSessionBridgeInitScript,
 } from "../_browser";
 import type { HarnessSessionLike } from "../types";
 
@@ -83,15 +84,21 @@ export async function runDomAssertions(
   });
   const results: VerificationResult[] = [];
 
-  // Y.1.B (nwrp82): auth comes from Playwright storageState bootstrap.
+  // Y.1.B (nwrp82): auth cookies come from Playwright storageState bootstrap.
   // Resolved once per runDomAssertions invocation; reused across all 3
   // viewport contexts. Returns undefined if bootstrap file is missing —
   // contexts then have no auth state (acceptable for routes that don't
   // need auth; auth-required routes will FAIL loudly via DOM assertion).
   const storageState = harnessStorageStateOption();
-  // Silence: harness_session arg retained in signature for backward-compat
-  // (Plan 5 orchestrator + future re-use); not used after Y.1.B switch.
-  void harness_session;
+  // W.1 (nwrp86): client-side auth hydration via setSession bridge. Built
+  // once per invocation; attached to each viewport context's init scripts
+  // so the bridge fires BEFORE any page <script> runs and client.ts's
+  // env-gated block can force-ingest the session into the production
+  // @supabase/ssr client.
+  const bridgeScript = supabaseSetSessionBridgeInitScript(
+    harness_session?.raw_session?.access_token,
+    harness_session?.raw_session?.refresh_token
+  );
   void preview_url;
 
   try {
@@ -107,6 +114,7 @@ export async function runDomAssertions(
         extraHTTPHeaders: harnessBrowserHeaders(),
         ...(storageState ? { storageState } : {}),
       });
+      await context.addInitScript(bridgeScript);
       const page: Page = await context.newPage();
 
       for (const criterion of domCriteria) {

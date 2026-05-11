@@ -63,6 +63,7 @@ import {
   chromiumLaunchArgs,
   harnessBrowserHeaders,
   harnessStorageStateOption,
+  supabaseSetSessionBridgeInitScript,
 } from "../_browser";
 
 // Updated 2026-05-07 per nwrp62 FIX 4: see vision-client.ts DEFAULT_MODEL.
@@ -201,6 +202,18 @@ export async function runLayer3(
           extraHTTPHeaders: harnessBrowserHeaders(),
           ...(storageState ? { storageState } : {}),
         });
+        // W.1 (nwrp86) — setSession bridge. Writes
+        // window.__nightwork_harness_session BEFORE any page script runs,
+        // so client.ts's env-gated block force-ingests the session into
+        // the production @supabase/ssr client's in-memory cache. Pairs
+        // with Y.1.B storageState for cookie/server-side auth + W.1 for
+        // client-side getUser() resolution. No-op if no harness_session
+        // tokens available.
+        const bridgeScript = supabaseSetSessionBridgeInitScript(
+          ctx.harness_session?.raw_session?.access_token,
+          ctx.harness_session?.raw_session?.refresh_token
+        );
+        await context.addInitScript(bridgeScript);
         const page = await context.newPage();
         // Per Block N+1 finding: routes with Supabase realtime subscriptions
         // (e.g. /today Activity Feed) or heavy multi-fixture aggregation
