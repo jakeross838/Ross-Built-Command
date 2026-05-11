@@ -280,6 +280,30 @@ npx tsx scripts/loop-with-harness.ts --phase stage-X-Y
 - F3 narrowed-scope CI test gate (`npm test` runner + typecheck integration) — separate phase
 - 1.5c IA criteria retrofit — separate ~1-hour follow-up post-harness-merge
 
+## Known limitations
+
+### Client-side hooks with one-shot `useEffect` + no `onAuthStateChange` listener
+
+**Symptom**: Layer 3 vision sees a minimal nav (logo + Feedback + Sign Out + theme toggle) instead of the full role-gated UI on routes whose rendering depends on a client-side hook that calls `supabase.auth.getUser()` once on mount.
+
+**Root cause**: Headless Playwright Chromium's `@supabase/ssr` `createBrowserClient` fails to auto-hydrate `auth.getUser()` from a present cookie on initial render — even when:
+- The cookie is present and valid (verified via Y.1.D probe in stage-1.5c-vh)
+- The cookie came from a real `/login` form submit (verified via Y.1.B Playwright storageState bootstrap)
+- The access_token inside the cookie is valid (verified via Z.1 raw `/auth/v1/user` fetch — HTTP 200)
+
+Headless behavior diverges from real Chromium (Jake manual test 2026-05-11 OBSERVATION A confirmed real browser users see full nav correctly).
+
+The harness includes a W.1 `setSession` bridge (env-gated `client.ts` block reads `window.__nightwork_harness_session` written by `_browser.ts`'s `supabaseSetSessionBridgeInitScript()`) that force-ingests the session into the SDK's in-memory cache. But `setSession` is async (~135-400ms because it validates via `/auth/v1/user`); the React mount-time hook fires before completion and is one-shot, so the bridge resolves too late to influence the hook's null return.
+
+**Workaround for criterion authors**: Author Layer 3 `visual:` and `semantic:` criteria targeting:
+- Server-rendered content (page body, structured fields, route-status) that doesn't depend on client-side hook resolution
+- `/design-system/prototypes/*` routes which render against fixture data and don't require auth-gated client-side hooks
+- Auth-gated UI elements rendered FROM SERVER STATE (e.g., per-route layouts that read user from server components)
+
+**Permanent fix path (deferred to F1+)**: Modify `useCurrentRole` (and analogous client-side hooks) to subscribe to `supabase.auth.onAuthStateChange` for SIGNED_IN events. The hook would auto-resolve when `setSession` completes in the harness AND would benefit real users (cross-tab login sync, etc.). Estimated effort ~30 min; pairs with F1 schema work where role-evaluation logic gets touched.
+
+**Diagnostic trail**: stage-1.5c-vh Block N+1 nwrp80 (Y.1.D probe) → nwrp82 (Y.1.B storageState) → nwrp83 (Jake real-browser OBSERVATION A) → nwrp84 (Z.1 raw fetch 200 OK) → nwrp85 (W.4 sibling-client risk per Supabase Discussion #37755) → nwrp86 (W.1 bridge ships but race-conditions with hook) → nwrp87 (V.3 accept N/A, defer to F1+).
+
 ## Tenant safety boundary (per stage-1.5c-verification-harness D-30)
 
 **Per D-30 — verbatim:** "Verification harness operates on fixture-org-scoped data only. Real-tenant data is unreachable BY CONSTRUCTION at every layer (auth strategy, screenshot capture, criteria loading, vision API calls, report generation, idempotency cache, fix executor commits). No exception path exists for 'just this once' platform-admin verification — if a future need arises, it requires explicit D-30 amendment, not a code workaround."

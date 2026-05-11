@@ -69,3 +69,21 @@ process_discipline_violations: 0
 ## Process notes
 
 - 1.5c IA Plan 1 dev-server-kill incident (2026-05-05) is the carry-forward process discipline lesson — every executor brief in this phase reinforced "Never kill running processes" rule.
+
+---
+
+## stage-1.5c-information-architecture Block N+1 follow-ups (post-2026-05-11)
+
+### useCurrentRole onAuthStateChange listener
+
+**What**: Modify `src/hooks/use-current-role.ts` to subscribe to `supabase.auth.onAuthStateChange` for SIGNED_IN events in addition to the existing mount-time `getUser()` call. Would also benefit `src/components/nav-bar.tsx`'s profile fetch (same pattern).
+
+**Why**: Production improvement that would resolve AC-1-8-class harness-incompatible criteria (client-side hook reads auth state with one-shot pattern + no listener; harness-injected sessions land too late to influence the hook before render). Real users would also benefit (cross-tab login sync, no stale-empty-session edge cases during slow networks).
+
+**Effort**: ~30 min, including hook diff + cleanup of any cascading callsites + harness validation re-run.
+
+**Trigger condition**: Pairs with F1 schema work where role-evaluation logic gets touched (will be modifying these hooks anyway). Could also land as a stand-alone polish PR if a future harness gap surfaces.
+
+**Diagnostic provenance**: stage-1.5c-vh Block N+1 surfaced via Y.1.D race-confirmation diagnostic (nwrp86 W.1 validation). Diagnostic chain: nwrp79..nwrp87. Cookie + token + Supabase API all verified working in headless; only the hook's one-shot pattern is the gap.
+
+**Estimated value**: removes 1 known harness limitation entirely; enables future Layer 3 visual/semantic criteria against any auth-gated client-rendered UI.
