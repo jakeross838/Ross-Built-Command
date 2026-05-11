@@ -53,10 +53,14 @@ next-env.d.ts
 !.claude/skills/nightwork-*/
 !.claude/skills/nightwork-*/**
 
-# Agents: only nightwork-* agents are tracked
+# Agents: only nightwork-* agents are tracked + project-specific GSD
+# extensions added by stage-1.5c-verification-harness Plan 7 (per D-10).
+# Other gsd-* agents come from the GSD upstream/plugin (not tracked here).
 !.claude/agents/
 .claude/agents/*
 !.claude/agents/nightwork-*.md
+!.claude/agents/gsd-research-standards.md
+!.claude/agents/gsd-fix-executor.md
 
 # Commands: nightwork-* + the np / nx / ns wrappers
 !.claude/commands/
@@ -125,6 +129,11 @@ skills-lock.json
 # nightwork-ui-template). Must sync across PCs. Per D-018 + SPEC §2.
 !/.planning/design/
 !/.planning/design/**
+# research/ — outputs of gsd-research-standards (this phase + future phases).
+# Industry-canonical rules + cache files. Must sync across PCs so cache reuse
+# works cross-phase. Per stage-1.5c-verification-harness D-10/D-11.
+!/.planning/research/
+!/.planning/research/**
 # verification/ — runs/ are gitignored (per-commit harness reports clutter
 # git history); reports/ and standards/ are tracked (per-phase final reports
 # + standards rules library). Per D-15/D-16 (stage-1.5c verification harness).
