@@ -1,130 +1,101 @@
-# HALT FOR JAKE — Path A worked; AC-130 vision-OCR limit + AC-139 real surface gap remain
+# HALT FOR JAKE — Wave 4 dispatch authorization
 
-**Halt timestamp:** 2026-05-11T13:38Z
-**Triggering run:** #25673503471 on commit `bfbffb9`
-**Stop condition:** nwrp71 Outcome B ("AC-130 or AC-131 still FAIL after fullPage fix — Diagnose what vision sees vs what page actually renders. HALT for Jake with specifics.")
-
----
-
-## Verdict counts
-
-- **PASS: 65** (was 63 pre-FIX 11)
-- **FAIL: 2** (was 3 pre-FIX 11)
-- **SKIP: 1** (Layer 2 introspection — Wave 1.1 dep, unchanged)
-- **Vision cost:** $0.0263 this run; cumulative **$0.427** / $5 ceiling
+**Halt timestamp:** 2026-05-11T13:48Z
+**Triggering run:** #25674073370 on commit `abea896`
+**Stop condition:** nwrp72 directive — "If outcome matches expected: HALT for Wave 4 dispatch authorization with full clean state summary." Outcome matched. Halting.
 
 ---
 
-## Path A net result — 2 new PASSes, 2 FAILs with clean diagnosis
+## 🟢 Clean state achieved — exactly as predicted
 
-| AC | Page | Verdict | Conf | What changed |
-|---|---|---|---|---|
-| AC-08a-130 | `/design-system/palette` | FAIL | 0.85 | Still FAIL — vision OCR limit (see Finding 1) |
-| **AC-08a-131** | `/design-system/typography` | **PASS** | **0.82** | **fullPage unblocked the TRACKING section — vision sees `0.14em`** ✨ |
-| **AC-08a-138** | `/design-system/patterns` | **PASS** | **0.95** | **clip-at-7800px unblocked patterns page — Document Review pattern verified** ✨ |
-| AC-08a-139 | `/design-system/patterns` | FAIL | 0.9 | Still FAIL — real surface gap (see Finding 2) |
+**Run #25674073370 verdict:** PASS=66 / FAIL=1 / SKIP=1 — matches nwrp72's predicted outcome exactly. Vision cost $0.0269; cumulative **$0.454** / $5 ceiling (9% of budget across entire harness bring-up).
 
-### Finding 1 — AC-130 is a vision OCR limit, not a page/criterion error
+| Layer | Result | Notes |
+|---|---|---|
+| Layer 1 mechanical | **3 PASS** | build, typecheck, drummond-grep |
+| Layer 1 route-status | **60 PASS** | all routes 200/3xx (Vercel + Supabase + Nightwork bypass chain) |
+| Layer 2 behavioral | 1 SKIP | `/api/_introspect/*` Wave 1.1 dep (documented since nwrp63) |
+| Layer 3 visual | **2 PASS** | palette (label-based; conf 0.85) + typography (conf 0.82) |
+| Layer 3 semantic | **1 PASS + 1 FAIL** | Document Review pattern conf 0.95 PASS; AC-139 WI-004 conf 0.9 FAIL (documented surface gap) |
 
-Vision reasoning: *"Set B's stone-blue swatch shows hex `#588699`, not `#5B8699` as specified in the criterion."*
-
-`#5B8699` IS the canonical Stone Blue (verified in 4 places: `branding/constants.ts:25`, `colors_and_type.css:16`, `palette/page.tsx:63`, `CHOSEN-DIRECTION.md:12`). Vision is reading `B` as `8` — character-OCR ambiguity at swatch-label rendering resolution. This is a known vision-precision limitation; fullPage didn't fix it because the character size didn't change.
-
-### Finding 2 — AC-139 is a real surface gap until Stage 1.5b merges
-
-Vision reasoning: *"Text 'Cost code allocation' appears as a label in an ASCII layout diagram, but there is no actual invoice WI-004 surface with a 'Cost code' field showing a non-empty value — only a structural reference in a layout schematic."*
-
-Pre-flight investigation (committed at `da5fe7d`) verified that NO route on the current `phase/1.5-c-verification-harness` branch renders a multi-row invoice line-items surface:
-
-- `/design-system/patterns` Pattern1DocumentReview → single invoice metadata (1 cost-code via `DataRow`)
-- `/design-system/philosophy` InvoiceReviewCell → 6-7px micro-preview with 1 "Code" field
-- `/invoices/[id]` production route → no fixture data for fixture-harness-org
-
-The actual prototype route Jake referenced (`/design-system/prototypes/invoices/inv-caldwell-001`) lives on parallel `phase/1.5-b-prototype-gallery` (not merged to main; references in this branch are aspirational). **WI-004 surface gap is genuine until Stage 1.5b merges.**
+The harness has reached the cleanest state achievable on `phase/1.5-c-verification-harness`. The only remaining FAIL is an explicit, documented, intentional product-state observation (not infrastructure or authoring error).
 
 ---
 
-## Three candidate paths for AC-130 (and Wave 4 posture)
+## What's confirmed end-to-end operational
 
-### Path X — Re-author AC-130 to bypass hex OCR (recommended; CATEGORY-D)
-
-Vision can reliably read **labels** (text rendered at larger font sizes) but struggles with **small hex codes** like `#5B8699` rendered as swatch metadata. Rewrite the criterion to verify the swatch by ROLE / LABEL rather than exact hex match:
-
-```yaml
-# Current (vision-OCR-fragile):
-- "Page /design-system/palette: Slate Set B palette swatches visible —
-   #5B8699 stone-blue accent swatch with its hex code labeled; no purple,
-   pink, or off-token hues present"
-
-# Proposed (OCR-tolerant):
-- "Page /design-system/palette: stone-blue swatch labeled 'stone-blue' (or
-   'STONE BLUE') visible in Set B palette section; no purple, pink, or
-   off-token hues present anywhere on the page"
-```
-
-Asks vision to identify a labeled swatch by role-name rather than precise hex. Should PASS at high confidence — the label `stone-blue` is rendered prominently on the swatch row in the palette page source. Other criteria not affected.
-
-CATEGORY-D phase-spec hygiene; ~5 min. Idempotency cache invalidates for this AC; rerun costs ~$0.007.
-
-### Path Y — Accept AC-130 FAIL as known vision-OCR limitation; document and move on
-
-Add a comment to the criterion explaining vision OCR misread the hex; keep the FAIL as a documented "known harness limitation" rather than a real issue. Doesn't fix the FAIL count but is honest about the cause.
-
-CATEGORY-D phase-spec hygiene (annotation only); ~2 min.
-
-### Path Z — Try increasing screenshot resolution (deviceScaleFactor) in runner.ts
-
-Playwright supports `deviceScaleFactor` for higher-resolution screenshots. Increasing from 1× to 2× (`browser.newContext({ viewport, deviceScaleFactor: 2 })`) would render text at 2× the pixel density — potentially resolving the `B`/`8` OCR ambiguity.
-
-Trade-off: image size grows ~4×; could hit the 8000px limit on more pages; ~4× vision cost per call.
-
-CATEGORY-A in-envelope harness fix; ~5 min code change. Riskier — may break currently-working pages.
-
-### Recommendation: Path X (recommended) for AC-130
-
-Path X is the cleanest match for the actual issue. The criterion was authored with the assumption that vision can OCR small hex codes reliably; the harness's run #25673503471 + pre-flight diagnostic prove that assumption wrong. The label-based criterion is more falsifiable AND more robust. CATEGORY-D scope.
-
-For AC-139, no change is appropriate on this branch — the surface gap is real until Stage 1.5b merges. The FAIL is the harness's correct verdict. Recommend documenting as a known-FAIL pending Stage 1.5b merge.
+- ✓ **Auth chain:** Vercel deployment-protection bypass → Supabase session cookie attachment → Nightwork app verification-bypass header on `/design-system/*`
+- ✓ **Layer 3 vision API** with proper screenshot dimensions (fullPage with 7800px clip cap for long pages)
+- ✓ **Real `/design-system/*` content rendering** — vision distinguishes documentation surfaces from live invoice rendering
+- ✓ **Idempotency cache** — re-runs on same commit cost $0
+- ✓ **Cost-cap protection** — $0.454 total across 11+ productive runs; well under $5 ceiling
 
 ---
 
-## Wave 4 dispatch posture
+## AC-139 (WI-004) disposition — documented surface gap
 
-After Path X lands (expected PASS=66, FAIL=1 [AC-139 documented WI-004 surface gap], SKIP=1):
+The harness correctly identifies that `/design-system/patterns` renders the Document Review pattern as *documentation* (ASCII layout diagrams + structural labels), not as a *live multi-row invoice surface*. Vision reasoning (conf 0.9):
 
-The harness will be in its cleanest state on this branch. The remaining FAIL is an explicit documented finding (not infrastructure), and the harness has demonstrated end-to-end signal integrity across:
+> "No actual invoice data is rendered — 'Cost code' appears only as a bullet point ('- Cost code allocation') in an ASCII layout diagram, not as a live metadata field with a non-empty value for invoice WI-004."
 
-- ✓ Auth chain (Vercel + Supabase + Nightwork verification bypass)
-- ✓ Layer 1 (60 routes + mechanical/typecheck/drummond)
-- ✓ Layer 3 vision on real `/design-system/*` content (2 PASSes, 1 OCR-fragile FAIL after Path X resolves to PASS, 1 substantive surface-gap FAIL)
+This is the harness doing its job. The "live multi-row invoice prototype" target route (`/design-system/prototypes/invoices/inv-caldwell-001`) lives in parallel `phase/1.5-b-prototype-gallery` branch (Stage 1.5b Plan 01.5-2) which hasn't merged to main. Once 1.5b ships, AC-139 re-targets to the new route and WI-004 gets verified against real fixture data.
 
-**Wave 4 (Plan 7 — gsd-research-standards + gsd-fix-executor agents)** can dispatch after Path X confirms clean. Wave 4 doesn't depend on AC-139 PASS — it's about agent infrastructure. The documented WI-004 surface gap can ride forward as known-deferred until Stage 1.5b merges.
+Documented via inline yaml comment block in Plan 8a's `<criteria>` block (lines 530-545) — every future harness operator sees the rationale + tracking trail.
 
-Per nwrp71 standing rules:
-> "Wave 4 dispatch is the next decision after FIX 7 lands."
+---
 
-Wave 4 dispatch still requires explicit Jake authorization (per CATEGORY-Y stop conditions). Recommend: Path X → confirm clean → Jake authorizes Wave 4.
+## Wave 4 dispatch — recommended
+
+Wave 4 ships **Plan 7 — gsd-research-standards + gsd-fix-executor agents**. From `01.5-c-verification-harness-7-new-agents-PLAN.md` (already mostly verified — behavioral ACs PASS):
+
+- `gsd-research-standards`: reusable cross-phase agent for authority hierarchy + TTL caching of construction standards research
+- `gsd-fix-executor`: scope-narrowed agent that handles single-criterion fixes during the loop-with-executor (Plan 8b); one failure, one commit, return
+
+Wave 4 doesn't depend on AC-139 PASS. It's about agent infrastructure for the harness's self-correction loop. The 3 PASSing Layer 3 ACs (palette label, typography eyebrow row, Document Review pattern) demonstrate the harness has end-to-end signal integrity for the verification side; Wave 4 builds the fix side.
+
+### Wave 4 dispatch posture (per nwrp70 stop conditions)
+
+> "Wave 4 dispatch (still requires explicit Jake authorization)"
+
+This is the authorization request. Wave 4 plan ships two `.claude/agents/*.md` files + appropriate frontmatter + scope fences (already detailed in the plan with behavioral ACs verifying frontmatter shape, fence sections, never-kill clauses, etc.).
+
+**Estimated Wave 4 effort:**
+- Plan 7 has 11 behavioral ACs (verified-by-execution: frontmatter shape, tool list, fence sections, never-kill clauses, depends_on=[01], etc.)
+- 2 agent files: `.claude/agents/gsd-research-standards.md`, `.claude/agents/gsd-fix-executor.md`
+- Plus `.gitignore` adjustment for `<calibration-log>` directory carve-out (Plan 7 references this)
+- No code changes outside agent prompts + planning files
+- Estimated 1-2 atomic commits, ~30 min execution
+
+After Wave 4 lands, the next halt-for-Jake gate is the wave-5 boundary (Plan 8a + 8b in parallel). Plan 8b is the runLoop state machine; substantial code.
+
+---
+
+## Recommended next message
+
+> "Wave 4 dispatch authorized. Execute Plan 7 — gsd-research-standards + gsd-fix-executor agent files. Halt after the wave boundary for Jake review before Plan 8a + 8b (Wave 5) dispatch."
+
+OR
+
+> "Wave 4 authorized AND continue through Wave 5 (8a + 8b parallel) since 8a phase-spec mandate work is largely done by the criteria-template + planner-mandate + spec-checker updates already shipped during the harness bring-up. Halt only at wave 6 (Plans 9 + 10) or on any infrastructure issue."
+
+OR
+
+> "Hold Wave 4. Surface remaining open questions on AC-139 disposition (e.g., when 1.5b merges, what's the orchestration that re-targets AC-139?) before agent infrastructure work."
 
 ---
 
 ## Context Jake needs to decide
 
-- **Cumulative vision spend:** $0.427 / $5 ceiling. Plenty of headroom.
-- **All upstream auth + harness infrastructure working.** No infrastructure failures.
-- **AC-130 fix is a 5-min phase-spec edit** (Path X). Path Y is acceptable too but leaves a FAIL artifact in the report.
-- **AC-139 disposition:** there is no fix on this branch. Either accept the documented surface-gap FAIL OR wait for Stage 1.5b to merge before re-evaluating WI-004. Wave 4 doesn't depend on this.
-- **No Wave 4 dispatch without explicit Jake authorization.**
+- **Cumulative vision spend:** $0.454 / $5 ceiling (9% of budget used across entire bring-up — Plans 1-6 + many fixes).
+- **All harness infrastructure working.** No blockers. No infrastructure issues. No env var drift.
+- **3 Layer 3 PASSes on real content** demonstrate vision API + auth chain + screenshot dimensions all operational.
+- **1 Layer 3 FAIL is intentionally documented** as a known surface gap pending Stage 1.5b merge.
+- **Wave 4 plan content already vetted** by behavioral ACs in earlier runs (frontmatter shape, fence requirements all PASS).
 
 ---
 
-## Suggested concrete next message from Jake
+## Sub-outcomes for Wave 4 (when authorized)
 
-> "Path X authorized. Re-author AC-130 to verify by label rather than hex; document AC-139 as known-FAIL pending Stage 1.5b merge; run harness; if clean, halt for Wave 4 authorization."
-
-OR
-
-> "Path Y (annotate AC-130 as known vision-OCR limitation, no AC change); document AC-139 as known-FAIL pending Stage 1.5b merge; halt for Wave 4 authorization."
-
-OR
-
-> "Path X authorized AND try Path Z's deviceScaleFactor 2× in a separate commit to compare — keep whichever produces higher PASS count without breaking other ACs."
+- **A:** Wave 4 ships clean (2 agent files + gitignore + minor wiring). Harness re-run shows all behavioral ACs still PASS + the new agent files satisfy Plan 7's structural checks. → halt for Wave 5 dispatch authorization.
+- **B:** Wave 4 surfaces something unexpected (e.g., conflict with existing agent definitions, hook gate, fence violation). → halt with diagnostic.
+- **C:** Plan 7 behavioral ACs fail because the agent file content doesn't match expectations (frontmatter shape, fence sections). → CATEGORY-A fix per nwrp70 envelope OR halt for nuanced authoring.

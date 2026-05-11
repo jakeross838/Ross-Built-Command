@@ -1538,3 +1538,60 @@ HALT-FOR-JAKE.md updated with three candidate paths for AC-130 + AC-139 disposit
 **Cumulative vision spend $0.427** (well under $5 ceiling). The harness has produced the cleanest state achievable on this branch: only 1 vision-OCR limitation and 1 real surface-gap finding remain.
 
 **Cost-cap status:** $0.0263 this run.
+
+---
+
+## 🟢 2026-05-11T13:48Z — Run #25674073370 on `abea896`: OUTCOME A. Clean state. HALT for Wave 4 dispatch authorization.
+
+**Action:** Applied nwrp72 Path X — AC-130 re-authored from exact-hex to label-based verification; AC-139 documented as known-FAIL with explanatory yaml comment block above the criterion in Plan 8a's `<criteria>`. CATEGORY-D phase-spec hygiene.
+
+### Verdict counts
+
+- **PASS: 66** (predicted 66)
+- **FAIL: 1** (predicted 1 — AC-139 documented surface gap)
+- **SKIP: 1** (predicted 1 — Layer 2 introspection, Wave 1.1 dep)
+- **Vision cost:** $0.0269 (cumulative **$0.454** / $5 ceiling)
+
+**Exact match to predicted outcome.**
+
+### Layer 3 — three high-confidence PASSes on real content + one documented surface gap
+
+| AC | Page | Verdict | Conf | Reasoning |
+|---|---|---|---|---|
+| **AC-08a-130** | `/design-system/palette` | **PASS** | **0.85** | "The 'stone-blue' label is visible in both Set A and Set B token strips, each accompanied by a swatch that appears as a muted, slate-toned blue-grey color rather than pure blue or pure grey." Label-based verification worked. |
+| AC-08a-131 | `/design-system/typography` | PASS | 0.82 | TRACKING-EYEBROW row visible with UPPERCASE sample 'Nightwork'. Vision noted "exact value 0.14em is difficult to confirm at this resolution" but the structural check passes. |
+| AC-08a-138 | `/design-system/patterns` | PASS | 0.95 | Document Review pattern visible — file preview LEFT, right-rail panels (Invoice details, Cost code allocation, AI extraction, Lien release), audit timeline at full width. Gold-standard layout confirmed. |
+| AC-08a-139 | `/design-system/patterns` | FAIL | 0.9 | Documented known-FAIL: "No actual invoice data is rendered — 'Cost code' appears only as a bullet point ('- Cost code allocation') in an ASCII layout diagram, not as a live metadata field with a non-empty value for invoice WI-004." Pending Stage 1.5b merge. |
+
+### Full harness state summary — operationally complete
+
+| Layer | What |
+|---|---|
+| Layer 1 mechanical | build-clean ✓, typecheck-clean ✓, drummond-grep ✓ |
+| Layer 1 route-status | 60 routes ✓ (all PASS after Vercel + Supabase + Nightwork verification bypass chain) |
+| Layer 2 behavioral | 1 SKIP — `/api/_introspect/*` Wave 1.1 dependency (documented since nwrp63) |
+| Layer 3 visual | AC-130 PASS (label-based) |
+| Layer 3 visual | AC-131 PASS (tracking-eyebrow row) |
+| Layer 3 semantic | AC-138 PASS (Document Review pattern) |
+| Layer 3 semantic | AC-139 FAIL — documented WI-004 surface gap pending Stage 1.5b |
+
+**The harness has reached the cleanest state achievable on `phase/1.5-c-verification-harness`.** The only remaining FAIL is an explicit, documented, intentional product-state observation (not infrastructure or authoring error).
+
+### Auth chain end-to-end working
+
+- ✓ Vercel deployment-protection bypass (FIX 1 + FIX 5)
+- ✓ Supabase session cookie attachment (FIX 8)
+- ✓ Nightwork app verification-bypass header (FIX 9 / nwrp68)
+- ✓ Layer 3 vision API with proper screenshot dimensions (FIX 11 + 11b)
+- ✓ Real `/design-system/*` content rendering
+
+### Halt for Wave 4 dispatch authorization
+
+Per nwrp71/72 stop conditions:
+> "Wave 4 dispatch is the next decision after FIX 7 lands" — and "Wave 4 dispatch (still requires explicit Jake authorization)"
+
+Halting. HALT-FOR-JAKE.md updated with full clean state summary and Wave 4 dispatch context.
+
+**Cumulative vision spend $0.454 / $5 ceiling.** The harness is now production-quality signal. Idempotency cache will short-circuit re-runs on this commit at $0.
+
+**Cost-cap status:** $0.0269 this run. Budget used: 9% of $5 ceiling across the entire end-to-end harness bring-up.
