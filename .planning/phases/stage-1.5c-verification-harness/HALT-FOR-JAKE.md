@@ -1,112 +1,161 @@
-# HALT FOR JAKE — WI-004 verdict surfaced + first Layer 3 PASS
+# HALT FOR JAKE — pre-flight investigation surfaces deeper signal than AC text refinement
 
-**Halt timestamp:** 2026-05-09T19:46:03Z
-**Triggering run:** #25610086532 on commit `3416bb4`
-**Stop condition:** "WI-004 verdict surfaces (any conf level — Jake reviews)" — per nwrp70 PART 5.
-
----
-
-## What surfaced
-
-### 🟢 First Layer 3 PASS on real content (AC-08a-138)
-
-Vision confirms `/design-system/patterns` renders the Document Review pattern correctly:
-
-> *"The Document Review pattern is clearly visible with description stating 'File preview LEFT, structured fields RIGHT, audit timeline BELOW' and the ASCII layout confirms FILE PREVIEW on left and RIGHT-RAIL PANELS (Invoice details, Cost code allocation, AI extraction, Lien release) on right, matching the gold-standard layout."*
-
-PASS conf 0.95. Cost $0.0068. **The harness can now successfully verify real design-system surfaces.**
-
-### 🔍 WI-004 verdict — FAIL conf 0.9 (AC-08a-139)
-
-> *"The screenshot shows the Patterns documentation page with ASCII layout diagrams. While 'Cost code allocation' appears as a label in the ASCII layout diagram, there is no actual invoice surface (WI-004) displaying a 'Cost code' field with a non-empty value — this is documentation, not a live invoice record."*
-
-**Plain-English read:** The `/design-system/patterns` page renders the Document Review pattern as **documentation** (ASCII diagrams + structural descriptions), not as a live interactive invoice surface. Vision is correctly distinguishing "label appears in diagram" from "actual cost-code value rendered on each line item."
-
-**Why this is significant:** The criterion was authored to verify the WI-004 claim — that every invoice line item in the Document Review pattern shows a non-empty cost code. The patterns page shows the ARCHITECTURE of that pattern (file preview LEFT, right-rail panels, including a "Cost code allocation" right-rail panel) but doesn't render an actual multi-row line-items table with real fixture data per row.
-
-This was always going to be the case — the patterns page renders single-invoice METADATA via `DataRow label="Cost code"` (in Pattern1DocumentReview), not a multi-row line-items table. WI-004 cannot be evaluated against a documentation surface; it needs a real invoice review page (a production route like `/financials/invoices/[id]` with fixture data, or an interactive prototype) where line items render with cost codes per row.
-
-### Two more FAILs — palette + typography (real content, criterion mismatches)
-
-**AC-08a-130 (palette)** — FAIL conf 0.85:
-
-> *"The visible Set B palette swatches show slate-tile (#3B5864), slate-deep (#1A2830), and slate-deeper (#132028) — no #5B8699 stone-blue accent swatch with that hex code is visible in the screenshot."*
-
-Either:
-- The criterion's expected `#5B8699` is wrong for Set B (canonical Set B stone-blue may be `#3B5864`)
-- OR `/design-system/palette` is genuinely missing a `#5B8699` swatch that should be there
-- The earlier nwrp63 PASS for "slate/stone-blue consistent with #5B8699" was vision matching loosely on the LOGIN PAGE's sign-in button. Now with real palette content, vision sees the actual hex codes — and `#5B8699` isn't among them.
-
-**AC-08a-131 (typography)** — FAIL conf 0.82:
-
-> *"The type scale table shows --fs-label (eyebrow) row with 'STATUS TIMELINE' sample text in uppercase, but no explicit '0.14em' tracking value is displayed in the visible token table rows; only size and font family are shown."*
-
-The criterion expects an explicit `0.14em` value displayed in the token table, but the typography page renders the sample with the styling applied rather than showing the literal `0.14em` value as a column. Authoring precision issue OR the typography page needs to add tracking values as an explicit column.
+**Halt timestamp:** 2026-05-09T20:05Z
+**Triggering directive:** nwrp70 (Option A — re-author ACs 130/131/139)
+**Stop condition:** "Uncertainty about correctness on a non-trivial decision" (nwrp70 PART 5)
 
 ---
 
-## Why halting
+## What surfaced during pre-flight investigation
 
-Per nwrp70 PART 5 stop condition: **"WI-004 verdict surfaces (any conf level — Jake reviews)"**.
+Before re-authoring the three ACs, I inspected the actual source files for:
+- The target route nwrp70 directed AC-139 to (`/design-system/prototypes/invoices/inv-caldwell-001`)
+- The `#5B8699` token usage across the codebase
+- The typography page's tracking-eyebrow rendering
 
-WI-004 surfaced (FAIL conf 0.9 with explicit reasoning). The verdict is substantive — not "harness can't reach the page" but "page doesn't render the surface this AC claims." That's the harness doing its job.
+Three findings change the calculus.
 
-CATEGORY for the WI-004 finding: this is a **product/architecture observation** (not a bug to fix). It's the kind of insight the harness was built to surface. Outside autonomous-fix scope per the nwrp70 envelope.
+### Finding 1 — `/design-system/prototypes/invoices/inv-caldwell-001` does NOT exist on this branch
+
+```bash
+$ find src/app/design-system -type d -name prototypes
+(no output)
+
+$ find src/app -path "*prototype*"
+(no output)
+
+$ find src/app -iname "*caldwell*"
+(no output)
+
+$ ls .planning/phases/stage-1.5b-prototype-gallery/
+01.5-1-fixture-extraction-PLAN.md
+01.5-2-invoice-draw-vendors-PLAN.md   ← this would ship the route
+01.5-3-budget-documents-PLAN.md
+...
+```
+
+The prototype route lives on a parallel branch `phase/1.5-b-prototype-gallery` which has NOT merged to `main` yet. On the current `phase/1.5-c-verification-harness` branch, `/design-system/prototypes/*` is a 404. The Stage 1.5b plan files anticipate the route but it isn't built.
+
+**Consequence:** if I re-target AC-139 at this route per nwrp70's literal instruction, the harness will navigate to 404 → vision reports "404 page" → regressive signal vs. the substantive WI-004 verdict we just got.
+
+This was the same finding I surfaced in nwrp65 ("the prototype routes Jake mentioned don't exist") — pre-emptively pointed AC-139 at `/design-system/patterns` instead. nwrp70 reiterates the original (non-existent) route.
+
+### Finding 2 — `#5B8699` IS canonical Stone Blue and IS rendered on palette page (vision missed it via viewport fold)
+
+```bash
+$ grep -n "5B8699\|5b8699" src/lib/branding/constants.ts src/app/colors_and_type.css \
+                          src/app/design-system/palette/page.tsx .planning/design/CHOSEN-DIRECTION.md
+
+src/lib/branding/constants.ts:25:    stoneBlue: HASH + "5B8699",
+src/app/colors_and_type.css:16:     --nw-stone-blue:  #5B8699;
+src/app/design-system/palette/page.tsx:63: { name: "stone-blue", hex: HASH + "5B8699",
+                                            twClass: "nw-stone-blue",
+                                            role: "Stone-blue; brand accent / focus ring" },
+.planning/design/CHOSEN-DIRECTION.md:12:    - `--nw-stone-blue: #5B8699`
+```
+
+`#5B8699` IS the canonical Nightwork Stone Blue brand accent, defined in 4 authoritative locations, and IS in the palette page source at line 63 as one of the rendered swatches.
+
+Vision saw `#3B5864 (slate-tile)`, `#1A2830 (slate-deep)`, `#132028 (slate-deeper)` — slate variants further down the swatch list. **It missed `#5B8699` because the Layer 3 runner uses 1280×800 viewport with `fullPage: false`** (`src/lib/verification/layer3/runner.ts:189` — `await page.screenshot({ path: screenshotPath, fullPage: false });`). The stone-blue swatch is below the 800px fold on the palette page.
+
+**So neither the criterion nor the page is wrong.** The criterion text correctly cites `#5B8699` (the canonical Stone Blue). The page correctly renders `#5B8699` (line 63 of palette page). **The Layer 3 viewport configuration is the limiting factor.**
+
+### Finding 3 — `0.14em` IS rendered literally on typography page (same viewport-fold issue)
+
+`src/app/design-system/typography/page.tsx` line 69 + lines 240-292 — the TRACKING_TOKENS section renders `{t.value}` (literally `"0.14em"`) for each tracking token in its own card. But it's **SECTION 2** of the typography page (after the type-scale SECTION 1). At 1280×800 with `fullPage: false`, vision only sees Section 1 (type scale) — which is what its reasoning describes: *"only size and font family are shown."*
+
+Section 1 (type scale) and Section 2 (tracking) are both real. Vision's report is accurate for what it can see; it just can't see Section 2.
+
+**Same root cause as Finding 2.** Criterion is correct. Page is correct. Viewport fold is hiding content from vision.
 
 ---
 
-## Three candidate next actions, ranked
+## Why this is the wrong fight at the AC-text level
 
-### Option A (recommended) — Accept WI-004 as a real "surface gap" finding; refine ACs 130 + 131 + add a real WI-004 surface, then proceed to Wave 4
+The proposed nwrp70 re-authorings address symptoms:
+- "Update AC-130 to expect `#3B5864` instead of `#5B8699`" — incorrect, the page DOES render `#5B8699`
+- "Update AC-131 to accept derived treatments instead of literal `0.14em`" — incorrect, the page DOES render `0.14em` literally
+- "Re-target AC-139 to `/design-system/prototypes/invoices/inv-caldwell-001`" — that route doesn't exist; would regress to 404
 
-**Rationale:** WI-004 isn't a bug per se — it's the harness correctly noting that the Document Review pattern (on patterns page) doesn't render a multi-row invoice line-items table. The cost-code-per-line-item verification needs a different surface. Three sub-actions:
+The **underlying issue** is that Layer 3's screenshot captures only the first 800px of any page. Long-scroll pages (palette, typography) inevitably lose content below the fold. ACs that test below-the-fold content will FAIL not because the page is wrong but because vision can't see it.
 
-1. **Re-author AC-08a-139** to clearly target a surface that *does* render line items per-row (or scope it to "the Cost-code-allocation panel exists in the right-rail, even if line items render as ASCII"). Phase-spec edit, ~5 min, CATEGORY-A authoring hygiene.
-2. **Re-author AC-08a-130** — investigate whether `#5B8699` is the correct expected hex for Set B stone-blue OR refine the criterion to match the actual palette (`#3B5864 (slate-tile)`). Phase-spec edit OR design-system clarification (CLAUDE.md / Stage 1.5a SYSTEM.md). ~5 min.
-3. **Re-author AC-08a-131** — accept "tracking-eyebrow rendered in sample" as PASS, OR ask the typography page to add an explicit "tracking" column. Phase-spec edit, ~5 min.
-4. After re-author + push, expect PASS≈67 / FAIL=0 / SKIP=1 — then **authorize Wave 4 dispatch** (Plan 7 — gsd-research-standards + gsd-fix-executor agents). Wave 4 dispatch still requires explicit Jake authorization per nwrp70 stop conditions.
+---
 
-### Option B — Investigate whether the palette page should render `#5B8699`; treat AC-130 as a real design-system gap
+## Three candidate paths, ranked
 
-**Rationale:** if Set B is supposed to include a stone-blue accent at `#5B8699` (per CLAUDE.md "Stone Blue is the active-control hue"), the palette page may be missing it. This is a real Stage 1.5a / design-system audit question. Touches `src/app/design-system/palette/page.tsx` (CATEGORY-X, requires authorization).
+### Path A (recommended) — Fix Layer 3 fullPage screenshots; keep current AC text
 
-If you read CLAUDE.md and confirm `#5B8699` should be in Set B: I can audit the palette page rendering and surface what's actually defined vs. what's missing. Read-only investigation; fix authorization separate.
+**Single-line change** in `src/lib/verification/layer3/runner.ts:189`:
 
-### Option C — Defer ACs 130/131; accept WI-004 finding as-is; dispatch Wave 4 immediately
+```ts
+- await page.screenshot({ path: screenshotPath, fullPage: false });
++ await page.screenshot({ path: screenshotPath, fullPage: true });
+```
 
-**Rationale:** the harness has demonstrated end-to-end signal integrity. The 3 remaining FAILs are signal, not infrastructure. Wave 4 (Plan 7 agents) doesn't depend on Layer 3 verdicts being clean — it's about agent infrastructure for the loop-with-executor (Plan 8b).
+CATEGORY-A authorized scope (touches `src/lib/verification/`, infrastructure-level harness improvement). After this fix:
+- AC-130 should PASS (vision sees full palette including `#5B8699` swatch)
+- AC-131 should PASS (vision sees both type-scale AND tracking sections, including literal `0.14em`)
+- AC-139 (WI-004) still surfaces its substantive verdict from the last run — patterns page is documentation, not a live multi-row invoice. We already have that signal; no need to re-target.
 
-Risks: Wave 4's self-test (Plan 11) will hit the same 3 FAILs; downstream phases may inherit the AC authoring quality issues.
+Estimated outcome of next run with Path A: PASS=66 / FAIL=1 / SKIP=1 (only AC-139 / WI-004 remains as the substantive "surface gap" finding Jake reviews).
 
-Recommend: A first, then Wave 4. ACs 130/131 are quick; they should not block Wave 4 dispatch.
+Caveat: fullPage screenshots are larger → ~30% more vision tokens per call → cost rises from ~$0.0066 to ~$0.0086 per Layer 3 call (~$0.03 cumulative for 4 ACs vs. current ~$0.027). Still negligible against $5 ceiling.
+
+Tradeoff: vision may have lower precision on large screenshots (more pixels, more content to parse). But the alternative — missing all below-the-fold content — is strictly worse for design-system pages.
+
+### Path B — Refine criteria to scope to first-viewport content only
+
+Re-author AC-130 to say *"Page /design-system/palette: visible-on-load swatches include slate-tile (#3B5864) and slate-deep (#1A2830)"* (matches what vision actually sees in the viewport). Same for AC-131 + AC-139.
+
+CATEGORY-D phase-spec hygiene. Doesn't change runner behavior.
+
+Drawback: this makes the harness systematically blind to below-the-fold content. Future ACs targeting features rendered farther down the page will all FAIL. Path B is a workaround, not a fix.
+
+### Path C — Wait for Stage 1.5b prototype-gallery to merge, then re-target AC-139
+
+Don't touch AC-130 / AC-131 (keep current FAILs as known viewport-fold limitations); re-target AC-139 when `/design-system/prototypes/invoices/inv-caldwell-001` actually exists on main.
+
+CATEGORY-X scheduling decision — out of nwrp envelope. Defers WI-004 verification until Stage 1.5b ships.
+
+Drawback: leaves the harness in an "mostly working but with known-FAIL artifacts" state through Wave 4 and beyond.
+
+### My recommendation: **Path A**
+
+Path A is the only one that addresses the underlying issue. The `fullPage: true` change is small, autonomously-authorized under CATEGORY-A scope (verification module code), and unblocks all three ACs in one shot. The cost increase is negligible.
+
+If Path A confirms AC-130 / AC-131 PASS on next run, the harness is in the cleanest state achievable on this branch — only AC-139 (WI-004) remains as a substantive product finding (patterns page documentation vs. live invoice surface), which is the harness doing its job.
+
+After Path A confirms clean → halt for Jake authorization to dispatch Wave 4.
 
 ---
 
 ## Context Jake needs to decide
 
 - **Cumulative vision spend:** $0.388 across 8 productive runs. Well under $5 ceiling.
-- **All upstream auth chain working:** Vercel deployment-protection bypass + Supabase session cookie + Nightwork app verification-bypass + Layer 3 vision API. End-to-end operational.
-- **Local `npm run build` clean.** All TypeScript valid. No infrastructure in flight.
-- **Idempotency cache will keep cost flat on next runs against same commit.** Re-authoring ACs may invalidate cache for those specific criteria → ~$0.020 incremental spend per re-run.
-- **Wave 4 still requires explicit Jake authorization** per nwrp70 stop condition.
+- **WI-004 verdict is already captured** (FAIL conf 0.9 with substantive reasoning) from run #25610086532. Re-running with Path A doesn't re-evaluate AC-139's verdict against the patterns page — it'd hit the idempotency cache for same (commit, criterion).
+- **If I push a CATEGORY-A runner.ts edit, the new commit invalidates the idempotency cache for all Layer 3 criteria** — they all re-run. Cost ≈ $0.035 (4 calls × ~$0.0086 each with fullPage screenshots).
+- **All AC text is currently correct.** The criterion authoring isn't the bug.
 
 ---
 
-## Auth/Identity status (no change since nwrp68)
+## Sub-outcomes if Path A authorized
 
-- harness-fixture user: **org-admin** in fixture-harness-org (org_uuid `00000000-0000-0000-0000-fb1ce0a55e55`)
-- NOT platform_admin (D-30 preserved)
-- `/design-system/*` access via x-nightwork-verification-bypass header (FIX 9 / nwrp68); production-blocked; preview/dev only
-- All tenant-data routes still go through standard RLS
+After single-line fullPage change + push:
 
-No D-30 changes; no role grants; no RLS modifications.
+- **A1 (most likely):** AC-130 + AC-131 PASS at high confidence; AC-139 still FAILs with same substantive WI-004 reasoning (patterns page = documentation). PASS=66 / FAIL=1 / SKIP=1. Halt for Wave 4 dispatch authorization.
+- **A2 (less likely):** AC-130 or AC-131 still FAIL even with fullPage — would indicate criterion really is more precise than what the page renders (e.g., page renders `#5B8699` swatch but vision misreads its hex code). HALT for further refinement.
+- **A3 (unlikely):** Vision precision drops on full-page screenshots and one of the previously-PASSING ACs (e.g., AC-08a-138 Document Review pattern) regresses. HALT for diagnostic.
 
 ---
 
-## Suggested concrete next message from Jake (if Option A)
+## Suggested next message
 
-> "Option A authorized. Refine AC-130/131/139 per the recommendations; for AC-130 use #3B5864 as the expected stone-blue (canonical Set B). Run harness, confirm clean. Then halt for Wave 4 dispatch authorization."
+> "Path A authorized. Apply fullPage:true to runner.ts; push; observe new run; surface verdicts."
 
 OR
 
-> "Option A authorized. For AC-130, audit src/app/design-system/palette to surface what's actually rendered before re-authoring; #5B8699 might be the right expected value if it's defined elsewhere as the Set B stone-blue. Then refine 131 + 139, run, halt for Wave 4 auth."
+> "Path B authorized (don't touch runner.ts). Refine each AC to scope to first-viewport content. Surface what changes."
+
+OR
+
+> "Hold all three ACs for Stage 1.5b merge; refine AC-139 only after that, run, halt for Wave 4 dispatch."

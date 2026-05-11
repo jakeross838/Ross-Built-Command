@@ -1400,3 +1400,57 @@ WI-004 surfaced. Halting.
 **Cost-cap status:** $0.0271 this run. Next run on same commit would be ≈ $0 (idempotency cache).
 
 **HALT-FOR-JAKE.md written separately with the full picture for review.**
+
+---
+
+## 2026-05-09T20:05Z — nwrp70 Option A pre-flight: three findings change the calculus. HALT before re-authoring.
+
+**Action:** nwrp70 directed re-author of ACs 130 / 131 / 139. Before editing criterion text, ran pre-flight investigation on the proposed targets + current rendering — uncovered that the underlying issue is NOT criterion-authoring quality.
+
+### Finding 1 — `/design-system/prototypes/invoices/inv-caldwell-001` doesn't exist on this branch
+
+The prototype-gallery route lives on the parallel `phase/1.5-b-prototype-gallery` branch (Plan 01.5-2-invoice-draw-vendors). Not merged to main; not present on current branch. nwrp65 surfaced this same gap; nwrp70 reiterates the non-existent route.
+
+Pointing AC-139 at the non-existent route would regress to a 404 vision reading vs. the substantive WI-004 verdict we already have.
+
+### Finding 2 — `#5B8699` IS canonical Stone Blue and IS rendered on palette page
+
+Defined in 4 authoritative locations: `src/lib/branding/constants.ts:25`, `src/app/colors_and_type.css:16`, `src/app/design-system/palette/page.tsx:63`, `.planning/design/CHOSEN-DIRECTION.md:12`. The palette page renders it as one swatch among many.
+
+Vision saw `#3B5864`/`#1A2830`/`#132028` (slate variants) because Layer 3 uses 1280×800 viewport with **`fullPage: false`** (`runner.ts:189`). The stone-blue swatch is below the 800px fold.
+
+**Criterion is correct. Page is correct. Viewport configuration is the limiting factor.**
+
+### Finding 3 — `0.14em` IS rendered literally on typography page (same viewport-fold issue)
+
+`typography/page.tsx:266` — `{t.value}` renders the literal `"0.14em"` for each tracking token. Section 2 (TRACKING) is below Section 1 (TYPE SCALE). At 1280×800 with fullPage false, vision sees only Section 1.
+
+Same root cause as Finding 2.
+
+### Why this is the wrong fight at AC-text level
+
+All three nwrp70 re-authorings address symptoms, not the cause:
+- AC-130 "use `#3B5864` instead" — incorrect, page DOES render `#5B8699`
+- AC-131 "accept derived treatments" — incorrect, page DOES render `0.14em` literally
+- AC-139 re-target — target doesn't exist; would regress
+
+Underlying issue: Layer 3 screenshot captures only first 800px → ACs testing below-the-fold content fail systematically.
+
+### Recommended Path A (HALT-FOR-JAKE.md has full picture)
+
+Single-line change in `src/lib/verification/layer3/runner.ts:189` — `fullPage: false` → `fullPage: true`. CATEGORY-A authorized scope (verification module). Estimated outcome:
+- AC-130 PASS (full palette visible including `#5B8699`)
+- AC-131 PASS (both type-scale + tracking sections visible including `0.14em`)
+- AC-139 still FAILs with substantive WI-004 reasoning (no change — patterns page is still documentation)
+
+Expected next-run shape: PASS=66 / FAIL=1 / SKIP=1. Vision cost ~$0.035 (cache invalidated by new commit; +~30% per fullPage call).
+
+### Why halting before applying Path A
+
+The directive explicitly scoped to AC-text refinement (CATEGORY-D phase-spec hygiene), not runner.ts code changes. Applying Path A is a CATEGORY-A in-envelope harness improvement, but it implements a *different* fix than nwrp70 directed. That's a non-trivial deviation worth Jake's review per nwrp70 PART 5 stop condition "Uncertainty about correctness on a non-trivial decision."
+
+HALT-FOR-JAKE.md written with the three candidate paths.
+
+**Cumulative vision spend $0.388.** No new spend incurred during this investigation (no harness re-run — only file reads).
+
+**Cost-cap status:** unchanged at $0.388 cumulative.
