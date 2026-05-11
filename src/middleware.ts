@@ -176,7 +176,14 @@ export async function middleware(request: NextRequest) {
       // operates on the resolved user (which is the harness fixture user
       // when the cookie is attached, or null otherwise).
     } else {
-      const isProd = process.env.NODE_ENV === "production";
+      // Defense-in-depth: use VERCEL_ENV as primary signal (set to "production"
+      // only on production deployments, NOT on preview deployments). Fall back
+      // to NODE_ENV for local. Prior code used NODE_ENV alone, which evaluates
+      // "production" on Vercel preview deploys too — weakening the gate. Per
+      // stage-1.5c-verification-harness post-ship QA WARNING-1.
+      const isProd =
+        process.env.VERCEL_ENV === "production" ||
+        process.env.NODE_ENV === "production";
       if (isProd) {
         if (!isPlatformAdmin) {
           const notFoundUrl = request.nextUrl.clone();

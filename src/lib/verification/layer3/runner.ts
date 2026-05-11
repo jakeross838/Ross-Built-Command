@@ -203,9 +203,16 @@ export async function runLayer3(
           await context.addCookies(authCookies);
         }
         const page = await context.newPage();
+        // Per Block N+1 finding: routes with Supabase realtime subscriptions
+        // (e.g. /today Activity Feed) or heavy multi-fixture aggregation
+        // (e.g. /design-system/prototypes/jobs/[id]/budget) never reach
+        // "networkidle" — Block N+1 confirmed 45s timeout still SKIPped
+        // those routes. Switching to "load" (DOM + initial resources loaded)
+        // is sufficient for vision rendering. Timeout raised to 45s for
+        // additional cold-start headroom.
         await page.goto(pageUrl, {
-          waitUntil: "networkidle",
-          timeout: 20_000,
+          waitUntil: "load",
+          timeout: 45_000,
         });
         // nwrp70/71 FIX 11: fullPage screenshot (capped at 7800px height) so
         // long-scroll design-system pages don't lose below-the-fold content.

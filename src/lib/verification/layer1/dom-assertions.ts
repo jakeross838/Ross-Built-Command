@@ -130,7 +130,10 @@ export async function runDomAssertions(
 
         try {
           const url = `${preview_url.replace(/\/$/, "")}${parsed.path}`;
-          await page.goto(url, { waitUntil: "networkidle", timeout: 20_000 });
+          // Per Block N+1 finding: "networkidle" never settles on routes with
+          // Supabase realtime subs or heavy multi-fixture aggregation. "load"
+          // is sufficient for DOM assertions. Timeout 45s for cold-start.
+          await page.goto(url, { waitUntil: "load", timeout: 45_000 });
           let found = false;
           if (parsed.kind === "element") {
             const count = await page.locator(parsed.needle).count();
