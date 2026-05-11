@@ -207,7 +207,13 @@ export async function runLayer3(
           waitUntil: "networkidle",
           timeout: 20_000,
         });
-        await page.screenshot({ path: screenshotPath, fullPage: false });
+        // nwrp70/71 FIX 11: fullPage:true so long-scroll design-system pages
+        // (palette, typography) don't lose below-the-fold content. Pre-flight
+        // diagnostic confirmed #5B8699 stone-blue (palette page line 63) and
+        // 0.14em tracking (typography page line 266) are both rendered below
+        // the 800px viewport fold. Cost trade-off: +~30% vision tokens per
+        // call; well within $5 cumulative ceiling.
+        await page.screenshot({ path: screenshotPath, fullPage: true });
         await context.close();
 
         visionResult = await callVisionApi({
