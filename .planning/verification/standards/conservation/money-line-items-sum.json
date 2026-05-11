@@ -1,0 +1,15 @@
+{
+  "$schema": ".planning/verification/standards/_schema.json",
+  "id": "conservation-money-line-items-sum",
+  "domain": "conservation",
+  "title": "Line items must sum to total amount",
+  "description": "For invoices, draws, and change orders that expose a `line_items` array and a `total_amount` field, the sum of `line_items[*].amount` must equal `total_amount` within 1 cent tolerance. This is the basic accounting identity for any composed financial total.\n\nWhen the entity is unreachable (no introspection surface available at the Vercel preview URL), the rule returns SKIP with reason — Wave 1.1+ will add per-entity introspection routes that this rule walks. For this phase's self-test (Plan 11), the rule SKIPs cleanly against main HEAD where no entity introspection surface exists.\n\nForward-extensibility note (per D-02): this rule is the canonical worked example for the conservation domain. Future conservation rules (e.g., conservation-money-budget-revised-equals-original-plus-cos) ship the same way: JSON file here + verifyFn at src/lib/verification/layer2/standards/conservation/.",
+  "verifyFn": "conservationMoneyLineItemsSum",
+  "applies_to": ["invoice", "draw", "change_order"],
+  "severity": "blocking",
+  "source": [
+    "GAAP — basic accounting identity (sum of parts equals whole)",
+    "CLAUDE.md — 'Recalculate, don't increment' (R.2): all running totals computed from source rows"
+  ],
+  "tags": ["money", "conservation", "line-items"]
+}

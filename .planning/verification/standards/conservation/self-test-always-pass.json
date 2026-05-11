@@ -1,0 +1,12 @@
+{
+  "$schema": ".planning/verification/standards/_schema.json",
+  "id": "conservation-self-test-always-pass",
+  "domain": "conservation",
+  "title": "Self-test synthetic always-PASS rule (iter-1 WARN-2)",
+  "description": "Synthetic Layer 2 rule that always returns PASS. Used by stage-1.5c-verification-harness Plan 11 self-test to exercise the runLayer2 path NON-VACUOUSLY (the real conservation/money-line-items-sum SKIPs cleanly without /api/_introspect/*; this rule fires regardless). NOT a real domain rule; exists solely for harness self-test signal.",
+  "verifyFn": "conservationSelfTestAlwaysPass",
+  "applies_to": ["self-test-only"],
+  "severity": "warning",
+  "source": ["stage-1.5c-verification-harness Plan 11 iter-1 amendment (architect WARN-2)"],
+  "tags": ["self-test", "always-pass", "iter-1-amendment"]
+}

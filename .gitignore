@@ -53,10 +53,14 @@ next-env.d.ts
 !.claude/skills/nightwork-*/
 !.claude/skills/nightwork-*/**
 
-# Agents: only nightwork-* agents are tracked
+# Agents: only nightwork-* agents are tracked + project-specific GSD
+# extensions added by stage-1.5c-verification-harness Plan 7 (per D-10).
+# Other gsd-* agents come from the GSD upstream/plugin (not tracked here).
 !.claude/agents/
 .claude/agents/*
 !.claude/agents/nightwork-*.md
+!.claude/agents/gsd-research-standards.md
+!.claude/agents/gsd-fix-executor.md
 
 # Commands: nightwork-* + the np / nx / ns wrappers
 !.claude/commands/
@@ -104,6 +108,11 @@ skills-lock.json
 !/.planning/deployment.md
 !/.planning/config.json
 !/.planning/lessons.md
+# calibration-log.md — append-only phase retrospectives written by
+# nightwork-custodian at post-ship. Read by /np orchestrator at next-phase
+# scope time for dynamic prompt density / parallelism tuning. Per D-13/D-14.
+!/.planning/calibration-log.md
+!/.planning/calibration-log-schema.md
 !/.planning/architecture/
 !/.planning/architecture/**
 !/.planning/milestones/
@@ -113,6 +122,10 @@ skills-lock.json
 # PCs because /np reads EXPANDED-SCOPE and /nx reads SETUP-COMPLETE. Per D-018.
 !/.planning/expansions/
 !/.planning/expansions/**
+# templates/ — canonical author templates (criteria, plan, etc.). Synced via
+# git so /np pulls templates from any PC. Per stage-1.5c-vh D-17/D-18.
+!/.planning/templates/
+!/.planning/templates/**
 # phases/ — phase artifacts (DISCUSSION.md, SPEC.md, PLAN.md, PLAN-REVIEW.md,
 # MANIFEST.md, STATE.md). These must sync across PCs because /np produces
 # them and /nx reads them. Per D-018 + GSD convention.
@@ -125,6 +138,21 @@ skills-lock.json
 # nightwork-ui-template). Must sync across PCs. Per D-018 + SPEC §2.
 !/.planning/design/
 !/.planning/design/**
+# research/ — outputs of gsd-research-standards (this phase + future phases).
+# Industry-canonical rules + cache files. Must sync across PCs so cache reuse
+# works cross-phase. Per stage-1.5c-verification-harness D-10/D-11.
+!/.planning/research/
+!/.planning/research/**
+# verification/ — runs/ are gitignored (per-commit harness reports clutter
+# git history); reports/ and standards/ are tracked (per-phase final reports
+# + standards rules library). Per D-15/D-16 (stage-1.5c verification harness).
+!/.planning/verification/
+!/.planning/verification/standards/
+!/.planning/verification/standards/**
+!/.planning/verification/reports/
+!/.planning/verification/reports/**
+/.planning/verification/runs/
+/.planning/verification/runs/**
 
 # smoke + E2E runtime logs (ephemeral, regenerated each run)
 /e2e-state.json
