@@ -1,48 +1,43 @@
-"use client";
+// src/app/jobs/[id]/activity/page.tsx
+//
+// Stage 1.5c Plan 5 placeholder — consumes NwPlaceholderCard from Plan 1.
+// REPLACES the prior client-side Supabase + JobFinancialBar implementation
+// that Plan 3 Task 4 had only partially cleaned up (JobTabs removed; rest
+// of the surface preserved). Plan 5 standardizes /jobs/[id]/activity as a
+// proper NwPlaceholderCard placeholder so the IA reads consistently across
+// all 19 placeholder routes.
+//
+// Prior implementation snapshot (pre-Plan 5) — for F1 reference when
+// wiring the per-job activity_log filter:
+//
+//   "use client";
+//   import { useEffect, useState } from "react";
+//   import { useRouter } from "next/navigation";
+//   import JobFinancialBar from "@/components/job-financial-bar";
+//   import Breadcrumbs from "@/components/breadcrumbs";
+//   import { supabase } from "@/lib/supabase/client";
+//   // [auth + jobs.name fetch + "Activity log coming soon" card body]
+//
+// activity_log table already ships; F1 wires the per-job filter so this
+// view becomes real (Wave 1.1-Lite).
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-// JobTabs removed per Stage 1.5c Plan 3 iter-2 must-fix CRITICAL #2 —
-// Plan 5's PerJobTabs in /jobs/[id]/layout.tsx is the sole tab surface.
-import JobFinancialBar from "@/components/job-financial-bar";
-import Breadcrumbs from "@/components/breadcrumbs";
-import { supabase } from "@/lib/supabase/client";
+import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 
-export default function JobActivityPage({ params }: { params: { id: string } }) {
-  const router = useRouter();
-  const [jobName, setJobName] = useState("");
-
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace(`/login?redirect=/jobs/${params.id}/activity`); return; }
-      const { data: j } = await supabase.from("jobs").select("name").eq("id", params.id).single();
-      if (j) setJobName(j.name as string);
-    }
-    load();
-  }, [params.id, router]);
-
+export default function JobActivityPage({
+  params: _params,
+}: {
+  params: { id: string };
+}) {
   return (
-      <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
-        <Breadcrumbs
-          items={[
-            { label: "Jobs", href: "/jobs" },
-            { label: jobName || "...", href: `/jobs/${params.id}` },
-            { label: "Activity" },
-          ]}
+    <div className="px-6 py-8 max-w-[800px] mx-auto">
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Job · Activity"
+          headline="Activity"
+          body="Activity feed for this job — every event (bill received, PO issued, schedule updated, etc.) chronological. The activity_log table already ships; Wave 1.1-Lite wires the per-job filter so this view becomes real."
+          wave="Wave 1.1-Lite"
         />
-        <div className="mb-4">
-          <h2 className="font-display text-2xl text-[color:var(--text-primary)]">{jobName || "..."}</h2>
-        </div>
-        {/* JobTabs render removed — PerJobTabs in /jobs/[id]/layout.tsx (Plan 5) replaces */}
-        <JobFinancialBar jobId={params.id} />
-
-        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-8 text-center">
-          <p className="text-sm text-[color:var(--text-secondary)]">
-            Activity log coming soon. Will show CO approvals, invoice status
-            changes, draw submissions, and team notes for this job.
-          </p>
-        </div>
-      </main>
+      </div>
+    </div>
   );
 }
