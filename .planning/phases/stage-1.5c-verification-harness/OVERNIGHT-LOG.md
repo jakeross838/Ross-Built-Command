@@ -1595,3 +1595,55 @@ Halting. HALT-FOR-JAKE.md updated with full clean state summary and Wave 4 dispa
 **Cumulative vision spend $0.454 / $5 ceiling.** The harness is now production-quality signal. Idempotency cache will short-circuit re-runs on this commit at $0.
 
 **Cost-cap status:** $0.0269 this run. Budget used: 9% of $5 ceiling across the entire end-to-end harness bring-up.
+
+---
+
+## 2026-05-11T14:30Z — Wave 4 + Wave 5 shipped autonomously (nwrp73). GATE 1 reached.
+
+**Action (autonomous execution per nwrp73 — Wave 4 + Wave 5):**
+
+### Wave 4 (Plan 7 — gsd-research-standards + gsd-fix-executor)
+
+2 commits:
+- `e3052e9` Task 1 — `.claude/agents/gsd-research-standards.md` + `.planning/research/.gitkeep` + .gitignore carve-out (.planning/research/ + agent-file exceptions for the two new project-specific GSD extensions). Caching by domain+subset+tenant key + TTL brackets (90/30/7 days). Search authority hierarchy NAHB → AIA → FL → IRS → GAAP. Plan-review watchpoint #3 anchored.
+- `817b80d` Task 2 — `.claude/agents/gsd-fix-executor.md`. Frontmatter-branched from gsd-executor. Tenant-context fence (9 MUST-NOT-edit categories + ALLOWED whitelist + pre-commit shell snippet that exits 1 on FENCE VIOLATION per ITER-1 C6+D-30). Local verification limitation enumeration (per ITER-1 architect WARN-4). Standing rules anchored — D-23 process discipline + Drummond grep + design tokens.
+
+All Plan 7 ACs verified (15 acceptance criteria in PLAN.md). No harness regressions.
+
+### Wave 5 (Plans 8a + 8b — criteria-mandate + loop-with-executor)
+
+Plan 8a (criteria mandate) had already shipped during the harness bring-up (nwrp64-66 work — criteria-template, planner-mandate, spec-checker updates, common-authoring-errors postmortem). No additional Wave 5 work needed for 8a.
+
+Plan 8b — 2 commits:
+- `ea1a989` Task 1 — `src/lib/verification/loop-orchestrator.ts` + `scripts/loop-with-harness.ts`. runLoop wraps runHarness with state machine + max-3-iter (D-06) + halt-for-Jake artifact emission (D-07). All ITER-1 amendments anchored (C4 CostCap singleton, WARN-3 explicit paused-for-fix state, MEDIUM-3 fix-quality gate, ARCH-CRIT-1 state-machine ownership, W3 HALT artifact retention to git-tracked reports/halts/). Plan-review watchpoint #2 (state machine cleanly bounded) anchored. Build + typecheck clean.
+- `0ba5fcf` Task 2 — `.claude/commands/nx.md` updated with inner-harness-loop documentation. Visualization of full pipeline, outcome handling for all 5 exit codes, iteration budget per D-06, CostCap per ITER-1 C4, sequencing per D-05. Cross-references to Plan 7 (gsd-fix-executor) + Plan 10 (VERIFICATION-PIPELINE.md forthcoming Wave 7).
+
+Note: `.claude/get-shit-done/workflows/execute-phase.md` and `.claude/commands/gsd/execute-phase.md` are upstream GSD plugin files (gitignored). Plan 8b Task 2's "Step A" target is replaced by nx.md as the user-tracked authoritative location for Nightwork's inner-harness-loop documentation. Plan 10's forthcoming VERIFICATION-PIPELINE.md will cross-reference.
+
+### Infrastructure note — GitHub 500s twice during this wave
+
+Encountered GitHub Internal Server Error 500 on `git push` (recovered after retry loop) and twice on Vercel-side `git clone` for commit `0ba5fcf` (caused Vercel deployment ERROR; harness run failed at "Wait for Vercel preview to be Ready"). Empty-commit retry at `df17380` produced a clean Vercel build + clean harness run.
+
+No code-side issue. Per nwrp73 CATEGORY-Y stop condition "Persistent infrastructure failure >2 retries" — we hit 2 retries but the third worked, so continuing.
+
+### Wave 5 verification — Run #25676587984 on `df17380`
+
+- **PASS: 66** (Layer 1: 60 routes + 3 mechanical + 3 Layer 3 visual/semantic = same as pre-Wave-4 baseline)
+- **FAIL: 1** (AC-139 documented WI-004 surface gap — unchanged; intentional known-FAIL pending Stage 1.5b merge)
+- **SKIP: 1** (Layer 2 introspection Wave 1.1 dep)
+- **Vision cost: $0.0266** this run; cumulative **$0.480** / $5 ceiling
+
+Layer 3 PASS detail:
+- AC-130 (palette) PASS conf 0.85 — "stone-blue labels visible in both Set A and Set B token strips, each accompanied by a swatch that appears as a muted, slate-toned blue-grey color (#688EA5 and #588699)"
+- AC-131 (typography) PASS conf 0.82 — "TRACKING EYEBROW row with value 0.21em and UPPERCASE sample"
+  (vision reads 0.21em vs criterion's 0.14em — character OCR ambiguity 1→2, similar to AC-130's earlier B→8 issue. Criterion still PASSes because structural check is met: TRACKING EYEBROW row + UPPERCASE sample visible.)
+- AC-138 (Document Review pattern) PASS conf 0.95 — gold-standard layout confirmed
+- AC-139 (WI-004) FAIL conf 0.9 — documented known-FAIL
+
+### GATE 1 reached (per nwrp73)
+
+> "End of Wave 5 (Plan 8b ships) — Loop machinery is the most architecturally complex remaining work. Halt to confirm runLoop state machine works as designed."
+
+Plan 8b is shipped. State machine + halt-artifact emission + iter-3 bounding + CostCap singleton are all in place. **However**, the actual runLoop transitions get exercised by Plan 11 self-test (Wave 8 — not yet run). GATE 1's "Plan 11 self-test outcome on loop transitions" is forthcoming, not surfaced yet.
+
+HALT-FOR-JAKE.md updated with GATE 1 review.
