@@ -1,154 +1,129 @@
-# HALT FOR JAKE — GATE 1: End of Wave 5 (loop machinery shipped)
+# HALT FOR JAKE — GATE 2: End of Wave 7 (documentation phase complete)
 
-**Halt timestamp:** 2026-05-11T14:30Z
-**Triggering commit:** `df17380` (Wave 5 close + Vercel retry)
-**Stop condition:** nwrp73 GATE 1 — "End of Wave 5 (Plan 8b ships). Loop machinery is the most architecturally complex remaining work. Halt to confirm runLoop state machine works as designed."
-
----
-
-## Wave 4 + Wave 5 shipped without regressions
-
-### Wave 4 (Plan 7 — agents)
-
-| Commit | What |
-|---|---|
-| `e3052e9` | gsd-research-standards agent + .planning/research/ scaffolding + .gitignore carve-outs (research dir + 2 GSD agent exceptions) |
-| `817b80d` | gsd-fix-executor agent (9-category tenant-context fence + ALLOWED whitelist + pre-commit shell snippet; local-verification-limitation enumeration) |
-
-### Wave 5 (Plan 8b — loop machinery)
-
-| Commit | What |
-|---|---|
-| `ea1a989` | `src/lib/verification/loop-orchestrator.ts` (runLoop with state machine + CostCap singleton + fix-quality gate + 3 halt-artifact paths + retention to git-tracked reports/halts/) + `scripts/loop-with-harness.ts` (CLI exit codes 0/2/3/4/5) |
-| `0ba5fcf` | `.claude/commands/nx.md` — inner-harness-loop docs section in Step 2 (Execute) |
-
-Plan 8a (criteria mandate) had already shipped during the harness bring-up (nwrp64-66) — no additional Wave 5 work needed.
+**Halt timestamp:** 2026-05-11T15:00Z
+**Triggering commit:** `4219b63` (Plan 10 Task 2 — cross-refs)
+**Stop condition:** nwrp73 GATE 2 — "End of Wave 7 (Plan 10 ships). Documentation phase complete. All canonical docs authored."
 
 ---
 
-## Harness verification — Run #25676587984 on `df17380`
+## Wave 6 + Wave 7 shipped without regressions
+
+### Wave 6 (Plan 9 — calibration log)
+
+| Commit | What |
+|---|---|
+| `4b4a81d` | `calibration-log.md` + `calibration-log-schema.md` + gitignore carve-outs. 14 JSON front-matter fields, 5 markdown body sections, reader-rules heuristics. Plan-review watchpoint #4 anchored. |
+| `320a1fc` | `nightwork-custodian.md` updated with "Calibration log writer" section. 14-field extraction rules table. Don't list. Watchpoint #4 self-check. |
+
+### Wave 7 (Plan 10 — docs)
+
+| Commit | What |
+|---|---|
+| `235312a` | `.planning/architecture/VERIFICATION-PIPELINE.md` (420 lines, 20+ sections — canonical pipeline doc) |
+| `4219b63` | MASTER-PLAN.md DECISIONS LOG D-073..D-077 (5 new decisions) + PHILOSOPHY.md §9 (Verification-first development pattern) + CLAUDE.md Testing Rule (Q2=C hybrid posture) + CONTEXT.md (Forward documents cross-ref) |
+
+### Pre-existing deferred-items.md (AC-10-19)
+
+`.planning/phases/stage-1.5c-verification-harness/deferred-items.md` already existed from prior phase work (per Jake nwrp49 + iter-1 plan-review triage). Lists Wave-1.1+ deferrals with rationale. AC-10-19 satisfied without new write.
+
+---
+
+## Harness verification — Run #25677644825 on `4219b63`
 
 | Metric | Value |
 |---|---|
 | **PASS** | **66** (60 routes + 3 mechanical + 3 Layer 3 visual/semantic) |
-| **FAIL** | **1** (AC-139 documented WI-004 surface gap; unchanged) |
-| **SKIP** | **1** (Layer 2 introspection — Wave 1.1 dep) |
-| **Vision cost** | $0.0266 this run; cumulative **$0.480** / $5 ceiling |
+| **FAIL** | **1** (AC-139 documented WI-004 surface gap; unchanged since GATE 1) |
+| **SKIP** | **1** (Layer 2 introspection — Wave 1.1 dep, unchanged) |
+| **Vision cost** | $0.0261 this run; cumulative **$0.506** / $5 ceiling |
 
-Layer 3 PASS detail (3 of 4):
-- **AC-130 (palette)** PASS conf 0.85 — "stone-blue labels visible in both Set A and Set B token strips, each accompanied by a swatch that appears as a muted, slate-toned blue-grey color (#688EA5 and #588699)"
-- **AC-131 (typography)** PASS conf 0.82 — "TRACKING EYEBROW row with value 0.21em and UPPERCASE sample" (vision read 0.21em vs criterion's 0.14em — character OCR ambiguity 1→2, similar to earlier B→8; structural check passes)
-- **AC-138 (Document Review pattern)** PASS conf 0.95 — gold-standard layout confirmed
+Layer 3 detail:
+- AC-130 (palette) PASS conf 0.85
+- AC-131 (typography) PASS conf 0.82
+- AC-138 (Document Review pattern) PASS conf 0.95
+- AC-139 (WI-004) FAIL conf 0.9 — documented known-FAIL pending Stage 1.5b merge
 
-AC-139 (WI-004) FAIL conf 0.9 — same documented known-FAIL (surface gap; Stage 1.5b prototype-gallery not yet merged).
-
-**The harness state is the cleanest achievable on this branch.** Plan 7 + Plan 8b shipped without regressions.
-
----
-
-## Infrastructure note — GitHub 500s during Wave 5 push
-
-GitHub returned Internal Server Error 500 twice during this wave:
-1. `git push` of commit `ea1a989` — initial 500, recovered after retry loop
-2. Vercel-side `git clone` for commit `0ba5fcf` failed twice in a row (Vercel deployments `2o5vjh5fj` and `3kcdbu0qc` both showed Error status with verbatim message: "The git provider returned an HTTP 500 error.")
-
-Empty-commit retry at `df17380` produced a clean Vercel build + clean harness run.
-
-No code-side issue. Per nwrp73 CATEGORY-Y "Persistent infrastructure failure >2 retries" — we hit exactly 2 retries; the third worked. Surfacing for awareness but NOT triggering halt-for-Jake (the issue resolved itself).
-
-If GitHub keeps having intermittent 500s, GATE 2 might require more retry headroom on Wave 6 + Wave 7 pushes.
+**No regressions** — Plans 9 + 10 are pure docs/agent updates; zero effect on harness verdicts as expected.
 
 ---
 
-## State machine review — for Jake's confirmation
+## MASTER-PLAN decisions captured (per nwrp73 GATE 2 surface)
 
-### What's been built (loop-orchestrator.ts)
+| ID | Subject | Rationale anchor |
+|---|---|---|
+| **D-073** | Verification pipeline canonical infrastructure (3 layers + state machine + criteria mandate + idempotency + calibration log + loop-with-executor + 2 new agents + GH Action) | Per Jake nwrp47+48 motivation |
+| **D-074** | Layer 2 standards scope: framework + ONE rule (conservation/money-line-items-sum) this phase; others via gsd-research-standards in future phases | Q1=A |
+| **D-075** | Criteria mandate: `<criteria>` yaml block in every PLAN.md from this phase onward; enforced by nightwork-plan-review | D-17/D-18 + watchpoint #5 |
+| **D-076** | Calibration log at `.planning/calibration-log.md` — append-only retrospectives by nightwork-custodian; consumed by /np orchestrator | Q7=A + watchpoint #4 |
+| **D-077** | Loop-with-executor: harness INSIDE /gsd-execute-phase BEFORE /nightwork-qa; max-3-iter ADDITIVE; halt-for-Jake on iter-3 OR confidence < 0.7 OR fix-quality-failure | Q3=A + Q3.1 + watchpoints #2, #7 |
 
-```
-runLoop({phase, commit_sha?, preview_url?, cost_cap_usd?, repo_root})
-  → for iter = 1..MAX_ITERATIONS=3:
-      → on iter > 1: fix-quality gate (npm run build + tsc --noEmit)
-          → if fail: HALT-FIX-QUALITY-FAILURE.md + return failed-ambiguous
-          → if same SHA as last (fix-executor returned without commit): HALT + return failed-ambiguous
-      → runHarness({mode:"ci", preview_url, phase, commit_sha, cost_cap_usd, repo_root})
-      → costCap.record(report.total_vision_cost_usd)  // singleton; iter-N inherits remaining budget
-      → drive state machine: start → layer-1-result → layer-2-result → layer-3-result
-      → on state="passed": return passed
-      → on state="failed-ambiguous": write HALT-AMBIGUOUS-VISION.md or HALT-ITER-3.md (state machine decides reason) + return failed-ambiguous
-      → on iter>=3: write HALT-ITER-3.md + return failed-ambiguous (defense in depth)
-      → on state="failed-fixable" + iter < 3 (default mode): return paused-for-fix
-  → throw "Loop exited without terminal state" (unreachable)
-```
+---
 
-CLI (scripts/loop-with-harness.ts) exit codes:
-- 0 — passed
-- 2 — failed-ambiguous (terminal halt, Jake review)
-- 3 — discovery failed
-- 4 — runtime error
-- 5 — paused-for-fix (Claude orchestrator spawns gsd-fix-executor + iterates)
+## Cross-reference cascade — confirmed
 
-### Halt artifacts (3 types, all retained to git-tracked path)
+Every canonical doc cross-references the others:
 
-| Artifact | When |
-|---|---|
-| `HALT-AMBIGUOUS-VISION.md` | Any Layer 3 result with confidence < 0.7 (per D-07 — even on PASS verdicts) |
-| `HALT-ITER-3.md` | Loop reached MAX_ITERATIONS without resolution |
-| `HALT-FIX-QUALITY-FAILURE.md` | iter > 1 build/tsc broke by fix-executor commit (ITER-1 MEDIUM-3) |
+- `VERIFICATION-PIPELINE.md` → CONTEXT.md (D-30), calibration-log.md/schema.md, gsd-research-standards/gsd-fix-executor agent files, verify-phase.yml, Plan 11 self-test
+- `MASTER-PLAN.md` D-073 → VERIFICATION-PIPELINE.md
+- `MASTER-PLAN.md` D-076 → calibration-log.md/schema.md
+- `PHILOSOPHY.md` §9 → VERIFICATION-PIPELINE.md, D-073, hook level, Layer 3 vision
+- `CLAUDE.md` Testing Rule → VERIFICATION-PIPELINE.md, D-073, Q2=C
+- `CONTEXT.md` Forward documents → all 10 canonical references
 
-Each is also copied to `.planning/verification/reports/<phase>/halts/<commit>-<reason>.md` (git-tracked, SOC2 traceable; per ITER-1 W3).
+No orphan docs. No broken links. Design lock (CP2 = Site Office + Set B per D-037) traceable from PHILOSOPHY.md → VERIFICATION-PIPELINE.md vision criteria → harness Layer 3 ACs.
 
-### What's NOT yet verified
+---
 
-The state machine has unit-test-style behavior verification in `state-machine.ts` (pure functions, no side effects). **The actual end-to-end runLoop execution against a real failing harness — including the iter-3 hard-halt + the ambiguous-vision halt + the fix-quality gate — is exercised by Plan 11 self-test (Wave 8, not yet run).**
+## What's still pending — Wave 8
 
-GATE 1 per nwrp73 asks for "Plan 11 self-test outcome on loop transitions." That outcome doesn't exist yet — Plan 11 hasn't shipped. So this GATE 1 halt is for **architectural review of the loop machinery**, not behavioral verification (which comes at GATE 3 after Wave 8).
+Per nwrp73 expected timeline, the remaining work:
+
+- **Wave 8 (Plan 11 — self-test)** ~0.5 day
+  - Harness self-verifies against known failure modes
+  - Catches vacuous watchpoint cases
+  - Iter-1 watchpoint coverage execution (state machine transitions, criteria-loader smoke test, prompt injection defense)
+- **/nightwork-qa** ~30 min
+  - Spec-checker / custodian / security / ai-logic / UI / DB / API / financial reviewers
+- **GATE 3 halt** — Jake merge authorization
+
+After GATE 3 → merge to main.
 
 ---
 
 ## Recommended next action
 
-Per nwrp73 expected timeline:
-- Wave 6 (Plan 9 — calibration log) ~0.5 day
-- Wave 7 (Plan 10 — docs + MASTER-PLAN D-073..D-077) ~0.5 day
-- GATE 2 halt — Jake review of docs
-- Wave 8 (Plan 11 — self-test) ~0.5 day
-- /nightwork-qa ~30 min
-- GATE 3 halt — Jake merge authorization
+**Suggested message:** *"GATE 2 acknowledged. Continue through Wave 8 + /nightwork-qa, halt at GATE 3 as scheduled per nwrp73."*
 
-I can continue autonomously through Waves 6, 7, and 8 + /nightwork-qa, halting at GATE 2 (post-Wave-7) and GATE 3 (post-Wave-8 + QA).
+OR if you want to review doc state before authorizing Wave 8 dispatch:
 
-**Suggested message:** *"GATE 1 acknowledged. Continue through Waves 6 + 7 + 8 + /nightwork-qa, halt at GATE 2 + GATE 3 as scheduled."*
-
-OR if Jake wants to review the loop-orchestrator code first:
-
-**Alternative message:** *"Hold at GATE 1. Show me the loop-orchestrator.ts diff + walk through the state machine transitions in code before authorizing Wave 6."*
+*"Hold at GATE 2. Show me VERIFICATION-PIPELINE.md and the D-073..D-077 entries before authorizing Wave 8 dispatch."*
 
 ---
 
 ## Context Jake needs to decide
 
-- **Cumulative vision spend: $0.480** / $5 ceiling (10% used).
-- **All harness infrastructure operational.** Auth chain, screenshot dims, criteria-loader, runner — all working.
-- **Plan 7 + Plan 8b shipped clean.** No regressions to existing PASS counts.
-- **Plan 8b's runLoop hasn't been exercised yet** — Plan 11 self-test (Wave 8) will drive transitions.
-- **GitHub 500s** appeared twice during Wave 5. If GitHub stays flaky, GATE 2/3 may need similar retry tolerance.
+- **Cumulative vision spend:** $0.506 / $5 ceiling (10% used).
+- **All harness infrastructure operational + documented.** No infrastructure failures since the GitHub 500 retries at end of Wave 5.
+- **Plan 7 + 8b + 9 + 10 shipped clean.** No regressions to existing PASS counts.
+- **Plan 11 (Wave 8) is the final ship work.** Once 11 PASSes + /nightwork-qa passes, ready for merge auth at GATE 3.
 
 ---
 
-## File summary — Wave 4 + Wave 5
+## File summary — Wave 6 + Wave 7
 
 ```
 New files:
-  .claude/agents/gsd-research-standards.md          234 lines
-  .claude/agents/gsd-fix-executor.md                228 lines
-  src/lib/verification/loop-orchestrator.ts         ~400 lines
-  scripts/loop-with-harness.ts                      ~95 lines
-  .planning/research/.gitkeep                       0 lines
+  .planning/calibration-log.md                  76 lines
+  .planning/calibration-log-schema.md           87 lines
+  .planning/architecture/VERIFICATION-PIPELINE.md  420 lines
 
 Modified files:
-  .gitignore                                        +9 lines (research/ + agent exceptions)
-  .claude/commands/nx.md                            +49 lines (inner-loop docs)
+  .gitignore                                    +5 lines (calibration carve-outs)
+  .claude/agents/nightwork-custodian.md         +47 lines (calibration writer)
+  .planning/MASTER-PLAN.md                      +5 entries (D-073..D-077)
+  .planning/design/PHILOSOPHY.md                +13 lines (§9 verification-first)
+  CLAUDE.md                                     +14 lines (hybrid Testing Rule)
+  .planning/phases/.../01.5-c-verification-harness-CONTEXT.md  +21 lines (Forward documents)
 
-Total new TS/code: ~500 lines (loop machinery)
-Total new agent prompts: ~462 lines (research-standards + fix-executor)
+Total new doc content: ~700 lines
 ```
