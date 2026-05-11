@@ -661,3 +661,76 @@ A2 (= W.1) is now the lowest-risk path. ~10 lines in production `client.ts`, env
 Per directive: "DO NOT apply a fix. DO NOT modify production code. Diagnostic extension + structured findings + halt for Jake review."
 
 Awaiting authorization: **W.1 (A2 pivot) / W.2 (deep SDK investigation) / W.3 (accept N/A) / W.4 (harness-side setSession) / other.**
+
+---
+
+## 2026-05-11 — W.1 validation: STILL FAILS. Likely race condition.
+
+### W.1 implementation shipped (commit `9f789ef`)
+
+- `src/lib/supabase/client.ts` — env-gated setSession block on the production client instance
+- `_browser.ts` — `supabaseSetSessionBridgeInitScript` helper
+- `runner.ts` + `dom-assertions.ts` — `context.addInitScript(bridgeScript)` after newContext
+
+Typecheck clean, ships clean.
+
+### Harness re-run #25692526886 on `9f789ef`
+
+Same outcome: **PASS=86 / FAIL=1 / SKIP=1.**
+
+AC-1-8 FAIL @ conf 0.90 (vision reasoning):
+> "The page shows no 8-section top navigation; the top nav only contains a logo, Feedback, Sign Out, and a dark mode toggle. The layout does not match the described 8-section top nav criterion."
+
+Z.1 raw fetch still 200 OK (fetch_ms=135 — even faster than before). Cookie present, token valid. `useCurrentRole` still returning null.
+
+### Probable root cause: async race between setSession and useCurrentRole
+
+W.1's mechanism requires:
+1. addInitScript writes `window.__nightwork_harness_session` (BEFORE page scripts)
+2. Page bundle loads; `client.ts` module evaluates; env-gated block calls `supabase.auth.setSession()` — **async, fire-and-forget** (`void ... .catch(...)`)
+3. React hydrates; NavBar mounts; `useCurrentRole`'s useEffect fires; calls `supabase.auth.getUser()`
+
+The race: `setSession` is async. Per @supabase/auth-js source, it internally:
+- Validates tokens via `_getUser(access_token)` — makes a network call to `/auth/v1/user` (~135-389ms per Z.1 timing)
+- THEN saves session in-memory + storage
+- THEN emits `SIGNED_IN` event
+
+React hydration + hook mount: typically ~50-200ms.
+
+So `useCurrentRole`'s `getUser()` fires BEFORE `setSession` completes. In-memory session is still empty. `getUser()` falls through to the broken auto-hydration path. Returns null. Role stays null. Nav suppresses to minimal. Vision sees minimal nav.
+
+Even after setSession eventually completes (~400ms later), `useCurrentRole` is one-shot — `useEffect(() => {...}, [])` runs ONCE on mount, no auth state listener, no retry. The completed setSession updates the SDK's in-memory cache but the React state has already been set to null.
+
+### Three competing diagnoses (would need extension to disambiguate)
+
+| Hypothesis | Test | Fix |
+|---|---|---|
+| **D1**: Bridge never ran (initScript didn't fire OR env var blocking) | Probe checks `window.__nightwork_harness_session` absence after page load (deleted by client.ts only if block ran). Also `window.__harness_setSession_called` marker. | Fix bridge wiring |
+| **D2 ⭐**: Bridge ran; setSession is racing with hook (my leading hypothesis) | Probe checks if marker present AND if `supabase.auth.getUser()` returns user when called from probe AFTER waiting for setSession to complete | Modify hook to subscribe to `onAuthStateChange` OR await setSession completion before screenshot |
+| **D3**: Bridge ran; setSession completed; but hook still returns null (deeper SDK bug) | Probe waits ~1s post-load then calls `supabase.auth.getUser()` directly from harness-side; compares to hook's null result | Unknown — would need SDK source dive |
+
+### Cost ceiling
+- Cumulative: $1.105 + $0.072 = **~$1.177 / $5.00 (23.5%)**
+
+### Recommended next step
+
+**V.1** — extend Y.1.D probe with two markers (cheap, ~$0.10):
+1. `window.__nightwork_harness_session` presence check (set by initScript; deleted by client.ts block after read — absence proves block ran)
+2. Add a 1.5s delay before probe + capture a fresh `auth.getUser()` call via the same client.ts module (need to expose `window.__nightwork_supabase_diag = supabase` temporarily under env gate for this run only)
+
+Result classification:
+- Global absent + getUser returns user → D2 race confirmed → fix hook
+- Global present → D1 (bridge didn't fire) → fix wiring
+- Global absent + getUser still null → D3 (deeper bug) → SDK dive
+
+Or:
+
+**V.2** — bypass diagnostic; directly modify `useCurrentRole` hook to subscribe to `onAuthStateChange` for SIGNED_IN events. Production-meaningful change (real users would benefit from auth-state reactivity), env-not-gated, deterministic fix for D2 (which is the leading hypothesis).
+
+Or:
+
+**V.3** — accept AC-1-8 N/A per nwrp76 D.2 framing; close Block N+1; document harness limitation; move on. Cost ~$0.05 if you've had enough.
+
+### HALT per nwrp86 STEP 5 (B)
+
+Awaiting authorization: **V.1 (diagnostic) / V.2 (fix hook) / V.3 (accept N/A) / other.**
