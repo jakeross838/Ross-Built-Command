@@ -238,6 +238,60 @@ jobs:
           echo "::error::Timeout waiting for Vercel preview (commit $SHA) to reach READY state. Last state: '$STATE'."
           exit 3
 
+      # Y.1.B (nwrp82) — bootstrap Playwright storageState BEFORE running the
+      # main harness. Spawns a one-time Chromium that performs a real
+      # /login form submit against the preview URL with the harness-fixture
+      # credentials, then dumps `context.storageState()` to
+      # .planning/verification/auth/harness-auth-state.json. The main harness
+      # step below loads that file via `browser.newContext({ storageState })`
+      # so every navigation carries a fully-hydrated authenticated session
+      # (cookies + localStorage + IndexedDB as a unit, matching what a real
+      # user would have after login). Replaces the prior cookie + localStorage
+      # manual injection approach which only populated server-side cookies
+      # — client-side `@supabase/ssr`'s `createBrowserClient` did not
+      # auto-hydrate `auth.getUser()` from out-of-band cookie injection
+      # (Y.1.D diagnostic 2026-05-11).
+      #
+      # ~30s overhead per CI run; reliable across @supabase/ssr internal
+      # behavior changes (canonical Playwright pattern, endorsed by docs).
+      # SEC-HIGH-1 compliance: PREVIEW_URL passes through env vars; the
+      # URL regex validation happens once in the Run-verification-harness
+      # step below (we use the same DISCOVERED_PREVIEW_URL or
+      # INPUT_PREVIEW_URL env vars here).
+      - name: Bootstrap harness auth (Playwright storageState)
+        id: auth-bootstrap
+        env:
+          INPUT_PREVIEW_URL: ${{ github.event.inputs.preview_url }}
+          DISCOVERED_PREVIEW_URL: ${{ steps.vercel-wait.outputs.preview_url }}
+          HARNESS_FIXTURE_PASSWORD: ${{ secrets.HARNESS_FIXTURE_PASSWORD }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERIFICATION_BYPASS_SECRET: ${{ secrets.VERIFICATION_BYPASS_SECRET }}
+        run: |
+          set -e
+          # Determine the preview URL (same priority order as harness step
+          # below: explicit workflow_dispatch input, then vercel-wait discovery).
+          PREVIEW_URL=""
+          if [[ -n "$INPUT_PREVIEW_URL" ]]; then
+            if ! [[ "$INPUT_PREVIEW_URL" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/?#=-]*)?$ ]]; then
+              echo "::error::Invalid preview_url input for bootstrap"
+              exit 1
+            fi
+            PREVIEW_URL="$INPUT_PREVIEW_URL"
+          elif [[ -n "$DISCOVERED_PREVIEW_URL" ]]; then
+            if ! [[ "$DISCOVERED_PREVIEW_URL" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/?#=-]*)?$ ]]; then
+              echo "::error::Invalid discovered preview URL for bootstrap"
+              exit 1
+            fi
+            PREVIEW_URL="$DISCOVERED_PREVIEW_URL"
+          else
+            echo "::error::No preview URL available for bootstrap"
+            exit 1
+          fi
+          echo "[bootstrap] Capturing harness auth state against $PREVIEW_URL"
+          npx tsx scripts/harness-auth-bootstrap.ts --preview-url "$PREVIEW_URL"
+
       # ITER-1 SEC-HIGH-1: env-var indirection. INPUT_PREVIEW_URL is validated
       # against URL pattern before being passed to scripts/verify-phase.ts; an
       # injection in the URL value (e.g., '$(curl attacker)') cannot execute.

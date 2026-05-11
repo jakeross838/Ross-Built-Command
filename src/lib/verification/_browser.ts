@@ -6,6 +6,50 @@
 // site], propose extraction in Plan 4 SUMMARY". Centralizes the iter-1
 // SECURITY MEDIUM-2 sandbox-arg policy so future helpers can't drift.
 //
+// Y.1.B (nwrp82) — added HARNESS_AUTH_STATE_PATH and harnessStorageStateOption
+// helper for Playwright storageState bootstrap pattern. Replaces the prior
+// cookie + localStorage manual injection approach (see DEPRECATED markers on
+// supabaseSessionCookies + supabaseLocalStorageInitScript below).
+
+import { existsSync } from "node:fs";
+import * as path from "node:path";
+
+/**
+ * Canonical path for the bootstrap-captured storageState JSON. Produced by
+ * scripts/harness-auth-bootstrap.ts on every CI run BEFORE the main harness
+ * invocation. Consumed by Layer 1 + Layer 3 runners via
+ * `browser.newContext({ storageState: HARNESS_AUTH_STATE_PATH })`.
+ *
+ * File is gitignored (contains live session tokens). Regenerated per CI run
+ * (~30s overhead). Path is repo-relative; helpers resolve to absolute when
+ * passing to Playwright.
+ */
+export const HARNESS_AUTH_STATE_PATH = path.resolve(
+  process.cwd(),
+  ".planning/verification/auth/harness-auth-state.json"
+);
+
+/**
+ * Returns the `storageState` option for `browser.newContext()` if the bootstrap
+ * file exists; otherwise returns `undefined` (caller falls back to unauthenticated
+ * context, useful for routes that don't need auth like the marketing root).
+ *
+ * The fallback path is intentional: routes like `/` (marketing landing) don't
+ * require auth, and a missing bootstrap file should not crash the harness on
+ * those routes. For auth-required routes, the harness's other defenses (route
+ * status 200 check in Layer 1; vision verdict reasoning in Layer 3) will flag
+ * the missing-auth state as a FAIL, surfacing the bootstrap-not-run condition
+ * loudly via test results rather than silent context-creation crash.
+ *
+ * Per nwrp82 STEP 1.2: "Verify _browser.ts handles missing storageState file
+ * gracefully (fail-loudly with actionable error)". The actionable error is
+ * surfaced when the file IS expected but missing — see usage at callsites.
+ */
+export function harnessStorageStateOption(): string | undefined {
+  if (existsSync(HARNESS_AUTH_STATE_PATH)) return HARNESS_AUTH_STATE_PATH;
+  return undefined;
+}
+//
 // Per iter-1 SECURITY MEDIUM-2:
 // - --disable-dev-shm-usage always (works around /dev/shm size constraints
 //   in containers; no security trade-off).
@@ -146,6 +190,19 @@ export interface PlaywrightCookie {
 const SUPABASE_BASE64_PREFIX = "base64-";
 const SUPABASE_MAX_CHUNK_SIZE = 3180; // matches @supabase/ssr/utils/chunker.js
 
+/**
+ * @deprecated since Y.1.B (nwrp82). Use `harnessStorageStateOption()` +
+ * `browser.newContext({ storageState })` instead. This helper produced
+ * Supabase SSR auth cookies for `context.addCookies()`; it worked for
+ * server-side middleware but did NOT hydrate `@supabase/ssr`'s
+ * `createBrowserClient` on the client side — confirmed by Y.1.D diagnostic
+ * 2026-05-11 (cookies present in `document.cookie` but `auth.getUser()`
+ * still returned null). Replaced by Playwright storageState bootstrap which
+ * captures a real authenticated context via the actual login flow.
+ *
+ * Kept in source temporarily for one-more-validation-run comparison; will
+ * be removed in cleanup commit after Y.1.B success confirmed.
+ */
 export function supabaseSessionCookies(
   supabaseUrl: string | undefined,
   previewUrl: string,
@@ -205,6 +262,17 @@ export function supabaseSessionCookies(
 }
 
 /**
+ * @deprecated since Y.1.B (nwrp82). The hypothesis behind this helper —
+ * that injecting into localStorage would hydrate the client-side
+ * `@supabase/ssr` `createBrowserClient` — was disproven by Y.1.D
+ * diagnostic 2026-05-11. The SSR client uses cookies as storage, not
+ * localStorage; this script was a no-op for the SSR variant. Replaced
+ * by Playwright `storageState` bootstrap which captures the real
+ * authenticated context end-to-end via the login flow.
+ *
+ * Kept in source temporarily for one-more-validation-run comparison;
+ * will be removed in cleanup commit after Y.1.B success confirmed.
+ *
  * Inject Supabase session into the browser's localStorage so client-side
  * `@supabase/supabase-js` (and `@supabase/ssr`'s `createBrowserClient`,
  * which also falls back to localStorage in some auth-state code paths)
