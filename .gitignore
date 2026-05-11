@@ -122,6 +122,10 @@ skills-lock.json
 # PCs because /np reads EXPANDED-SCOPE and /nx reads SETUP-COMPLETE. Per D-018.
 !/.planning/expansions/
 !/.planning/expansions/**
+# templates/ — canonical author templates (criteria, plan, etc.). Synced via
+# git so /np pulls templates from any PC. Per stage-1.5c-vh D-17/D-18.
+!/.planning/templates/
+!/.planning/templates/**
 # phases/ — phase artifacts (DISCUSSION.md, SPEC.md, PLAN.md, PLAN-REVIEW.md,
 # MANIFEST.md, STATE.md). These must sync across PCs because /np produces
 # them and /nx reads them. Per D-018 + GSD convention.

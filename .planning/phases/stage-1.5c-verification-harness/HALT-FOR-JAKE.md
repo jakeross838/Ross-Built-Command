@@ -1,129 +1,168 @@
-# HALT FOR JAKE — GATE 2: End of Wave 7 (documentation phase complete)
+# HALT FOR JAKE — GATE 3: End of /nightwork-qa (merge readiness)
 
-**Halt timestamp:** 2026-05-11T15:00Z
-**Triggering commit:** `4219b63` (Plan 10 Task 2 — cross-refs)
-**Stop condition:** nwrp73 GATE 2 — "End of Wave 7 (Plan 10 ships). Documentation phase complete. All canonical docs authored."
-
----
-
-## Wave 6 + Wave 7 shipped without regressions
-
-### Wave 6 (Plan 9 — calibration log)
-
-| Commit | What |
-|---|---|
-| `4b4a81d` | `calibration-log.md` + `calibration-log-schema.md` + gitignore carve-outs. 14 JSON front-matter fields, 5 markdown body sections, reader-rules heuristics. Plan-review watchpoint #4 anchored. |
-| `320a1fc` | `nightwork-custodian.md` updated with "Calibration log writer" section. 14-field extraction rules table. Don't list. Watchpoint #4 self-check. |
-
-### Wave 7 (Plan 10 — docs)
-
-| Commit | What |
-|---|---|
-| `235312a` | `.planning/architecture/VERIFICATION-PIPELINE.md` (420 lines, 20+ sections — canonical pipeline doc) |
-| `4219b63` | MASTER-PLAN.md DECISIONS LOG D-073..D-077 (5 new decisions) + PHILOSOPHY.md §9 (Verification-first development pattern) + CLAUDE.md Testing Rule (Q2=C hybrid posture) + CONTEXT.md (Forward documents cross-ref) |
-
-### Pre-existing deferred-items.md (AC-10-19)
-
-`.planning/phases/stage-1.5c-verification-harness/deferred-items.md` already existed from prior phase work (per Jake nwrp49 + iter-1 plan-review triage). Lists Wave-1.1+ deferrals with rationale. AC-10-19 satisfied without new write.
+**Halt timestamp:** 2026-05-11T16:32Z
+**Stop condition:** nwrp73 GATE 3 — "End-of-phase merge readiness — HALT before merging to main for Jake authorization."
 
 ---
 
-## Harness verification — Run #25677644825 on `4219b63`
+## Phase state at GATE 3
 
-| Metric | Value |
+| Item | Status |
 |---|---|
-| **PASS** | **66** (60 routes + 3 mechanical + 3 Layer 3 visual/semantic) |
-| **FAIL** | **1** (AC-139 documented WI-004 surface gap; unchanged since GATE 1) |
-| **SKIP** | **1** (Layer 2 introspection — Wave 1.1 dep, unchanged) |
-| **Vision cost** | $0.0261 this run; cumulative **$0.506** / $5 ceiling |
-
-Layer 3 detail:
-- AC-130 (palette) PASS conf 0.85
-- AC-131 (typography) PASS conf 0.82
-- AC-138 (Document Review pattern) PASS conf 0.95
-- AC-139 (WI-004) FAIL conf 0.9 — documented known-FAIL pending Stage 1.5b merge
-
-**No regressions** — Plans 9 + 10 are pure docs/agent updates; zero effect on harness verdicts as expected.
+| Harness end-to-end run | **PASS = 68 / FAIL = 1 / SKIP = 1** (final.md) |
+| Plan 11 self-test | **PASS** (`SELF-TEST-LOG.md` — all 7 watchpoints PASS) |
+| /nightwork-qa verdict | **BLOCKING** → **fixes staged** (see below) |
+| Vision-API cumulative spend | ~$0.539 / $5 ceiling |
+| Working tree | 5 staged files + 1 new qa-report (uncommitted — hook blocked on stale verdict) |
 
 ---
 
-## MASTER-PLAN decisions captured (per nwrp73 GATE 2 surface)
+## /nightwork-qa — 7-reviewer parallel pass
 
-| ID | Subject | Rationale anchor |
+Full report: `.planning/qa-runs/2026-05-11-1132-qa-report.md`.
+
+| Reviewer | Verdict | Severity counts |
 |---|---|---|
-| **D-073** | Verification pipeline canonical infrastructure (3 layers + state machine + criteria mandate + idempotency + calibration log + loop-with-executor + 2 new agents + GH Action) | Per Jake nwrp47+48 motivation |
-| **D-074** | Layer 2 standards scope: framework + ONE rule (conservation/money-line-items-sum) this phase; others via gsd-research-standards in future phases | Q1=A |
-| **D-075** | Criteria mandate: `<criteria>` yaml block in every PLAN.md from this phase onward; enforced by nightwork-plan-review | D-17/D-18 + watchpoint #5 |
-| **D-076** | Calibration log at `.planning/calibration-log.md` — append-only retrospectives by nightwork-custodian; consumed by /np orchestrator | Q7=A + watchpoint #4 |
-| **D-077** | Loop-with-executor: harness INSIDE /gsd-execute-phase BEFORE /nightwork-qa; max-3-iter ADDITIVE; halt-for-Jake on iter-3 OR confidence < 0.7 OR fix-quality-failure | Q3=A + Q3.1 + watchpoints #2, #7 |
+| nightwork-spec-checker | **NEEDS WORK** | 2 BLOCKING |
+| nightwork-custodian | PASS | drift 0 |
+| security-reviewer | CONDITIONAL PASS | 1 WARNING + 2 NOTES |
+| nightwork-rls-auditor | PASS | 0 blocking, 3 informational |
+| database-reviewer | PASS | 1 advisory |
+| nightwork-data-migration-safety | PASS | 1 advisory WARNING |
+| nightwork-ai-logic-tester | PASS | 3 non-blocking notes |
+
+Synthesis: **BLOCKING** (any-reviewer-blocking rule).
+
+### The 2 BLOCKING findings (both from nightwork-spec-checker)
+
+**BLOCKING-1: Plan 8a deliverables not landed**
+
+Plan 8a commit `ab292c6` only shipped the `criteria-loader.ts` regex hardening and Plan 8a PLAN.md itself. The four downstream artifacts were absent:
+
+- `.planning/templates/criteria-template.md` — did not exist
+- `.claude/agents/nightwork-spec-checker.md` — no D-17/D-18/D-19 references, no Method step 1a
+- `.claude/agents/gsd-planner.md` — no criteria-mandate section (NOTE: file is gitignored upstream)
+- `.claude/commands/nightwork-plan-review.md` — no criteria-block enforcement
+
+**BLOCKING-2: nightwork-smoke-tester not deprecated**
+
+`VERIFICATION-PIPELINE.md` claimed "agent file deprecated" per D-08 / Q4=C, but the agent file still had its original description with no deprecation marker.
 
 ---
 
-## Cross-reference cascade — confirmed
+## Fixes prepared (staged, uncommitted)
 
-Every canonical doc cross-references the others:
-
-- `VERIFICATION-PIPELINE.md` → CONTEXT.md (D-30), calibration-log.md/schema.md, gsd-research-standards/gsd-fix-executor agent files, verify-phase.yml, Plan 11 self-test
-- `MASTER-PLAN.md` D-073 → VERIFICATION-PIPELINE.md
-- `MASTER-PLAN.md` D-076 → calibration-log.md/schema.md
-- `PHILOSOPHY.md` §9 → VERIFICATION-PIPELINE.md, D-073, hook level, Layer 3 vision
-- `CLAUDE.md` Testing Rule → VERIFICATION-PIPELINE.md, D-073, Q2=C
-- `CONTEXT.md` Forward documents → all 10 canonical references
-
-No orphan docs. No broken links. Design lock (CP2 = Site Office + Set B per D-037) traceable from PHILOSOPHY.md → VERIFICATION-PIPELINE.md vision criteria → harness Layer 3 ACs.
-
----
-
-## What's still pending — Wave 8
-
-Per nwrp73 expected timeline, the remaining work:
-
-- **Wave 8 (Plan 11 — self-test)** ~0.5 day
-  - Harness self-verifies against known failure modes
-  - Catches vacuous watchpoint cases
-  - Iter-1 watchpoint coverage execution (state machine transitions, criteria-loader smoke test, prompt injection defense)
-- **/nightwork-qa** ~30 min
-  - Spec-checker / custodian / security / ai-logic / UI / DB / API / financial reviewers
-- **GATE 3 halt** — Jake merge authorization
-
-After GATE 3 → merge to main.
-
----
-
-## Recommended next action
-
-**Suggested message:** *"GATE 2 acknowledged. Continue through Wave 8 + /nightwork-qa, halt at GATE 3 as scheduled per nwrp73."*
-
-OR if you want to review doc state before authorizing Wave 8 dispatch:
-
-*"Hold at GATE 2. Show me VERIFICATION-PIPELINE.md and the D-073..D-077 entries before authorizing Wave 8 dispatch."*
-
----
-
-## Context Jake needs to decide
-
-- **Cumulative vision spend:** $0.506 / $5 ceiling (10% used).
-- **All harness infrastructure operational + documented.** No infrastructure failures since the GitHub 500 retries at end of Wave 5.
-- **Plan 7 + 8b + 9 + 10 shipped clean.** No regressions to existing PASS counts.
-- **Plan 11 (Wave 8) is the final ship work.** Once 11 PASSes + /nightwork-qa passes, ready for merge auth at GATE 3.
-
----
-
-## File summary — Wave 6 + Wave 7
+I classified both BLOCKING findings as **CATEGORY-F (Plan execution within phase scope)** — autonomous per nwrp73 — and applied:
 
 ```
-New files:
-  .planning/calibration-log.md                  76 lines
-  .planning/calibration-log-schema.md           87 lines
-  .planning/architecture/VERIFICATION-PIPELINE.md  420 lines
-
-Modified files:
-  .gitignore                                    +5 lines (calibration carve-outs)
-  .claude/agents/nightwork-custodian.md         +47 lines (calibration writer)
-  .planning/MASTER-PLAN.md                      +5 entries (D-073..D-077)
-  .planning/design/PHILOSOPHY.md                +13 lines (§9 verification-first)
-  CLAUDE.md                                     +14 lines (hybrid Testing Rule)
-  .planning/phases/.../01.5-c-verification-harness-CONTEXT.md  +21 lines (Forward documents)
-
-Total new doc content: ~700 lines
+M  .claude/agents/nightwork-smoke-tester.md      (+18 lines: DEPRECATED frontmatter + body header)
+M  .claude/agents/nightwork-spec-checker.md      (+32 lines: Method step 1a + Structured criteria mapping section)
+M  .claude/commands/nightwork-plan-review.md     (+33 lines: Criteria mandate enforcement section)
+M  .gitignore                                    (+4 lines: /.planning/templates/ carve-out)
+A  .planning/templates/criteria-template.md      (+127 lines: drop-in template + rubric + friction-tax + upstream sync note)
 ```
+
+Verification (all GREEN):
+
+```
+OK: template exists
+OK: template has Drop-in template
+OK: rubric
+OK: gitignore carve-out
+OK: spec-checker structured criteria
+OK: spec-checker D-refs
+OK: plan-review enforcement
+OK: plan-review exemption
+OK: smoke-tester deprecated
+```
+
+**Note on gsd-planner.md** — it is gitignored (upstream GSD plugin overlay). Per-PC manual sync is required; the criteria-template.md documents the propagation path. Enforcement remains intact because `nightwork-plan-review` flags missing criteria blocks regardless of whether the planner included them.
+
+---
+
+## Why I halted instead of committing
+
+The pre-commit hook (`.claude/hooks/nightwork-pre-commit.sh`) reads the latest qa-report and blocks commits whose source files (`.claude/agents/*` qualifies) are gated by a BLOCKING verdict. The 2026-05-11-1132-qa-report.md is fresh but captures the BLOCKING verdict.
+
+Per CLAUDE.md / standing rules: "Never skip hooks (--no-verify) unless the user has explicitly asked for it. If a hook fails, investigate and fix the underlying issue."
+
+The underlying issue here is real (the QA was BLOCKING). The fix is also real (staged, verified). But committing the fix requires either:
+- **A**: `--no-verify` (you authorize the bypass — justified because the commit IS the fix for the BLOCKING findings)
+- **B**: A non-BLOCKING qa-report dated after the fix (requires re-running /nightwork-qa with the fixes in the working tree, which would honestly find them; cost ~$0 since spec-checker is grep-driven, no vision)
+- **C**: Reject the fix approach; redirect
+
+Per nwrp73 stop condition "End-of-phase merge readiness — HALT before merging to main for Jake authorization" — surfacing to you now.
+
+---
+
+## Three paths forward
+
+### Path A: --no-verify commit + post-commit QA rerun
+
+Fast. Single commit ships the fixes. Then `/nightwork-qa` to refresh verdict. If clean → merge to main.
+
+```bash
+git commit --no-verify -m "fix(stage-1.5c-vh): resolve QA BLOCKING — Plan 8a deliverables + smoke-tester deprecation"
+# then re-run /nightwork-qa
+```
+
+### Path B: Re-run /nightwork-qa with fixes in working tree (no commit yet)
+
+Most thorough. Working-tree files are what reviewers actually read, so spec-checker would now see the fixes. Get a non-BLOCKING verdict, then commit normally.
+
+```bash
+/nightwork-qa stage-1.5c-verification-harness
+# expect: spec-checker PASS or NEEDS WORK without BLOCKING
+# then: git commit (no --no-verify needed)
+```
+
+### Path C: Redirect
+
+If you want a different fix approach (e.g., backfill via a separate "Plan 8a-followup" phase post-merge), tell me how to proceed.
+
+---
+
+## My recommendation
+
+**Path B**, because:
+1. It's honest — the QA agents validate the post-fix state directly.
+2. It doesn't bypass the hook.
+3. Cost is negligible (spec-checker is grep-driven; no vision spend).
+4. It also catches anything else the fix might have inadvertently broken.
+
+Wall-clock ~2 minutes.
+
+---
+
+## What's NOT in scope of these fixes
+
+Per `.planning/qa-runs/2026-05-11-1132-qa-report.md`, the WARNINGs / NOTEs are non-blocking and untouched:
+
+- **security WARNING**: middleware uses NODE_ENV instead of VERCEL_ENV in defense-in-depth fallback. 4-layer defense holds; one-line fix queued for follow-up.
+- **migration advisory**: no `.down.sql` for 00092/00093. Nightwork convention is forward-only.
+- **rls-auditor / database-reviewer / ai-logic-tester NOTES**: all informational.
+
+These are queued for a separate post-merge cleanup (or for the WI-004 follow-up branch).
+
+---
+
+## Cost ceiling status
+
+| Item | Cost |
+|---|---|
+| Vision spend (cumulative this phase) | ~$0.539 |
+| Vision spend ceiling (nwrp73) | $5.00 |
+| Headroom | ~$4.461 |
+
+No vision calls expected for Path B (spec-checker is grep-only).
+
+---
+
+## Awaiting authorization
+
+Tell me:
+- **"path A"** → I commit with `--no-verify` then rerun /nightwork-qa
+- **"path B"** → I rerun /nightwork-qa now (with fixes in working tree)
+- **"path C"** → tell me how to redirect
+
+Halt confirmed.

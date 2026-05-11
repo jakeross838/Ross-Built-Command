@@ -1676,3 +1676,60 @@ No regressions. Plans 9 + 10 are pure docs/agent updates; harness verdicts uncha
 ### GATE 2 reached (per nwrp73)
 
 All canonical docs authored. HALT-FOR-JAKE.md updated with full GATE 2 summary, cross-reference cascade verification, recommended path (continue to Wave 8 + /nightwork-qa for GATE 3 merge auth).
+
+---
+
+## 2026-05-11T16:32Z — Wave 8 (Plan 11 self-test) shipped + /nightwork-qa returned BLOCKING + fixes prepared. GATE 3 reached.
+
+### Wave 8 (Plan 11 — self-test)
+
+Plan 11 fixture criterion `99-_self-test-fixture-criterion-PLAN.md` shipped (1 visual criterion against marketing root). Self-test exercise compiled into `SELF-TEST-LOG.md` (257 lines) from empirical evidence + code-inspection verifications. All 7 watchpoints PASS.
+
+### /nightwork-qa orchestration (7 reviewers parallel)
+
+Full report: `.planning/qa-runs/2026-05-11-1132-qa-report.md`. Verdict: **BLOCKING**.
+
+| Reviewer | Verdict |
+|---|---|
+| nightwork-spec-checker | NEEDS WORK (2 BLOCKING) |
+| nightwork-custodian | PASS (drift 0) |
+| security-reviewer | CONDITIONAL PASS (1 WARNING + 2 NOTES) |
+| nightwork-rls-auditor | PASS (3 informational) |
+| database-reviewer | PASS (1 advisory) |
+| nightwork-data-migration-safety | PASS (1 advisory) |
+| nightwork-ai-logic-tester | PASS (3 non-blocking) |
+
+### 2 BLOCKING findings (both from spec-checker)
+
+1. **Plan 8a deliverables not landed** — commit `ab292c6` only touched criteria-loader.ts + Plan 8a PLAN.md; downstream artifacts (criteria-template.md, spec-checker Method step 1a, plan-review enforcement) absent.
+2. **nightwork-smoke-tester not deprecated** — VERIFICATION-PIPELINE.md claims deprecation per D-08 / Q4=C; agent file unchanged.
+
+### CATEGORY-F autonomous fixes applied (staged, uncommitted)
+
+Classified as CATEGORY-F (Plan execution within phase scope) per nwrp73; applied:
+
+- NEW `.planning/templates/criteria-template.md` (127 lines) — drop-in template + rubric + friction-tax + upstream sync note
+- `.gitignore` — `/.planning/templates/` carve-out
+- `.claude/agents/nightwork-spec-checker.md` (+32 lines) — Method step 1a + Structured criteria mapping section
+- `.claude/commands/nightwork-plan-review.md` (+33 lines) — Criteria mandate enforcement section
+- `.claude/agents/nightwork-smoke-tester.md` (+18 lines) — DEPRECATED frontmatter + body header
+
+All 9 verification checks GREEN (template exists, rubric, gitignore carve-out, spec-checker structured criteria, D-refs, plan-review enforcement, exemption, smoke-tester deprecated).
+
+**Note**: gsd-planner.md is gitignored upstream — manual per-PC sync documented in criteria-template.md. Enforcement remains intact via nightwork-plan-review.
+
+### Halt rationale
+
+Pre-commit hook blocks commits gated by BLOCKING qa-report verdict. Per standing rule "Never skip hooks unless user has explicitly asked," halting for Jake to authorize one of:
+- **Path A**: --no-verify commit + post-commit /nightwork-qa rerun
+- **Path B (recommended)**: rerun /nightwork-qa with fixes in working tree → expect non-BLOCKING → normal commit
+- **Path C**: redirect
+
+`HALT-FOR-JAKE.md` updated with full GATE 3 surface.
+
+### Cost ceiling
+
+- Cumulative vision spend: ~$0.539 / $5.00 ceiling
+- Headroom: ~$4.461
+
+GATE 3 reached. Halt confirmed.
