@@ -273,3 +273,64 @@ This is a **harness-internals issue**, not a 1.5c-IA bug. Plans 1/2/3 of 1.5c-IA
 Per nwrp78 instructions: "DO NOT FIX YET. DO NOT modify migrations. DO NOT modify nav component. Diagnostic only. Halt with findings."
 
 Awaiting authorization: **Y.1 / Y.2 / D.1 / D.2 / other**.
+
+---
+
+## 2026-05-11 — Y.2 validation: localStorage injection DID NOT resolve hydration gap
+
+### Y.2 implementation shipped
+
+Commit `3e7a08c` on main, propagated via merge `7ea7ca4` to 1.5c-IA:
+- NEW `supabaseLocalStorageInitScript(supabase_url, raw_session)` helper in `_browser.ts` — returns JS init-script source writing `sb-<project-ref>-auth-token` JSON to localStorage
+- Wired into Layer 3 runner.ts and Layer 1 dom-assertions.ts via `context.addInitScript()` — runs BEFORE every page's `<script>` so localStorage is populated when the page hydrates
+- Idempotent with `session=undefined` (returns comment-only no-op)
+- Typecheck clean
+
+### Harness re-run #25687001580 on `7ea7ca4`
+
+Same outcome: **PASS=86 / FAIL=1 / SKIP=1**.
+
+AC-1-8 vision reasoning (verbatim):
+> "The top nav shows only a few elements (logo, dark mode toggle, Feedback, Sign Out) — not 8 sections. No stone-blue accents or Space Grotesk typography is visually distinguishable; the palette appears neutral/gray with no purple/pink but also lacks the specified 'Site Office aesthetic' with stone-blue accents."
+
+Note vision now also mentions "dark mode toggle" — the `<NavThemeToggle />` component, which renders unconditionally. Same pattern as before: ONLY the unconditional elements render. `useCurrentRole` is still returning null even with localStorage populated.
+
+### Why Y.2 didn't work (post-hoc analysis)
+
+The Nightwork client uses **`@supabase/ssr` `createBrowserClient`**, not plain `@supabase/supabase-js`. The `createBrowserClient` adapter reads/writes via `document.cookie` (the cookies are the source of truth for both server and client). It does NOT read from localStorage by default.
+
+So injecting into localStorage was a no-op for this app — the client never looks there. Y.2's premise ("client reads from localStorage by default") applied to plain supabase-js, not the @supabase/ssr browser client.
+
+The cookies ARE present (server returns 200, body renders, RLS works), but client-side `supabase.auth.getUser()` in the `useCurrentRole` hook still returns null. The root cause is in the cookie → client-side auth state path, not the localStorage path.
+
+### Y.1 options surfaced (deeper investigation)
+
+| Sub-option | What | Effort |
+|---|---|---|
+| **Y.1.A** | Call `supabase.auth.setSession({ access_token, refresh_token })` via `page.evaluate()` after `page.goto()`. Forces the client-side library to ingest the session regardless of cookie-read path. Most direct fix. | ~20-30 min |
+| **Y.1.B** | Use Playwright's `storageState` feature — serialize a real authenticated browser context to JSON, then `context.storageState({ ... })` to restore. Captures cookies + localStorage + IndexedDB as a unit. | ~45 min, requires bootstrap script |
+| **Y.1.C** | Investigate why `document.cookie` in the Playwright context doesn't expose the SSR auth cookies to client-side JS — possibly chunked-cookie reassembly bug, or `httpOnly` quirk despite our `false` setting. Diagnostic: `page.evaluate(() => document.cookie)` to inspect what the page sees. | ~30 min diagnostic + variable fix |
+| **Y.1.D** | Try Y.1.C diagnostic first (cheap, surfaces ground truth), then escalate to Y.1.A or Y.1.B based on findings. | ~30-60 min total |
+
+### Recommendation
+
+**Y.1.D** — diagnostic-first. Add a `page.evaluate(() => document.cookie)` probe to surface what cookies the client-side JS actually sees. If the SSR auth cookies are missing/garbled, the fix is in the cookie injection. If they're present but `supabase.auth.getUser()` still returns null, the fix is Y.1.A (`setSession` explicit call).
+
+### Y.2 work to retain or revert?
+
+The localStorage injection is harmless (idempotent no-op when client doesn't read it) but adds slight overhead per page. Two options:
+- **Retain**: kept as defense-in-depth (if any future surface uses plain supabase-js or a different storage adapter, it'd help). Cost: ~1ms per page.
+- **Revert**: clean code; document Y.2 in calibration log as "tried, no-op due to @supabase/ssr cookie-based browser client".
+
+Recommend **retain** for now (cheap, may help in F1+ when more client code paths exist) and add a comment explaining the limitation.
+
+### Cost ceiling
+
+- Cumulative: $0.781 + $0.077 (Y.2 run vision cost) ≈ **$0.858 / $5.00 (17.2% used)**
+- Headroom: ~$4.14
+
+### HALT — awaiting Y.1 sub-option authorization
+
+Per nwrp79: "If Y.2 doesn't resolve the issue cleanly, halt and surface diagnostic so Y.1 can be authorized for deeper investigation."
+
+Awaiting: **Y.1.A / Y.1.B / Y.1.C / Y.1.D** (recommended) / other.
