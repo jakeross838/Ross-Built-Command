@@ -13,6 +13,7 @@
 // from ../types (single source of truth — never redefined here).
 
 import "./standards/conservation/money-line-items-sum";
+import "./standards/conservation/self-test-always-pass"; // iter-1 WARN-2: non-vacuous self-test signal
 // Future rules:
 // import "./standards/conservation/<rule>";
 // import "./standards/aia/<rule>";
