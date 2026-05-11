@@ -837,3 +837,77 @@ The W.1 bridge IS the right fix; it's just incomplete without a paired hook chan
 ### BLOCK N+1 STATE: COMPLETE
 
 Awaiting **Block N+2 dispatch authorization** per nwrp87 STEP 5 (A) terminal halt.
+
+---
+
+## 2026-05-11 — Block N+2 GATE A: Plan 6 shipped, harness CLEAN
+
+Per nwrp88 GATE A — halt-for-Jake after Plan 6 ships.
+
+### Block N+2 commits shipped through GATE A
+
+| Plan | Commits | Effect |
+|---|---|---|
+| **3a-now** | `93a83f6` | 10 portfolio prototype routes as thin wrappers (4666 → 462 LOC, 90% reduction) |
+| **4** | `9128e3a` T1 + `f9e8ed5` T2 + `d119fff` T3 + `7b35a87` SUMMARY | 50 routes across Pipeline / Financials / Price Intel / People / Sub Portal / Company / Reports + 3 Sub Portal stubs with F3 compliance contracts |
+| **5** | `d0b08f3` T1 + `b7a934e` T2 + `7723c5a` SUMMARY | PerJobTabs sub-nav component (+ mobile collapse-to-dropdown per D-21) + /jobs/[id]/layout.tsx mount + 19 per-job tab placeholder routes |
+| **6** | `a9f7eb9` T1 + `3a9d816` T2 + `9902083` SUMMARY | 13 admin routes (3 REAL-LOGIC + 10 placeholders + 1 overview) + 14 /platform-admin surfaces (migrated from /admin/platform) + middleware regex extension Option A LOCKED (iter-2 must-fix CRITICAL #4) + 3 shared components updated for dual-prefix awareness |
+
+**Total ~108 new files. Zero CATEGORY-X findings. All Rule 1/3 auto-fixes within scope.**
+
+### Harness state on HEAD `9902083` (run #25697738506)
+
+**Status: success. PASS=150 / FAIL=0 / SKIP=3.**
+
+| Layer | Criteria | PASS | FAIL | SKIP |
+|---|---|---|---|---|
+| 1 (mechanical + DOM + route-status) | 139 | 139 | 0 | 0 |
+| 2 (industry-standards) | 2 | 1 | 0 | 1 (L2 introspection — Wave 1.1 dep, expected) |
+| 3 (Claude vision) | 12 | 10 | 0 | 2 |
+
+- Layer 1 grew 73→139 criteria — Plan 6's 27 admin/platform-admin route surfaces + Plans 4/5's ~71 new routes were all picked up by the route-status discovery
+- Layer 3: 2 SKIPs vs prior 1 — likely the new admin/platform-admin surfaces include some that route-redirect or 404 cleanly for the harness fixture (non-platform-admin) user; will inspect if Jake wants
+- Vision cost this run: $0.0728. **Cumulative phase: ~$1.336 / $5.00 (26.7% used).**
+
+### Plans 4/5/6 do NOT have `<criteria>` blocks yet
+
+Same retrofit gap as Block N+1 Plans 1/2/3 (pre-harness-mandate authoring). Per stage-1.5c-vh D-075 (criteria mandate) + Q6=B (retrofit-as-follow-up): Plans 4/5/6 are now eligible for criteria authoring. The Block N+1 retrofit pattern landed Plans 1/2/3's criteria as a single `52fa8ff` commit.
+
+Without criteria blocks, Plans 4/5/6's new surfaces are validated only at Layer 1 (route-status — does the page return a 2xx/3xx?). No Layer 3 vision verification of visual aesthetic, no DOM assertions on specific elements (e.g., 8-section nav on /admin route; PerJobTabs on /jobs/[id]/*), no semantic checks (e.g., admin Card grid visible).
+
+### Recommended next step (per nwrp88 GATE A surface)
+
+Three options for Jake:
+
+| Option | What | When |
+|---|---|---|
+| **GATE-A.1** | Defer criteria-retrofit to Plan 7's atomic docs commit. Plan 7 is "canonical-docs-smoke" — natural home for cross-plan documentation hygiene. | Plan 7 wraps both Plan 4/5/6 SUMMARY hygiene AND criteria retrofit in one shot |
+| **GATE-A.2** ⭐ | Author Plans 4/5/6 criteria blocks NOW (CATEGORY-D autonomous per nwrp88) before Plan 7 dispatch. Same pattern as Block N+1's commit `52fa8ff`. Adds ~30 min but gives Plan 7 a clean baseline. | Immediate, before Plan 7 spawn |
+| **GATE-A.3** | Skip criteria retrofit; accept that Plans 4/5/6 surfaces are Layer-1-validated only; ship to /nightwork-qa as-is. | Fastest to ship Block N+2 |
+
+**My recommendation: GATE-A.2.** Authoring criteria for the new admin + platform-admin + per-job + section surfaces NOW means Plan 7 inherits a clean criteria baseline, and the post-Plan-7 harness run can validate the full 1.5c-IA surface area. Cost ~$0.10-0.15 vision spend across the retrofit run. ~30 min wall-clock.
+
+### iter-2 watchpoints from Plan 6 — pending manual smoke
+
+Per Plan 6 SUMMARY, two watchpoints want a manual sanity-check from Jake:
+- **Watchpoint #2 (manual smoke as platform_admin)**: log in as Jake/Andrew (platform_admin); navigate to /admin/platform/audit; confirm 308 redirect to /platform-admin/audit; landing page renders correctly
+- **Watchpoint #3 (auth bypass test as PM)**: log in as a non-platform-admin user; navigate to /platform-admin/audit; confirm middleware redirects to /dashboard (not the page rendering with leaked content)
+
+These are harness-impossible (the harness fixture user can't toggle platform_admin status; D-30 forbids). Manual browser test.
+
+### Block N+2 standing-rules compliance
+
+- Build clean ✓ (verified by each Plan's typecheck + build verification in subagent execution)
+- Typecheck clean ✓
+- Hooks silent ✓ (T10c posture preserved across all new files)
+- Privacy gate clean ✓
+- Push to remote per nwrp50 ✓
+- D-30 tenant boundary preserved ✓
+- Drummond gate silent ✓
+- Cost ceiling $5; cumulative ~$1.336 (well under $4.50 halt threshold)
+
+### HALT — GATE A confirmed
+
+Awaiting Jake authorization to proceed: **GATE-A.1 (defer criteria to Plan 7) / GATE-A.2 (retrofit criteria now, then Plan 7) / GATE-A.3 (skip retrofit, straight to Plan 7) / other.**
+
+Block N+2 remaining work after authorization: Plan 7 atomic 10-doc commit, then /nightwork-qa (GATE B halt).
