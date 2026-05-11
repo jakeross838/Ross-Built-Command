@@ -108,6 +108,11 @@ skills-lock.json
 !/.planning/deployment.md
 !/.planning/config.json
 !/.planning/lessons.md
+# calibration-log.md — append-only phase retrospectives written by
+# nightwork-custodian at post-ship. Read by /np orchestrator at next-phase
+# scope time for dynamic prompt density / parallelism tuning. Per D-13/D-14.
+!/.planning/calibration-log.md
+!/.planning/calibration-log-schema.md
 !/.planning/architecture/
 !/.planning/architecture/**
 !/.planning/milestones/
