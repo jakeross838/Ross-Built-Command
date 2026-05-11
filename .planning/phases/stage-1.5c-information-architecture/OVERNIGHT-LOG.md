@@ -517,3 +517,49 @@ Per nwrp82 STEP 4 outcome (B). Options for Jake:
 | **Z.4** | Accept AC-1-8 as known limitation, mark N/A in PLAN, document as "harness cannot validate client-side-auth-gated UI nav on production routes without further investigation"; reword criterion to target a route that doesn't need client-side hook resolution; close Block N+1. | ~$0.05 |
 
 Recommendation: **Z.1** — cheapest, highest information. Surfaces ground truth on whether Supabase API is even reachable.
+
+---
+
+## 2026-05-11 — PENDING INPUT: Jake manual browser test (per nwrp83)
+
+Before authorizing Z.1, Jake will run a real-browser test to determine whether the AC-1-8 minimal-nav rendering is a harness-only issue OR a real production bug affecting users.
+
+### Manual test instructions
+
+**URL:** `https://nightwork-platform-git-phase-1-5-c-information-architecture-jakeross838s-projects.vercel.app/today`
+
+(Git-alias preview URL — auto-resolves to latest commit on `phase/1.5-c-information-architecture` branch. If branch alias differs from current deploy, substitute the latest run's preview URL from `gh run list`.)
+
+**Credentials:**
+- Email: `harness-fixture@nightwork.local`
+- Password: from `HARNESS_FIXTURE_PASSWORD` env var
+
+**Steps:**
+1. Navigate to the preview URL `/today`
+2. Log in as the harness-fixture user
+3. Observe the top nav after redirect
+
+### Possible observations + branch logic
+
+**OBSERVATION A — Full 8-section nav with stone-blue accents:**
+- Real users see full nav; harness Chromium doesn't
+- Harness/headless-only issue confirmed
+- → Authorize Z.1 (raw /auth/v1/user fetch from page.evaluate) to isolate WHY headless Chromium can't validate auth state
+
+**OBSERVATION B — Minimal nav (logo + theme toggle + Feedback + Sign Out only):**
+- This is a REAL BUG affecting production users on preview deploys
+- Significant scope shift — Vercel preview deployments have broken auth for real users
+- → Halt for Jake to decide on production fix path (CATEGORY-X authorization needed for application code investigation)
+
+### Current harness state — held
+
+- Latest commit on branch: `6ebbd0c` (Y.1.B validation halt summary)
+- No new commits while awaiting manual test result
+- Y.1.D diagnostic instrumentation still wired (will revert after final path resolved)
+- Bootstrap pattern (Y.1.B) retained — strictly better than Y.2 regardless of final path
+
+### Cost ceiling unchanged
+
+~$1.028 / $5.00 (20.6%).
+
+**Holding position. Awaiting Jake's OBSERVATION A or OBSERVATION B report.**

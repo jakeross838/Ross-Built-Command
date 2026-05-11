@@ -214,79 +214,240 @@ export async function runLayer3(
           timeout: 45_000,
         });
 
-        // ── Y.1.D one-time diagnostic (nwrp80) ────────────────────────────
-        // TEMPORARY: will be reverted after Y.1.D analysis completes.
+        // ── Y.1.D + Z.1 one-time diagnostic (nwrp80 + nwrp84) ─────────────
+        // TEMPORARY: will be reverted after analysis completes.
         // Captures client-side auth state on /today (the route where AC-1-8
         // fails) to determine whether cookies are reaching client JS, whether
-        // localStorage was populated, and whether @supabase/ssr's
-        // createBrowserClient can resolve a user. Redacted: names + sizes only,
-        // never raw token values.
+        // localStorage was populated, and whether the Supabase API is itself
+        // reachable + authoritative from the headless Playwright Chromium
+        // context. Z.1 (nwrp84) adds the raw /auth/v1/user fetch test to
+        // bypass @supabase/ssr SDK and surface ground truth on Supabase
+        // reachability + token validity. Redacted throughout: names + sizes
+        // + status codes + boolean fields only, never raw token values.
         if (route === "/today" || route.endsWith("/today")) {
           try {
-            const probe = await page.evaluate(async () => {
-              const out: Record<string, unknown> = {};
-              // Cookies: parse names + lengths only (NO raw values)
-              const rawCookies = document.cookie || "";
-              const cookieEntries = rawCookies
-                .split(";")
-                .map((s) => s.trim())
-                .filter(Boolean)
-                .map((c) => {
-                  const eq = c.indexOf("=");
-                  return eq === -1
-                    ? { name: c, len: 0 }
-                    : { name: c.slice(0, eq), len: c.length - eq - 1 };
-                });
-              out.cookies_count = cookieEntries.length;
-              out.cookies = cookieEntries.map((c) => ({
-                name: c.name,
-                len: c.len,
-              }));
-              out.cookies_sb_only = cookieEntries
-                .filter((c) => c.name.startsWith("sb-"))
-                .map((c) => ({ name: c.name, len: c.len }));
-              // localStorage: sb-* keys with value lengths
-              const ls: Array<{ key: string; len: number }> = [];
-              try {
-                for (let i = 0; i < window.localStorage.length; i += 1) {
-                  const k = window.localStorage.key(i);
-                  if (k && k.startsWith("sb-")) {
-                    ls.push({
-                      key: k,
-                      len: (window.localStorage.getItem(k) || "").length,
-                    });
+            const supabaseUrlForProbe =
+              process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+            const anonKeyForProbe =
+              process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+            const probe = await page.evaluate(
+              async ({ supabaseUrl, anonKey }) => {
+                const out: Record<string, unknown> = {};
+                // Cookies: parse names + lengths only (NO raw values)
+                const rawCookies = document.cookie || "";
+                const cookieEntries = rawCookies
+                  .split(";")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+                  .map((c) => {
+                    const eq = c.indexOf("=");
+                    return eq === -1
+                      ? { name: c, len: 0, value: "" }
+                      : {
+                          name: c.slice(0, eq),
+                          len: c.length - eq - 1,
+                          value: c.slice(eq + 1),
+                        };
+                  });
+                out.cookies_count = cookieEntries.length;
+                out.cookies = cookieEntries.map((c) => ({
+                  name: c.name,
+                  len: c.len,
+                }));
+                out.cookies_sb_only = cookieEntries
+                  .filter((c) => c.name.startsWith("sb-"))
+                  .map((c) => ({ name: c.name, len: c.len }));
+                // localStorage: sb-* keys with value lengths
+                const ls: Array<{ key: string; len: number }> = [];
+                try {
+                  for (let i = 0; i < window.localStorage.length; i += 1) {
+                    const k = window.localStorage.key(i);
+                    if (k && k.startsWith("sb-")) {
+                      ls.push({
+                        key: k,
+                        len: (window.localStorage.getItem(k) || "").length,
+                      });
+                    }
                   }
+                } catch {
+                  /* localStorage unavailable */
                 }
-              } catch {
-                /* localStorage unavailable */
-              }
-              out.localStorage_sb = ls;
-              // sessionStorage: sb-* keys
-              const ss: Array<{ key: string; len: number }> = [];
-              try {
-                for (let i = 0; i < window.sessionStorage.length; i += 1) {
-                  const k = window.sessionStorage.key(i);
-                  if (k && k.startsWith("sb-")) {
-                    ss.push({
-                      key: k,
-                      len: (window.sessionStorage.getItem(k) || "").length,
-                    });
+                out.localStorage_sb = ls;
+                // sessionStorage: sb-* keys
+                const ss: Array<{ key: string; len: number }> = [];
+                try {
+                  for (let i = 0; i < window.sessionStorage.length; i += 1) {
+                    const k = window.sessionStorage.key(i);
+                    if (k && k.startsWith("sb-")) {
+                      ss.push({
+                        key: k,
+                        len: (window.sessionStorage.getItem(k) || "").length,
+                      });
+                    }
                   }
+                } catch {
+                  /* sessionStorage unavailable */
                 }
-              } catch {
-                /* sessionStorage unavailable */
-              }
-              out.sessionStorage_sb = ss;
-              // Try to construct a one-off Supabase client and read getUser()
-              // — this mirrors what useCurrentRole does. If the SDK isn't
-              // available as a window global, just note that.
-              out.window_supabase_present = Boolean(
-                (window as unknown as { supabase?: unknown }).supabase
-              );
-              return out;
-            });
-            // Redacted log line — appears in GH Actions log under "Run verification harness"
-            // step. Has a distinctive marker so it's grep-able from the run log.
+                out.sessionStorage_sb = ss;
+                out.window_supabase_present = Boolean(
+                  (window as unknown as { supabase?: unknown }).supabase
+                );
+
+                // ── Z.1 raw /auth/v1/user fetch ─────────────────────────────
+                // Extract access_token from sb-* cookie (base64- prefix +
+                // base64url JSON), make raw fetch to Supabase /auth/v1/user,
+                // capture status + redacted shape + errors. Classifies as
+                // outcome A/B/C per nwrp84.
+                const z1: Record<string, unknown> = {};
+                try {
+                  const sbCookie = cookieEntries.find((c) =>
+                    c.name.startsWith("sb-")
+                  );
+                  if (!sbCookie) {
+                    z1.stage = "no-sb-cookie";
+                  } else {
+                    let cookieValue = sbCookie.value;
+                    // Cookies may be URL-encoded by the browser when read
+                    // back via document.cookie; decode defensively.
+                    try {
+                      cookieValue = decodeURIComponent(cookieValue);
+                    } catch {
+                      /* leave as-is if not URI-encoded */
+                    }
+                    if (!cookieValue.startsWith("base64-")) {
+                      z1.stage = "cookie-not-base64-prefixed";
+                      z1.value_prefix = cookieValue.slice(0, 16);
+                    } else {
+                      const stripped = cookieValue.slice("base64-".length);
+                      // base64url → base64
+                      const base64 = stripped
+                        .replace(/-/g, "+")
+                        .replace(/_/g, "/");
+                      // Pad to multiple of 4
+                      const padded =
+                        base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+                      let decoded = "";
+                      try {
+                        decoded = atob(padded);
+                      } catch (decErr) {
+                        z1.stage = "base64-decode-failed";
+                        z1.error =
+                          decErr instanceof Error
+                            ? decErr.message
+                            : String(decErr);
+                      }
+                      if (decoded) {
+                        let session: { access_token?: string } | null = null;
+                        try {
+                          session = JSON.parse(decoded);
+                        } catch (parseErr) {
+                          z1.stage = "json-parse-failed";
+                          z1.error =
+                            parseErr instanceof Error
+                              ? parseErr.message
+                              : String(parseErr);
+                          z1.decoded_len = decoded.length;
+                          z1.decoded_prefix = decoded.slice(0, 64);
+                        }
+                        const accessToken = session?.access_token;
+                        if (accessToken) {
+                          z1.access_token_len = accessToken.length;
+                          z1.access_token_prefix = accessToken.slice(0, 12);
+                          // Now do the raw fetch
+                          const apiUrl = `${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`;
+                          z1.api_url = apiUrl;
+                          const t0 = Date.now();
+                          try {
+                            const res = await fetch(apiUrl, {
+                              method: "GET",
+                              headers: {
+                                apikey: anonKey,
+                                Authorization: `Bearer ${accessToken}`,
+                              },
+                            });
+                            z1.fetch_ms = Date.now() - t0;
+                            z1.http_status = res.status;
+                            z1.http_ok = res.ok;
+                            const bodyText = await res.text();
+                            z1.body_len = bodyText.length;
+                            // Redacted body summary: parse + extract only
+                            // boolean + ID-shape fields (no email, no user
+                            // metadata, no tokens). Surfaces enough to
+                            // classify A/B/C per nwrp84.
+                            try {
+                              const body = JSON.parse(bodyText);
+                              z1.body_shape = {
+                                has_id: typeof body.id === "string",
+                                id_format_uuid:
+                                  typeof body.id === "string" &&
+                                  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+                                    body.id
+                                  ),
+                                has_aud: typeof body.aud === "string",
+                                aud_value: body.aud,
+                                has_role: typeof body.role === "string",
+                                role_value: body.role,
+                                has_email_field: "email" in body,
+                                has_app_metadata: "app_metadata" in body,
+                                error_code: body.code || body.error_code,
+                                error_message_present: Boolean(
+                                  body.message || body.msg
+                                ),
+                                error_message_first_60: (
+                                  body.message ||
+                                  body.msg ||
+                                  ""
+                                )
+                                  .toString()
+                                  .slice(0, 60),
+                              };
+                              // Classify per nwrp84
+                              if (res.ok && body.id && body.aud) {
+                                z1.outcome = "A_fetch_succeeds";
+                              } else if (res.status === 401) {
+                                z1.outcome = "C_fetch_401";
+                              } else {
+                                z1.outcome = `unexpected_status_${res.status}`;
+                              }
+                            } catch (bodyParseErr) {
+                              z1.body_parse_error =
+                                bodyParseErr instanceof Error
+                                  ? bodyParseErr.message
+                                  : String(bodyParseErr);
+                              z1.body_first_120 = bodyText.slice(0, 120);
+                              if (!res.ok) {
+                                z1.outcome = `unexpected_status_${res.status}`;
+                              }
+                            }
+                          } catch (fetchErr) {
+                            z1.fetch_ms = Date.now() - t0;
+                            z1.outcome = "B_fetch_network_error";
+                            z1.fetch_error =
+                              fetchErr instanceof Error
+                                ? fetchErr.message
+                                : String(fetchErr);
+                          }
+                        } else if (!z1.stage) {
+                          z1.stage = "no-access-token-in-session";
+                          z1.session_keys = session
+                            ? Object.keys(session)
+                            : [];
+                        }
+                      }
+                    }
+                  }
+                } catch (z1Err) {
+                  z1.stage = "z1-outer-throw";
+                  z1.error =
+                    z1Err instanceof Error ? z1Err.message : String(z1Err);
+                }
+                out.z1_raw_supabase_fetch = z1;
+                return out;
+              },
+              { supabaseUrl: supabaseUrlForProbe, anonKey: anonKeyForProbe }
+            );
+            // Redacted log line — appears in harness-output.json (stdout is
+            // captured to that file by the workflow). Grep-able marker.
             console.log(
               "[Y.1.D-diagnostic] /today client-side auth state probe:",
               JSON.stringify(probe)
@@ -298,7 +459,7 @@ export async function runLayer3(
             );
           }
         }
-        // ── end Y.1.D diagnostic ──────────────────────────────────────────
+        // ── end Y.1.D + Z.1 diagnostic ────────────────────────────────────
 
         // nwrp70/71 FIX 11: fullPage screenshot (capped at 7800px height) so
         // long-scroll design-system pages don't lose below-the-fold content.
