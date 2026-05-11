@@ -63,6 +63,7 @@ import {
   chromiumLaunchArgs,
   harnessBrowserHeaders,
   supabaseSessionCookies,
+  supabaseLocalStorageInitScript,
 } from "../_browser";
 
 // Updated 2026-05-07 per nwrp62 FIX 4: see vision-client.ts DEFAULT_MODEL.
@@ -202,6 +203,16 @@ export async function runLayer3(
         if (authCookies.length > 0) {
           await context.addCookies(authCookies);
         }
+        // Per nwrp79 Y.2: also inject the session into localStorage so
+        // client-side hooks (useCurrentRole etc.) that call
+        // `supabase.auth.getUser()` can hydrate auth state. Cookies cover
+        // server-side `updateSession()`; localStorage covers client-side
+        // hook reads. Idempotent no-op if no session.
+        const initScript = supabaseLocalStorageInitScript(
+          ctx.harness_session?.supabase_url,
+          ctx.harness_session?.raw_session
+        );
+        await context.addInitScript(initScript);
         const page = await context.newPage();
         // Per Block N+1 finding: routes with Supabase realtime subscriptions
         // (e.g. /today Activity Feed) or heavy multi-fixture aggregation
