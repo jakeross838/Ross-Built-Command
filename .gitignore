@@ -101,6 +101,7 @@ skills-lock.json
 # (fixtures) also stay local.
 /.planning/*
 !/.planning/MASTER-PLAN.md
+!/.planning/CONTEXT.md
 !/.planning/PROJECT.md
 !/.planning/ROADMAP.md
 !/.planning/REQUIREMENTS.md

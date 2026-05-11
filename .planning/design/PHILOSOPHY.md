@@ -3018,3 +3018,47 @@ The Nightwork verification pipeline (`.planning/architecture/VERIFICATION-PIPELI
 The implication for design changes: a new direction or palette pick (CP3, CP4) requires updating both the design tokens (mechanical) AND the Layer 3 vision criteria (semantic) so the harness verifies the new lock at every commit.
 
 The PHILOSOPHY document remains the design intent + constraints; the harness is the enforcement mechanism. Design drift is impossible if both are kept in sync.
+
+---
+
+## 10. Stage 1.5c information-architecture patterns (per D-040..D-065)
+
+The patterns below were locked at Stage 1.5c. Each cites at least 2 consumers (per iter-2 design-pushback W-8) so future plan-phase agents see clear instances when extending the system.
+
+### 10.1 Today as home pattern (Principle 7)
+
+Personal home screen replaces generic dashboard. Action-oriented; role-aware (F2). Cash Flow + Getting Started belong in `/company/overview`, not `/today`.
+
+The pattern is "what does the user need to act on TODAY?" — not "here is a dashboard of org-wide metrics." F2 wires per-role personalization (PM sees their assigned-job queues; Accountant sees QA queue; Owner sees approval-pending pay apps). Wave 3 D-070 auto-generates daily plans from schedule + assigned work + role + weather + historical patterns.
+
+**Consumers:**
+- **`/today` (Plan 1 / D-041 / D-055)** — Wave-zero org-wide queues + Your Day placeholder + Activity Feed; replaces previous `/dashboard` route
+- **Future `/per-job-today` screen (F2/Wave 1.1-Lite per D-070)** — PM's daily action plan filtered by their assigned jobs
+
+### 10.2 Role-aware filtering pattern (Principle 6)
+
+Same nav structure for all users; visibility filtered per role. Data-driven ACCESS map enables F2 expansion to 15 roles mechanically (no nav-bar refactor when more roles arrive). The ACCESS map is a single declarative source of truth — adding a new role means adding a row, not rewriting visibility logic.
+
+**Consumers:**
+- **`src/components/layout/nav-bar.tsx` 8-section ACCESS map (Plan 1 / D-040 / D-043)** — 4-role baseline (Admin / Owner / Accountant / PM) shipped at 1.5c; F2 swaps to 15-role matrix per ROLES-CATALOG.md
+- **Future PerJobTabs role filter (F2 per D-048)** — phase-aware tabs hidden per role (e.g., Field workers see Daily Logs but not Bills; Subs see only their assigned RFIs)
+
+### 10.3 Multi-modal ingestion pattern (Principle 5)
+
+Voice / video / photo input becomes structured data automatically. The user does the work (walks the site, talks while filming, snaps a photo); the system extracts structure (room location, vendor matched, description, due date, photo embedding). ONE 10-second video comment generates 5+ database operations (Principle 4 cross-pollination).
+
+The endgame: PM finishes a walkthrough with N punchlist items entered with zero typing. The data-graph + AI advantage becomes visceral for the field user.
+
+**Consumers:**
+- **`/jobs/[id]/punchlist` (Plan 5 placeholder / D-045 / WI-038 / D-069)** — voice/video AI extraction; Wave 3 wires real engine
+- **`/jobs/[id]/daily-logs` (Plan 5 placeholder / D-045 / WI-010)** — same multi-modal pattern; voice transcript → daily log + photo + punchlist links
+
+### 10.4 Profile-based feature flags pattern (Principle 8)
+
+Org profile (Custom Builder / Remodeler / Commercial GC) drives nav visibility + section prominence. Same codebase serves all customer types; the org's profile picks which surfaces are prominent. Ross Built profile = Custom Builder (default); future tenants pick at onboarding.
+
+The pattern avoids the "everything-for-everyone" maximalist UI and the "one-config-per-customer" customization explosion. Three profiles cover ~95% of custom-home + commercial-GC market.
+
+**Consumers:**
+- **`/admin/profile` (Plan 6 placeholder selector / D-047)** — Custom Builder / Remodeler / Commercial GC; placeholder UI shipped at 1.5c, F2 wires real toggle
+- **F2 nav filtering (per D-047 + ROLES-CATALOG.md profile-based flags section)** — Pipeline prominence per profile (Custom Builder = prominent; Remodeler = lighter; Commercial GC = visible with Bid Invitations sub-section)

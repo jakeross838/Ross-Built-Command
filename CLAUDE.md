@@ -70,6 +70,35 @@ These exist so the system scales into scheduling, daily logs, client portal, etc
 - **TypeScript strict mode.** No `any` types.
 - **All business logic in server-side API routes or Supabase functions.** Frontend is display + forms only.
 
+### Stage 1.5c information-architecture additions (D-040..D-065)
+
+- **Bills (vendor invoices) and Pay Apps (builder→owner pay applications):** terminology aligned with US construction industry per Stage 1.5c (D-051). **Audit-log `entity_type` values continue to use invoice (vendor bills) and draw (builder pay-apps) per existing schema** (`src/lib/activity-log.ts:20-49`). UI components map these to 'Bill' / 'Pay App' labels via `src/lib/audit/action-labels.ts`. F1 may extend the enum or migrate; until then dual vocabulary is the convention. See `.planning/phases/stage-1.5c-information-architecture/AUDIT-LOG-STRATEGY.md` for full rationale (iter-2 must-fix CRITICAL #5 schema-corrected). The concat-string approach (where action strings would be glued from a "bill_" prefix + action token) was REJECTED because it breaks audit-log query patterns across the terminology rename.
+
+- **Top nav structure** (per `.planning/architecture/ARCHITECTURE.md`): Today | Pipeline | Jobs | Financials | Price Intel | People | Company | Reports + Admin ▾ + Platform Admin badge. 8 sections locked at D-040.
+
+- **Admin dropdown vs /admin section overview** (per D-060): Admin dropdown is power-user shortcut (top-nav direct access to sub-items); `/admin` section overview Card grid is canonical destination. Clicking "Admin" label routes to /admin overview; ▾ affordance opens dropdown. Both surfaces simultaneously; no UX duplication.
+
+- **Site Office direction scope on production routes** (per D-057 + D-061): production routes wrap outer container in `<div data-direction="C" data-palette="B" className="design-system-scope">`. Site Office direction-aware CSS rules at `/design-system/design-system.css:84-153` activate via TWO prerequisites: (1) root layout imports `@/app/design-system/design-system.css` so rules bundle; (2) the wrap mirrors the playground layout. DO NOT REMOVE the wrap or strip the attributes — load-bearing on production. See `.planning/architecture/ARCHITECTURE.md` §5 + `.planning/design/PATTERNS.md` "Production Site Office activation" entry.
+
+- **PerJobTabs mobile collapse** (per D-059): on viewports <768px, PerJobTabs collapses to single dropdown showing all tabs (matches existing nav-bar mobile hamburger).
+
+- **Platform Admin gate** (per D-058 + iter-2 must-fix #4): middleware regex matches BOTH `/admin/platform/*` AND `/platform-admin/*` with same `!isPlatformAdmin` redirect posture. Full migration in 1.5c per D-058 (13 sub-routes mounted at new path).
+
+- **Owner Portal F1 auth path constraint** (per ARCHITECTURE.md §8, iter-2 multi-tenant W-1): 1.5c is structural — Owner Portal mounts thin-wrapper components with sanitized fixtures. F1 commits to ONE auth path — extending `client_portal_access` tokens (Path A) OR introducing `owner_view` member role with RLS (Path B). NOT both.
+
+- **Knowledge graph + cross-entity validation** (per D-066 + D-071): F1 schema design MUST read `.planning/architecture/WORKFLOW-INTELLIGENCE.md` (39 patterns) + `.planning/architecture/ENTITY-INVENTORY.md` (31+ entities with Retention class + PII? columns per iter-2 mechanical #6) before designing tables. Cross-entity validators are first-class architectural concern, not bolt-ons.
+
+### Canonical architecture references
+
+- **`.planning/architecture/ARCHITECTURE.md`** — 8 principles + data graph model + section purposes + revised phase plan + §SOC2 control mapping (CC6.1 / CC6.6 / CC6.7 / CC7.2 / PI1.1 / C1.1) per iter-2 mechanical #6
+- **`.planning/architecture/ENTITY-INVENTORY.md`** — 31+ entity catalog with Retention class + PII? columns
+- **`.planning/architecture/ROLES-CATALOG.md`** — 15+ default role catalog with Cross-org? column (platform_admin only)
+- **`.planning/architecture/INGESTION-ARCHITECTURE.md`** — multi-modal ingestion + AI extraction patterns
+- **`.planning/architecture/WORKFLOW-INTELLIGENCE.md`** — 39 cross-entity validation patterns (D-066/D-071)
+- **`.planning/architecture/VERIFICATION-PIPELINE.md`** — 3-layer verification harness (D-073)
+- **`.planning/CONTEXT.md`** — project-level canonical context (8 principles summary + F1 inheritance)
+- **`.planning/MASTER-PLAN.md`** — canonical entry point with full DECISIONS LOG (D-001..D-077)
+
 ## Tech Stack
 
 - **Next.js 14** (App Router, TypeScript, Tailwind CSS)
@@ -385,6 +414,24 @@ The draw output must match AIA standard format. Reference: Drummond Pay App 8.
 - Internal labor/equipment billing
 - Inspection tracking and punch lists
 - Full QuickBooks two-way sync
+
+### Canonical post-1.5c phase plan (D-050 + D-049)
+
+**The phase headings above (Phase 0..4) are historical and pre-date Stage 1.5c. The canonical phase plan after 1.5c is F1..F6 → Wave 1.1-Lite → Wave 1.1-Full → Wave 2 → Wave 3 → Wave 4 → Wave 5.** Full plan in `.planning/architecture/ARCHITECTURE.md` §6.
+
+- **F1 — Knowledge Graph Schema + Auth Foundation** (3-4 weeks)
+- **F2 — Roles Engine + Today Engine** (2-3 weeks; 15+ roles per ROLES-CATALOG.md)
+- **F3 — Approval + Notification Engines** (2 weeks; Inngest Cloud per D-022)
+- **F4 — Time Tracking + Equipment + Expenses** (2 weeks; reference-fixture back-import per D-025/D-031)
+- **F5 — Price Intel Engine** (3-4 weeks; the moat compounds)
+- **F6 — Pay App + Draw Engine** (2 weeks; G702/G703 print-ready)
+- **Strategic Checkpoint #3** at end of F6 (per D-026)
+- **Wave 1.1-Lite** — RB usable post-F6; cosmetic TDs from 1.5c backlog land here
+- **Wave 1.1-Full** — larger blast-radius polish items
+- **Wave 2** — Project operations (schedules + daily logs + punchlists + to-dos + document management)
+- **Wave 3** — Communication (email-in + weekly owner updates + multi-modal punchlist per WI-038 / D-069 + auto-generated daily plans per WI-039 / D-070)
+- **Wave 4** — Intelligence (reports + analytics + AI insights + selections catalog full + schedule intelligence)
+- **Wave 5** — Integrations (Procore + QuickBooks Online + Bluebeam + Buildertrend)
 
 ## File Structure Convention
 ```

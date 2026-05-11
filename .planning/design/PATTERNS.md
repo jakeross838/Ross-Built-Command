@@ -1827,3 +1827,113 @@ These are tracked as deferred items within Stage 1.5a — none block T15 PROPAGA
 ---
 
 **T14 status:** PATTERNS.md DRAFT COMPLETE (2026-04-30). 12 patterns documented (Document Review gold standard + Multi-step Approval + Data-dense Overview + Mobile Touch Approval + Config Form + List+Detail + Wizard + Empty Workspace + Print View + Reconciliation strawman + Confirm + Loading/Error/Skeleton layer). Pattern selection tree + cross-pattern composition rules + bidirectional skill anchors locked. Subordinate documents (PROPAGATION-RULES.md, .impeccable.md) and the components playground patterns page (T23) reference this document as authoritative. Reconciliation pattern picks one of 4 candidate models in 1.5b prototype review per D-028 / D-036.
+
+---
+
+## 17. Stage 1.5c information-architecture patterns (per D-040..D-065)
+
+The patterns below were locked at Stage 1.5c. Each cites at least 2 consumers (per iter-2 design-pushback W-8) so future plan-phase agents see clear instances when extending the system.
+
+### 17.1 Placeholder treatment pattern (NwPlaceholderCard)
+
+Reusable placeholder card for routes whose real backend ships in a future phase. Eyebrow + headline + body + Wave badge. ~50 placeholder routes shipped at 1.5c via this single primitive — avoids 50 one-off "Coming Soon" implementations.
+
+**Anatomy:**
+- `eyebrow: string` (Section · Subsection)
+- `headline: string` (feature name)
+- `body: string` (2-3 sentence description of what ships in the target phase)
+- `wave: PlaceholderWave` (F1 / F2 / F3 / F4 / F5 / F6 / Wave 1.1-Lite / Wave 2 / Wave 3 / Wave 4)
+
+**Token bindings (Site Office direction per D-057/D-061):**
+- Card `padding="md"` (TD-25 fix per D-056)
+- Headline `fontWeight: 500` (TD-26 fix per D-056)
+- Eyebrow `tone="muted"` UPPERCASE 0.18em
+- Body `text-secondary`
+- Badge `variant="neutral"` "Coming {wave}"
+
+See COMPONENTS.md §7.8 (NwPlaceholderCard) for full primitive spec (iter-2 mechanical #2 + PROPAGATION-RULES.md §4b).
+
+**Consumers (~50 routes):**
+- **Plan 4 placeholder routes** — Pipeline (5) + Financials placeholders (2) + Price Intel placeholders (6) + People (3) + Sub Portal stubs (3) + Company (11) + Reports (5) = ~35
+- **Plan 5 per-job placeholder routes (~19)** — More ▾ items (Documentation / Coordination / Tasks / Time / Permits / People / Activity / phase-aware Closeout / Warranty / Pre-Con)
+- **Plan 6 admin placeholder routes (8)** — Admin section overview Cards + admin sub-routes
+
+### 17.2 Role-filtered nav pattern (8-section ACCESS map)
+
+Same nav structure for all users; visibility filtered per role via declarative ACCESS map. Adding a new role means adding a row to the map, not rewriting visibility logic. F2 swaps 4-role baseline for 15-role matrix mechanically.
+
+**Anatomy:**
+- ACCESS map declared once: `{section: ['Admin' | 'Owner' | 'Accountant' | 'PM' | ...future]}`
+- nav-bar renders sections whose ACCESS row includes the current role
+- Sub-sections + dropdown contents filtered by same mechanism
+- Mobile hamburger uses same filtered list
+
+**Consumers:**
+- **`src/components/layout/nav-bar.tsx` top nav (Plan 1 / D-040)** — 8 nav items + Admin dropdown; 4-role baseline ACCESS map
+- **Future per-job role filter (F2 per D-048)** — phase-aware tabs filtered per role; same declarative ACCESS-map pattern
+
+### 17.3 Phase-aware sub-nav pattern (PerJobTabs)
+
+Per-job sub-nav shows phase-appropriate tabs only. Closeout tab visible when phase ∈ {close, warranty}; Warranty tab visible when phase=warranty; Pre-Con tab visible when phase=pre-con. F2 reads from `jobs.phase` column; 1.5c hardcoded to phase=active.
+
+The pattern keeps the More ▾ dropdown from feeling like "everything-everywhere" — only items relevant to the current job phase appear.
+
+**Consumers:**
+- **`src/app/jobs/[id]/*` layout (Plan 5 / D-048 / D-059)** — phase: "active" hardcoded at 1.5c; F2 reads from `jobs.phase`
+- **Future client-portal phase-aware nav (F4)** — owner sees different tabs per project phase (early phases = budgets + selections; later phases = pay apps + lien releases)
+
+### 17.4 8-item top nav pattern
+
+8 sections + Admin dropdown + Platform Admin badge + Notifications bell + User menu. Locked at D-040. Same structure renders for every authenticated user; per-role visibility filtered via 17.2.
+
+**Consumers:**
+- **`src/components/layout/nav-bar.tsx` (Plan 1 / D-040)** — Today | Pipeline | Jobs | Financials | Price Intel | People | Company | Reports + Admin ▾ + Platform Admin badge
+
+### 17.5 Sub Portal 3-stub pattern
+
+Sub portal at 1.5c is structural-only — 3 stub routes documenting F3 compliance contracts. No backend wired; placeholder copy explains what F3 will deliver.
+
+The 3 stubs cover the three F3 auth posture variants:
+- `/sub-portal/auth` — authenticated sub (org member with sub-scoped role per ROLES-CATALOG.md)
+- `/sub-portal/magic/[token]` — magic-link sub (token-bound; not full account)
+- `/sub-portal/public/[id]` — public read-only (e.g., RFP view-only)
+
+Each stub documents the F3 compliance contract: token expiry, scope binding, audit-log-on-use, cookie-vs-querystring posture, JWT-with-org-claim REJECTED by-construction (per D-052).
+
+**Consumers:**
+- **`/sub-portal/*` (Plan 4 / D-052)** — auth / magic / public stubs with F3 compliance contracts
+- **Future F3 magic link infrastructure (per D-044)** — extends `client_portal_access` pattern (migration 00074); sub-portal stubs document the eventual contract
+
+### 17.6 Production Site Office activation — LOAD-BEARING contract (per D-057 + D-061 + D-062)
+
+Production routes activate Site Office direction-aware CSS rules via TWO prerequisites that BOTH must be in place. This is load-bearing on production; removing either prerequisite silently breaks Site Office C signatures.
+
+**Anatomy:**
+1. **Root layout** `src/app/layout.tsx` imports `@/app/design-system/design-system.css` so the rules bundle into all routes (per Plan 1 task / D-23 / D-061).
+2. **Each production route wrapper** uses `<div data-direction="C" data-palette="B" className="design-system-scope">` mirroring the playground layout at `src/app/design-system/prototypes/layout.tsx:39` (per Plan 3 task / D-19 / D-061).
+
+Both `data-direction='C'` AND `data-palette='B'` attributes are required to activate the rules; the `.design-system-scope` class alone is INERT outside `/design-system/*` because the CSS rules are double-gated.
+
+**What activates with the wrap (Site Office C signatures):**
+- 1px slate-tile left-stamp on cards
+- JetBrains Mono UPPERCASE eyebrows at 0.18em (vs 0.14em base)
+- Space Grotesk Medium 500 headlines
+- 16px compact card padding
+- 16px section gap
+- 150ms ease-out motion
+
+**Production baseline (without the wrap)** already inherits ~70% of Site Office at root level via globals.css + colors_and_type.css + NwEyebrow inline `var(--…, fallback)` pattern (Inter body 15px, JetBrains Mono UPPERCASE eyebrow at 0.14em base, slate palette with light/dark theme, grain texture). The wrap closes the remaining 30% — the C-specific overrides.
+
+**DO NOT REMOVE the wrap or strip the attributes** — load-bearing on production. Removing the wrap or its attributes silently breaks Site Office C signatures. The visual diff in Plan 3 watchpoint #1 was the iter-2 → iter-3 correction's enforcement point; future polish phases must preserve both prerequisites. Stripping the wrap drops production back to the 70% baseline.
+
+**Consumers (12 production routes per Plan 3):**
+- `/financials/bills/[id]` (Document Review pattern)
+- `/financials/pay-apps/[id]` (Document Review pattern; Pay App data)
+- `/people/vendors` (List+Detail pattern)
+- `/owner-portal` (owner dashboard)
+- 8 additional Plan 3 production routes
+
+**Decision history:**
+- **D-057** (iter-2) — production routes wrap outer container in `.design-system-scope` className (Decision A)
+- **D-061** (iter-3 patch) — wrap MUST mirror playground layout including `data-direction="C"` + `data-palette="B"` attributes; design-system.css imported from root layout
+- **D-062** (iter-3 reconciliation) — earlier "production routes inherit Site Office C from root globals.css with NO `data-direction='C'` attribute" claim was a misdiagnosis; iter-3 corrected via this section
