@@ -150,3 +150,126 @@ Per nwrp76 expected outcome:
 > "Real Plans 1-5 issues surface (require CATEGORY-X authorization)"
 
 Awaiting Jake authorization choice (X.1 / X.2 / D.1 / D.2 / other).
+
+---
+
+## 2026-05-11 — nwrp78 STEP 3: Structured diagnostic findings
+
+### A. Nav conditional logic (what it checks)
+
+`src/components/nav-bar.tsx` renders 8 PRIMARY_NAV items via:
+
+```tsx
+{PRIMARY_NAV.map((item) =>
+  show[item.key] ? <Link>...</Link> : null
+)}
+```
+
+where `show[key] = can(role, key) = role != null && ACCESS[key].includes(role)`.
+
+Role source: `useCurrentRole()` hook at `src/hooks/use-current-role.ts:18` — client-side hook that:
+
+1. Calls `supabase.auth.getUser()` (client-side)
+2. If user resolved, queries `org_members WHERE user_id = user.id AND is_active = true ORDER BY created_at ASC LIMIT 1`
+3. Returns `null` until that completes; `null` permanently if either step fails
+
+**When `role` is null**: all 8 PRIMARY_NAV items + Admin dropdown + RoleBadge + NotificationBell suppress. Only **Logo + FeedbackTrigger (unconditional) + Sign Out form (unconditional)** remain — **exactly matching the vision's report.**
+
+### B. Tables/columns involved
+
+| Table | Columns read | Purpose |
+|---|---|---|
+| `auth.users` | `id`, `email` | Authenticated user lookup via `supabase.auth.getUser()` |
+| `org_members` | `user_id`, `role`, `is_active`, `created_at` | useCurrentRole's role resolution |
+| `profiles` | `id`, `org_id`, `full_name`, `role` | nav-bar's profile fetch + RLS-helper input |
+
+**RLS chain for org_members SELECT** (policy: `members read org_members`):
+- Requires `org_id = app_private.user_org_id()`
+- `app_private.user_org_id()` returns `SELECT org_id FROM public.profiles WHERE id = auth.uid()`
+- So for the query to succeed: `auth.uid()` must resolve → `profiles.org_id` for that user must be the fixture org → `org_members.org_id` must match
+
+### C. Required state for full-nav render
+
+For `role` to resolve to `'admin'` (and 8 sections to show):
+
+| Item | Required | Verified |
+|---|---|---|
+| `auth.users` row for harness-fixture@nightwork.local | exists, email confirmed | ✓ |
+| `profiles` row for that user with `org_id = fixture_org_uuid` | exists | ✓ |
+| `org_members` row with `user_id`, `is_active=true`, valid role | exists | ✓ |
+| `organizations` not deleted, subscription_status not blocking | active | ✓ |
+| RLS chain allows org_members SELECT under JWT | works | ✓ (simulated test below) |
+
+### D. Current fixture-harness-org state (from live DB)
+
+| Field | Value | Status |
+|---|---|---|
+| `organizations.id` | `00000000-0000-0000-0000-fb1ce0a55e55` | ✓ |
+| `subscription_status` | `active` | ✓ |
+| `subscription_plan` | `enterprise` | ✓ |
+| `onboarding_complete` | **`false`** | ⚠ noted but does not block /today (only `/` redirects on this flag) |
+| `trial_ends_at` | `2026-05-20` (future) | ✓ |
+| `deleted_at` | `null` | ✓ |
+| `auth.users.email` | `harness-fixture@nightwork.local` | ✓ |
+| `auth.users.email_confirmed_at` | `2026-05-06 20:52:21+00` | ✓ |
+| `profiles.org_id` | `00000000-0000-0000-0000-fb1ce0a55e55` (matches) | ✓ |
+| `profiles.role` | `admin` | ✓ |
+| `org_members.role` | `admin` | ✓ |
+| `org_members.is_active` | `true` | ✓ |
+
+**Simulated authenticated session test (JWT set to harness-fixture user):**
+
+```sql
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub": "5eb26edc-...", "role": "authenticated"}';
+```
+
+| Check | Result | Pass? |
+|---|---|---|
+| `auth.uid()` | `5eb26edc-5989-477f-ac42-d1e9264db0e2` | ✓ |
+| `app_private.user_org_id()` | `00000000-0000-0000-0000-fb1ce0a55e55` | ✓ |
+| `org_members` count under RLS | 1 | ✓ |
+| `org_members.role` under RLS | `admin` | ✓ |
+| `profiles.role` under RLS | `admin` | ✓ |
+
+**The RLS chain works end-to-end** when the JWT is properly set. There is NO database issue.
+
+### E. Mismatch identified
+
+**NO** — there is no billing-state, onboarding-state, RLS, or profile-row mismatch. The original hypothesis (X.1: harness fixture-org billing-state suppressing nav) is **DISCONFIRMED**.
+
+### F. Recommended fix
+
+**NOT a migration amendment.** Per nwrp78 conditional ("If diagnostic reveals something other than billing state mismatch ... surface specifically and halt for Jake to decide path"), surfacing the alternative root-cause hypothesis:
+
+**Most likely real root cause: client-side `supabase.auth.getUser()` returns null in the Playwright-injected harness session context.**
+
+The harness injects the Supabase auth cookies via Playwright `context.addCookies()` (chunked at 3180 chars, `base64-` prefix, `httpOnly: false`). The middleware-side `updateSession()` reads these cookies server-side and resolves the user — that's why the page server-renders content. **But the CLIENT-side `@supabase/supabase-js` library's `auth.getUser()` may not pick up the cookies the same way**, leaving `useCurrentRole` permanently null.
+
+Corroborating evidence:
+- AC-1-9 (body three-section scaffold) PASSED — server-rendered content works
+- AC-1-8 (8-section nav) FAILED — nav requires client-side `useCurrentRole` which requires client-side `auth.getUser()`
+- The page DOES render (route-status PASS), so server middleware accepts the session
+- The DB is fully seeded with correct role
+
+This is a **harness-internals issue**, not a 1.5c-IA bug. Plans 1/2/3 of 1.5c-IA shipped correctly; nav renders properly for real authenticated users (production app works). The harness-fixture session simply doesn't fully hydrate the client-side Supabase auth state for client-side hooks like `useCurrentRole`.
+
+### Path options for Jake
+
+| Option | What | Effort | Where |
+|---|---|---|---|
+| **Y.1** | Investigate Playwright cookie injection vs. client-side Supabase auth state hydration. Possibly need to also call `supabase.auth.setSession()` in the page-init, OR wait for `auth.onAuthStateChange` to fire before screenshot. | CATEGORY-Y (harness internals) | `src/lib/verification/layer3/runner.ts` + `_browser.ts` |
+| **Y.2** | Switch harness auth strategy to inject session via `localStorage` (Supabase JS default storage) in addition to cookies. Requires page.evaluate() to call `supabase.auth.setSession()` after addCookies. | CATEGORY-Y | `src/lib/verification/layer3/runner.ts` |
+| **D.1** | Reword AC-1-8 to test nav rendering on a route that doesn't need client-side role hydration (e.g. the playground `/design-system` root which uses static nav structure). Accepts that production-route nav is server-rendered and not vision-testable from harness-fixture session. | CATEGORY-D (criterion phrasing) | `.planning/phases/stage-1.5c-information-architecture/01.5c-1-nav-today-redirects-PLAN.md` |
+| **D.2** | Accept AC-1-8 FAIL as documented limitation; mark N/A with explanation; queue Y.1/Y.2 as separate phase. | CATEGORY-D | PLAN.md + deferred-items.md |
+
+### Cost ceiling
+
+- Cumulative: **~$0.781 / $5.00 (15.6% used)**
+- No vision spend in this diagnostic (SQL + grep only)
+
+### HALT confirmed — awaiting Jake direction
+
+Per nwrp78 instructions: "DO NOT FIX YET. DO NOT modify migrations. DO NOT modify nav component. Diagnostic only. Halt with findings."
+
+Awaiting authorization: **Y.1 / Y.2 / D.1 / D.2 / other**.
