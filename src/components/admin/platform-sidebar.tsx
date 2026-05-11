@@ -22,31 +22,38 @@ export default function PlatformSidebar({
 }) {
   const pathname = usePathname();
 
+  // Per Stage 1.5c Plan 6 Task 2 (iter-2 D-20 / D-058 full migration):
+  // Sidebar links now point at /platform-admin/* (migrated sub-routes).
+  // The OLD /admin/platform/* pages still exist (deletion deferred to F1 /
+  // Wave 1.1-Lite per Plan 6 Step G); when an old-page renders, sidebar
+  // clicks 308-redirect once via Plan 1 wildcard rule. Acceptable transition
+  // behavior. The pathname checks below also recognize the old prefix so
+  // active-state highlighting works during the transition window.
   const NAV_ITEMS: NavItem[] = [
-    { href: "/admin/platform", label: "Overview", exact: true },
-    { href: "/admin/platform/organizations", label: "Organizations" },
-    { href: "/admin/platform/users", label: "Users" },
+    { href: "/platform-admin", label: "Overview", exact: true },
+    { href: "/platform-admin/organizations", label: "Organizations" },
+    { href: "/platform-admin/users", label: "Users" },
     {
-      href: "/admin/platform/support",
+      href: "/platform-admin/support",
       label: "Support",
       badge: escalatedSupport ?? null,
     },
     {
-      href: "/admin/platform/feedback",
+      href: "/platform-admin/feedback",
       label: "Feedback",
       badge: unresolvedFeedback ?? null,
     },
     {
-      href: "/admin/platform/cost-intelligence",
+      href: "/platform-admin/cost-intelligence",
       label: "Cost Intelligence",
       badge: pendingCostIntel ?? null,
     },
-    { href: "/admin/platform/audit", label: "Audit log" },
+    { href: "/platform-admin/audit", label: "Audit log" },
     {
-      href: "/admin/platform/audit?action=impersonate_start",
+      href: "/platform-admin/audit?action=impersonate_start",
       label: "Impersonation history",
       matches: (pathname: string, search: URLSearchParams) =>
-        pathname === "/admin/platform/audit" &&
+        (pathname === "/platform-admin/audit" || pathname === "/admin/platform/audit") &&
         search.get("action") === "impersonate_start",
     },
   ];
@@ -59,16 +66,31 @@ export default function PlatformSidebar({
     >
       <div className="sticky top-0 px-3 py-6 space-y-0.5">
         {NAV_ITEMS.map((item) => {
+          // Per Stage 1.5c Plan 6 Task 2 (iter-2 D-20): sidebar must
+          // highlight correctly whether rendered in /platform-admin/*
+          // (new layout) or /admin/platform/* (legacy layout — still
+          // exists until F1 cleanup). The legacy href is derived by
+          // swapping the prefix so active-state matches in both cases.
+          const legacyHref = item.href.startsWith("/platform-admin")
+            ? item.href.replace(/^\/platform-admin/, "/admin/platform")
+            : item.href;
+
           let active: boolean;
           if (item.matches) {
             // usePathname doesn't expose search params — fall back to
             // href-prefix match for the impersonation shortcut so the
             // active state at least highlights the audit group.
-            active = pathname === "/admin/platform/audit";
+            active =
+              pathname === "/platform-admin/audit" ||
+              pathname === "/admin/platform/audit";
           } else if (item.exact) {
-            active = pathname === item.href;
+            active = pathname === item.href || pathname === legacyHref;
           } else {
-            active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            active =
+              pathname === item.href ||
+              pathname.startsWith(`${item.href}/`) ||
+              pathname === legacyHref ||
+              pathname.startsWith(`${legacyHref}/`);
           }
           return (
             <Link

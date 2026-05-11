@@ -125,13 +125,36 @@ export async function middleware(request: NextRequest) {
   }
 
   // Platform admin route guard. Must run BEFORE the billing gate —
-  // staff need to access /admin/platform even when their own org is
-  // expired, and non-staff shouldn't see the page exists.
-  if (pathname === "/admin/platform" || pathname.startsWith("/admin/platform/")) {
+  // staff need to access platform-admin tools even when their own org
+  // is expired, and non-staff shouldn't see the page exists.
+  //
+  // Per Stage 1.5c Plan 6 Task 2 (iter-2 must-fix CRITICAL #4 LOCKS
+  // Option A — security BLOCKING SEC-1 + compliance W-1): regex
+  // extended to ALSO match /platform-admin/* with the same
+  // isPlatformAdmin posture. The 13 sub-routes migrated from
+  // /admin/platform/* to /platform-admin/* (per iter-2 D-20 / D-058
+  // Decision B-modified) must be gated identically. Plan 1's wildcard
+  // redirect (/admin/platform/:path* → /platform-admin/:path*) sends
+  // existing bookmarks to /platform-admin/*; without this regex
+  // extension, those redirects would land at unprotected pages —
+  // SEC-1 BLOCKING.
+  //
+  // iter-2 watchpoint #3 verification: a PM (non-platform_admin)
+  // authenticated session navigating to /platform-admin/audit MUST
+  // receive redirect to /dashboard (NOT successful render). Plan 6
+  // SUMMARY documents the smoke test result.
+  if (
+    pathname === "/admin/platform" ||
+    pathname.startsWith("/admin/platform/") ||
+    pathname === "/platform-admin" ||
+    pathname.startsWith("/platform-admin/")
+  ) {
     if (!user) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = "/login";
-      loginUrl.searchParams.set("redirect", "/admin/platform");
+      // Use the actual pathname for redirect param so user lands at
+      // the right place after login (not always /admin/platform).
+      loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
     }
     if (!isPlatformAdmin) {
