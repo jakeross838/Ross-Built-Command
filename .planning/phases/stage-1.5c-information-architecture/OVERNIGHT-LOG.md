@@ -409,3 +409,111 @@ After fix authorized:
 - Re-run harness
 - Confirm AC-1-8 PASSes at high conf
 - Revert the Y.1.D diagnostic capture (temporary instrumentation, not permanent)
+
+---
+
+## 2026-05-11 — Y.1.B validation: STILL FAILS (cookie/injection not the issue)
+
+### Y.1.B implementation succeeded
+
+Commit `1739fc9` shipped:
+- `scripts/harness-auth-bootstrap.ts` — performs real /login form submit, captures storageState
+- `_browser.ts` — `HARNESS_AUTH_STATE_PATH` + `harnessStorageStateOption()`; old helpers DEPRECATED
+- `runner.ts` + `dom-assertions.ts` — switched to `browser.newContext({ storageState })`
+- `verify-phase.yml` — new "Bootstrap harness auth" step before main harness
+- `.gitignore` — auth/ carve-out
+
+Bootstrap step ran cleanly:
+```
+[harness-auth-bootstrap] navigating to .../login
+[harness-auth-bootstrap] filling credentials for harness-fixture@nightwork.local
+[harness-auth-bootstrap] submitting login
+[harness-auth-bootstrap] login succeeded — landed at .../onboard
+[harness-auth-bootstrap] captured storageState: 2 cookies; 0 origins with storage
+[harness-auth-bootstrap]   sb-* cookies: sb-egxkffodxcefwpqmwrur-auth-token(2618)
+[harness-auth-bootstrap] storageState written to .../harness-auth-state.json
+[harness-auth-bootstrap] success
+```
+
+Login form filled, redirect to /onboard (correct — fixture org has `onboarding_complete=false`), cookie captured. Real authenticated session via the actual login flow.
+
+### Harness re-run #25689321509 on `1739fc9`
+
+**Same outcome: PASS=86 / FAIL=1 / SKIP=1.**
+
+AC-1-8 still FAIL @ confidence 0.85:
+> "The top nav shows only minimal elements (logo, dark mode toggle, Feedback, Sign Out) — not 8 sections. The aesthetic appears minimal/dark with no visible stone-blue accents or Space Grotesk font confirmation, and the sidebar shows a jobs panel rather than a multi-section top navigation."
+
+Y.1.D probe (still wired) confirms:
+```json
+{
+  "cookies_count": 1,
+  "cookies_sb_only": [{"name": "sb-egxkffodxcefwpqmwrur-auth-token", "len": 2618}],
+  "localStorage_sb": [],
+  "sessionStorage_sb": []
+}
+```
+
+Cookie present in `document.cookie` with length **2618** — fresh from real login flow (vs the prior Y.2-injected 2591). localStorage empty (storageState capture didn't include any — confirmed by `0 origins with storage` in bootstrap output).
+
+### Critical insight
+
+**This rules out cookie injection / format as the root cause.** The cookie that's present is now:
+- From a real `/login` form submit (not Playwright `addCookies`)
+- Server-set via the same code path a real user would trigger
+- Identical in shape to what production users have
+- Same exact value that the server middleware accepts (page renders, body PASS at conf 0.95)
+
+Yet client-side `useCurrentRole` STILL returns null (vision sees minimal nav for the 3rd consecutive run).
+
+### What this means
+
+The problem is NOT:
+- ❌ Cookie injection mechanism (was Y.1.A hypothesis — disproven)
+- ❌ localStorage missing (was Y.2 hypothesis — disproven)
+- ❌ Cookie format/encoding (real login produces same shape we manually built)
+- ❌ Cookie missing/expired (length 2618 from fresh login)
+
+The problem IS likely:
+- 🎯 Client-side `@supabase/ssr` createBrowserClient's `auth.getUser()` returns null in headless Playwright Chromium context — for reasons that have NOTHING to do with cookie presence/format
+- 🎯 Possible causes (need next diagnostic to confirm):
+  - **Network**: fetch to `https://<projectRef>.supabase.co/auth/v1/user` fails in Playwright context (CORS? DNS? blocked outbound? client-error swallowed?)
+  - **SDK bug**: @supabase/ssr 0.10.2 has a quirk reading cookies in Playwright Chromium specifically
+  - **Race**: hook calls `getUser()` before SSR client's internal storage adapter completes initial cookie read; `getUser` returns null without retry
+  - **JWT validation**: the access_token in the cookie can't be validated by Supabase (clock skew? signature mismatch from project? — unlikely but possible)
+
+### Next diagnostic (proposed)
+
+Extend Y.1.D probe to ACTUALLY call `auth.getUser()` and capture the response/error. Simplest approach: from `page.evaluate`, manually:
+
+1. Parse `document.cookie` to extract the access_token (base64-decode + JSON.parse)
+2. Issue raw `fetch('https://<projectRef>.supabase.co/auth/v1/user', { headers: { Authorization: 'Bearer <access_token>', apikey: ANON_KEY } })`
+3. Return the response status + body
+
+This bypasses the SSR client entirely and tests whether Supabase API ITSELF works from Playwright Chromium. Result:
+- **HTTP 200 with user data** → Supabase API works; problem is exclusively in @supabase/ssr SDK code path; need to either work around the SDK or expose a window helper from production for harness-only init
+- **HTTP error or network fail** → Supabase API is unreachable from Playwright; need to investigate the runtime network context
+
+### Y.1.B work — keep or revert?
+
+The Y.1.B implementation IS architecturally correct (canonical Playwright pattern). It's just not sufficient on its own to bridge the @supabase/ssr client-side hydration gap. Recommend **keep Y.1.B** — it's strictly better than Y.2 (real login flow vs manual injection) — and pair it with whatever resolves the client-side hook issue.
+
+If Y.1.B is reverted, we'd need to bring back manual cookie injection AND solve the client-side hook issue. Y.1.B at least makes the auth-state-injection part canonical.
+
+### Cost ceiling
+
+- Cumulative: $0.951 + $0.077 (this run) = **~$1.028 / $5.00 (20.6% used)**
+- Headroom: ~$3.97
+
+### HALT — awaiting authorization for next diagnostic
+
+Per nwrp82 STEP 4 outcome (B). Options for Jake:
+
+| Option | What | Cost |
+|---|---|---|
+| **Z.1** ⭐ | Extend Y.1.D probe to test raw Supabase `/auth/v1/user` fetch from Playwright. Surface result. | ~$0.10 |
+| **Z.2** | Add a `console.log` to `useCurrentRole` hook itself for one validation run to capture the exact return from `supabase.auth.getUser()`. Temporary instrumentation, reverted after. | ~$0.10 |
+| **Z.3** | Pivot to A2 (window global + env-gated setSession in client.ts) since cookie/storage injection paths exhausted. Bypasses the hook issue entirely by force-ingesting the session post-page-load. | ~$0.15 |
+| **Z.4** | Accept AC-1-8 as known limitation, mark N/A in PLAN, document as "harness cannot validate client-side-auth-gated UI nav on production routes without further investigation"; reword criterion to target a route that doesn't need client-side hook resolution; close Block N+1. | ~$0.05 |
+
+Recommendation: **Z.1** — cheapest, highest information. Surfaces ground truth on whether Supabase API is even reachable.
