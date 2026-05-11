@@ -1733,3 +1733,41 @@ Pre-commit hook blocks commits gated by BLOCKING qa-report verdict. Per standing
 - Headroom: ~$4.461
 
 GATE 3 reached. Halt confirmed.
+
+---
+
+## 2026-05-11T17:18Z — Path B authorized (nwrp74). /nightwork-qa re-run → WARNING. BLOCKING resolution committed + pushed. Fresh harness run queued.
+
+### Path B re-run outcomes
+
+- **spec-checker**: PASS (both BLOCKINGs RESOLVED; AC-10/11 PARTIAL due to gitignored gsd-planner.md — consistent with prior NOTE)
+- **custodian**: PASS (drift 0, cross-refs 4/4 valid)
+- **security**: CONDITIONAL PASS (no new findings; iter-1 NODE_ENV WARNING carry-forward)
+- **ai-logic-tester**: PASS (logic-free delta)
+- **Overall**: **WARNING** (synthesis rule: single WARNING from one reviewer)
+
+Optional reviewers (rls-auditor, database-reviewer, data-migration-safety) not re-run — delta is logic-free / UI-free / DB-free / API-free; iter-1 PASS verdicts hold by inspection.
+
+### Stale artifact noted
+
+security-reviewer iter-2 inadvertently updated `PLAN-REVIEW-security.md` (pre-execute) instead of `SECURITY-REVIEW.md` (post-execute QA). HIGH-1/HIGH-2 in the plan-review artifact are stale — both VERIFIED CLEAN in SECURITY-REVIEW.md lines 185-205. Queued for custodian phase-archive sweep.
+
+### Commit + push
+
+Commit `e60a677` landed. Pre-commit hook cleared (latest qa-report verdict = WARNING). Pushed to `phase/1.5-c-verification-harness`.
+
+### Fresh harness run
+
+Run `#25682508130` queued on `e60a677` via auto-trigger on push. Expected baseline: PASS=68 / FAIL=1 (WI-004 surface gap) / SKIP=1. Awaiting completion.
+
+### GATE 3 surface updated
+
+`HALT-FOR-JAKE.md` rewritten with full GATE 3 merge-authorization surface (3 options: merge now / wait for run / additional review). Recommendation: wait for run completion (~15min) then merge.
+
+### Cost ceiling
+
+- Cumulative vision spend: ~$0.539 / $5.00 ceiling
+- Path B re-run used 0 vision calls (spec-checker is grep-only)
+- Headroom: ~$4.461
+
+GATE 3 final state reached. Awaiting Jake merge authorization.
