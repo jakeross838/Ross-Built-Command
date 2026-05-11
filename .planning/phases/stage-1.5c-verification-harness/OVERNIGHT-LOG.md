@@ -1454,3 +1454,87 @@ HALT-FOR-JAKE.md written with the three candidate paths.
 **Cumulative vision spend $0.388.** No new spend incurred during this investigation (no harness re-run — only file reads).
 
 **Cost-cap status:** unchanged at $0.388 cumulative.
+
+---
+
+## 2026-05-11T13:32Z — Run #25673100676 on `e936d30`: FIX 11 (fullPage:true) — typography PASS; patterns hit Anthropic 8000px limit.
+
+**Action:** Applied Path A — single-line `fullPage:false` → `fullPage:true` at `runner.ts:189`. CATEGORY-A in-envelope.
+
+### Verdict counts
+
+- PASS: 64; FAIL: 1; SKIP: 3 (was FAIL: 3, SKIP: 1)
+- Vision cost: $0.0126 (lower than usual because 2 ACs SKIPped at $0)
+
+### Per-AC verdicts
+
+- **AC-08a-131 (typography) PASS conf 0.82** — fullPage worked. Vision saw "Tracking demonstrations" section with TRACKING EYEBROW row + literal `0.14em`. Pre-flight diagnostic confirmed.
+- **AC-08a-130 (palette) FAIL conf 0.9** — NEW reasoning: vision reads hex as `#588699` instead of `#5B8699`. Character-OCR ambiguity (`B` vs `8` at swatch-label rendering size). Page IS rendering `#5B8699` correctly (palette/page.tsx:63); vision is misreading the character.
+- **AC-08a-138 + AC-08a-139 SKIP** — Anthropic vision API HTTP 400: "messages.0.content.0.image.source.base64.data: At least one of the image dimensions exceed max allowed size: 8000 pixels". Patterns page fullPage screenshot is ~15000px tall (1715 lines, 12+ patterns).
+
+**Side effect identified.** fullPage:true works for short pages, breaks long pages. Need height cap.
+
+### FIX 11b authorized + applied — clip-based screenshot at 7800px
+
+`runner.ts` updated to probe `document.documentElement.scrollHeight`; if > 7800px, use Playwright `clip` option to capture top 7800px; else fullPage:true. Loses bottom content of pages > 7800px (only patterns page in current scope; top 7800px is 5.5x more content than the original 1400px viewport and includes Pattern 1 Document Review which is at top).
+
+Cumulative cost after Run #25673100676: **$0.401** ($0.388 + $0.0126; SKIPs cost $0).
+
+---
+
+## 2026-05-11T13:38Z — Run #25673503471 on `bfbffb9`: clip-fix unblocks patterns; AC-138 PASS; AC-130 still vision-OCR FAIL. Outcome B per nwrp71. HALT.
+
+**Action:** Applied FIX 11b — clip-based screenshot at 7800px height cap.
+
+### Verdict counts (Run #25673503471)
+
+- **PASS: 65** (was 64 — AC-138 Document Review pattern moved to PASS)
+- **FAIL: 2** (was 1; AC-138 left FAIL→PASS; AC-138 and AC-139 had been SKIPping, now AC-139 FAILs with substantive verdict)
+- **SKIP: 1** (Layer 2 introspection, unchanged)
+- **Vision cost:** $0.0263 (cumulative **$0.427**)
+
+### Per-AC verdicts
+
+| AC | Page | Verdict | Conf | Reasoning |
+|---|---|---|---|---|
+| AC-08a-130 | `/design-system/palette` | FAIL | 0.85 | "Set B's stone-blue swatch shows hex `#588699`, not `#5B8699`" — vision character-OCR ambiguity (B vs 8 at swatch-label rendering size); page IS rendering `#5B8699` correctly |
+| **AC-08a-131** | `/design-system/typography` | **PASS** | **0.82** | Tracking demonstrations section visible with TRACKING EYEBROW row + `0.14em` value + UPPERCASE sample |
+| **AC-08a-138** | `/design-system/patterns` | **PASS** | **0.95** | Document Review pattern visible — file preview LEFT, right-rail panels (Invoice details, Cost code allocation, AI extraction, Lien release), gold-standard layout |
+| AC-08a-139 | `/design-system/patterns` | FAIL | 0.9 | "Text 'Cost code allocation' appears as a label in an ASCII layout diagram, but there is no actual invoice WI-004 surface with a 'Cost code' field showing a non-empty value — only a structural reference in a layout schematic" |
+
+### Diagnostics
+
+**AC-130 — vision character-OCR limit, not page/criterion error:**
+- Pre-flight verified `#5B8699` IS canonical (`branding/constants.ts:25`, `colors_and_type.css:16`, `palette/page.tsx:63`, `CHOSEN-DIRECTION.md:12`)
+- Vision reads it as `#588699` — `B` (uppercase B) and `8` are visually similar at small swatch-label font size
+- fullPage screenshot didn't fix this (it just captured a longer page, character size unchanged)
+- This is a known vision-precision limitation, not a real bug
+
+**AC-139 — genuine surface gap on this branch:**
+- Pre-flight verified NO route on `phase/1.5-c-verification-harness` renders multi-row invoice line items with cost codes per row
+- `/design-system/patterns` Pattern1DocumentReview shows single-invoice metadata (1 cost code via DataRow); not a multi-row table
+- `/design-system/philosophy` InvoiceReviewCell is a 6-7px micro-preview with 1 "Code" field; not multi-row
+- `/invoices/[id]` production route has no fixture data for fixture-harness-org
+- Stage 1.5b prototype-gallery branch (parallel) is where the route is planned but not yet merged
+
+WI-004 surface gap is **real** until Stage 1.5b merges. Vision is correctly distinguishing "label in diagram" from "actual rendered cost-code value per line item."
+
+### What's now confirmed end-to-end working
+
+- ✓ Vercel deployment-protection bypass + Supabase session cookie + Nightwork app verification bypass (auth chain complete)
+- ✓ Layer 3 vision API + fullPage / clip screenshot logic
+- ✓ Real `/design-system/*` content rendering
+- ✓ Two Layer 3 PASSes on real content (typography + Document Review pattern)
+- ✓ WI-004 surface-gap distinction (vision identifies documentation vs. live invoice)
+
+### Halt per nwrp71 Outcome B
+
+> "Outcome B (AC-130 or AC-131 still FAIL after fullPage fix): Diagnose what vision sees vs what page actually renders. HALT for Jake with specifics."
+
+AC-130 still FAILs after FIX 11 + 11b. Diagnosis above. HALT for Jake.
+
+HALT-FOR-JAKE.md updated with three candidate paths for AC-130 + AC-139 disposition + Wave 4 posture.
+
+**Cumulative vision spend $0.427** (well under $5 ceiling). The harness has produced the cleanest state achievable on this branch: only 1 vision-OCR limitation and 1 real surface-gap finding remain.
+
+**Cost-cap status:** $0.0263 this run.
