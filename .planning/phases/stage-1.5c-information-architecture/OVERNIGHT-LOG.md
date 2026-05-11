@@ -734,3 +734,106 @@ Or:
 ### HALT per nwrp86 STEP 5 (B)
 
 Awaiting authorization: **V.1 (diagnostic) / V.2 (fix hook) / V.3 (accept N/A) / other.**
+
+---
+
+## 2026-05-11 — Block N+1 TRULY COMPLETE (V.3 close-out validated)
+
+### Final harness state on `2a4289c`
+
+Run #25693790922: **status = success** ("All 3 layers passed").
+
+```
+PASS:  86
+FAIL:  0
+SKIP:  1
+```
+
+- Layer 1 (mechanical + DOM): 73/73 PASS
+- Layer 2 (industry-standards): 1 PASS, 1 SKIP (`money-line-items-sum` introspection dep — Wave 1.1 work)
+- Layer 3 (Claude vision): 12 criteria run (was 13; AC-1-8 N/A dropped by criteria-loader per convention), 12/12 PASS
+
+Vision cost this run: $0.0861.
+
+### Full Y.1.A → V.3 narrative
+
+The AC-1-8 chain spanned nwrp79 → nwrp87 (9 prompts). Diagnostic evolution:
+
+| Step | What | Result |
+|---|---|---|
+| Y.2 (nwrp79) | Inject Supabase session into localStorage | No-op — @supabase/ssr uses cookies, not localStorage |
+| Y.1.D (nwrp80) | Probe captures cookie/storage state | Cookies + localStorage both present; useCurrentRole still null |
+| Y.1.B (nwrp82) | Playwright storageState bootstrap (real /login flow) | Replaces injection with real auth; AC-1-8 still FAIL |
+| OBSERVATION A (nwrp83) | Jake real-browser test | Production code path correct; bug is harness/headless-only |
+| Z.1 (nwrp84) | Raw /auth/v1/user fetch from page.evaluate | HTTP 200 OK in 389ms — Supabase API + cookie + token all valid |
+| nwrp85 research | Investigate setSession internals | W.4 sibling-client approach risks multi-instance deadlocks per Supabase Discussion #37755 |
+| W.1 (nwrp86) | Env-gated setSession bridge in client.ts | Bridge ships; still FAIL — async race: setSession (~135-400ms) vs hook mount (~50-200ms); hook is one-shot, no listener |
+| V.3 (nwrp87) | Accept AC-1-8 N/A; document; defer onAuthStateChange to F1+ | **AC-1-8 SKIPs cleanly; harness CLEAN** ✓ |
+
+### What was learned
+
+**Cookie/token/network/Supabase API all confirmed working** in headless Playwright Chromium (Z.1 conclusive). The gap is `@supabase/ssr` `createBrowserClient` not auto-hydrating `auth.getUser()` from a cookie that was present at module-load time — specifically in this headless context (real Chromium hydrates fine per Jake's OBSERVATION A).
+
+The W.1 bridge IS the right fix; it's just incomplete without a paired hook change. The hook (`useCurrentRole`) needs to subscribe to `onAuthStateChange` for SIGNED_IN events so it re-resolves after the async setSession completes. Captured as F1+ follow-up.
+
+### What's kept in the codebase
+
+| Component | Status | Rationale |
+|---|---|---|
+| `scripts/harness-auth-bootstrap.ts` | KEEP | Y.1.B Playwright storageState — canonical auth pattern; better than manual injection |
+| `HARNESS_AUTH_STATE_PATH` + `harnessStorageStateOption()` in `_browser.ts` | KEEP | Used by runner.ts + dom-assertions.ts |
+| `supabaseSessionCookies` + `supabaseLocalStorageInitScript` in `_browser.ts` | KEEP (deprecated) | Defense-in-depth; will remove in future cleanup |
+| `supabaseSetSessionBridgeInitScript` in `_browser.ts` | KEEP | Pre-positioned for F1+ onAuthStateChange hook fix |
+| Env-gated W.1 block in `src/lib/supabase/client.ts` | KEEP | Pre-positioned for F1+ hook fix; dead code in production |
+| `addInitScript(bridgeScript)` in runner.ts + dom-assertions.ts | KEEP | Wired alongside the bridge; harmless until hook subscribes |
+| Y.1.D + Z.1 probes | REVERTED | One-time investigation tools; full trail in this log |
+
+### Block N+1 final state
+
+**Per nwrp76 expected outcome — all 5 criteria met:**
+- ✓ 1.5c-IA branch fully integrated with harness infrastructure (commits 5a2fa45 + 28d5ea8 merged main)
+- ✓ Criteria checklists authored for all 4 shipped plans (commit 52fa8ff retrofits Plans 1/2/3)
+- ✓ Harness validates 1.5c-IA state (run #25693790922 success on 2a4289c)
+- ✓ Multiple CATEGORY-A findings addressed (waitUntil network → load + 45s timeout; middleware VERCEL_ENV defense)
+- ✓ Real findings surfaced + resolved (AC-1-8 → V.3 accept N/A; F1+ follow-up captured)
+
+### Commits shipped in Block N+1
+
+| SHA | Description |
+|---|---|
+| `5a2fa45` | Merge main into 1.5c-IA (harness infra integration) |
+| `52fa8ff` | Retrofit `<criteria>` blocks onto Plans 1/2/3 |
+| `5761cf5` | page.goto timeout 20s → 45s (CATEGORY-A; didn't fix root cause) |
+| `1ff9dd0` | Block N+1 first-cut completion summary |
+| `21c8771` | AC-1-8 HALT — real finding surfaced |
+| `8337fe3` | Y.1.D diagnostic findings |
+| `28d5ea8` | Merge main (waitUntil "load" + VERCEL_ENV defense) |
+| `704bf65` (on main) | waitUntil networkidle → load + VERCEL_ENV middleware fix |
+| `1739fc9` | Y.1.B Playwright storageState bootstrap |
+| `6ebbd0c` | Y.1.B validation findings |
+| `89e3c7c` | Z.1 raw /auth/v1/user fetch probe |
+| `dcb7c5d` | Z.1 OUTCOME A results |
+| `9f789ef` | W.1 env-gated setSession bridge |
+| `b19a3cc` | W.1 validation findings (still FAILS, race confirmed) |
+| **`2a4289c`** | **V.3 close-out — AC-1-8 N/A + docs + Y.1.D revert** |
+
+### Cost ceiling
+
+- Cumulative vision spend (Block N+1): **~$1.263 / $5.00 (25.3% used)**
+- Headroom: ~$3.74
+
+### F1+ follow-ups captured (in `.planning/calibration-log.md`)
+
+- **useCurrentRole onAuthStateChange listener** (~30 min, pairs with F1 schema work)
+
+### F1+ follow-ups carried from harness ship + Block N+1
+
+- `src/middleware.ts:179` NODE_ENV → VERCEL_ENV one-liner (already shipped to main in `704bf65` during Block N+1 Option A)
+- WI-004 cost-code-per-line-item criterion when Stage 1.5b lands the invoice-review prototype
+- 1.5c IA Q6=B criteria retrofit — COMPLETED in Block N+1 commit 52fa8ff
+- PLAN-REVIEW-security.md stale-artifact cleanup (carry-forward; nightwork-custodian sweep)
+- gsd-planner.md manual per-PC sync per criteria-template.md instructions (upstream gitignored file)
+
+### BLOCK N+1 STATE: COMPLETE
+
+Awaiting **Block N+2 dispatch authorization** per nwrp87 STEP 5 (A) terminal halt.
