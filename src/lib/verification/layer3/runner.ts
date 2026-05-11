@@ -207,13 +207,32 @@ export async function runLayer3(
           waitUntil: "networkidle",
           timeout: 20_000,
         });
-        // nwrp70/71 FIX 11: fullPage:true so long-scroll design-system pages
-        // (palette, typography) don't lose below-the-fold content. Pre-flight
-        // diagnostic confirmed #5B8699 stone-blue (palette page line 63) and
-        // 0.14em tracking (typography page line 266) are both rendered below
-        // the 800px viewport fold. Cost trade-off: +~30% vision tokens per
-        // call; well within $5 cumulative ceiling.
-        await page.screenshot({ path: screenshotPath, fullPage: true });
+        // nwrp70/71 FIX 11: fullPage screenshot (capped at 7800px height) so
+        // long-scroll design-system pages don't lose below-the-fold content.
+        // Pre-flight diagnostic confirmed #5B8699 stone-blue (palette/page.tsx:63)
+        // and 0.14em tracking (typography/page.tsx:266) are both rendered below
+        // the prior 800px viewport fold.
+        //
+        // nwrp71 FIX 11b: Anthropic vision API rejects images with any
+        // dimension > 8000px. The patterns page (1715 lines, ~15000px tall
+        // fullPage) hit this limit; AC-138/139 SKIPped with HTTP 400 "image
+        // dimensions exceed max allowed size: 8000 pixels". Cap height at
+        // 7800px (margin of safety) using Playwright's `clip` option for
+        // pages taller than the cap; fall back to `fullPage:true` for pages
+        // that fit. Loses bottom content of pages > 7800px (currently only
+        // the patterns page); preserves full content of all others.
+        const scrollHeight = await page.evaluate(
+          () => document.documentElement.scrollHeight
+        );
+        const MAX_SCREENSHOT_HEIGHT = 7800;
+        if (scrollHeight > MAX_SCREENSHOT_HEIGHT) {
+          await page.screenshot({
+            path: screenshotPath,
+            clip: { x: 0, y: 0, width: 1280, height: MAX_SCREENSHOT_HEIGHT },
+          });
+        } else {
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+        }
         await context.close();
 
         visionResult = await callVisionApi({
