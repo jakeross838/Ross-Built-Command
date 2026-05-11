@@ -25,8 +25,55 @@ Update these sections of MASTER-PLAN.md:
 - **§12 NEXT PLANNED WORK:** mark the just-shipped item with ✅ and a date. Promote the next planned item into the immediate slot.
 - **§10 DECISIONS LOG:** if the phase introduced a new decision (data model choice, architectural call, deferred work that shaped scope), append a new D-NNN row with date and rationale. Source from the phase's `LEARNINGS.md` if present.
 - **§11 TECH DEBT REGISTRY:** append any new debt the phase deliberately deferred. Cite the source (QA report ID, plan-review reference, etc.).
+- **NEW (per stage-1.5c-verification-harness D-13): Append a calibration log entry** to `.planning/calibration-log.md`. See "Calibration log writer" section below for extraction rules.
 
 Do NOT rewrite history — past decisions stay in place. Only append / advance the current-state sections.
+
+## Calibration log writer (per stage-1.5c-verification-harness D-13)
+
+After post-ship MASTER-PLAN.md updates, append a phase entry to `.planning/calibration-log.md` per the schema at `.planning/calibration-log-schema.md`.
+
+### Extraction rules
+
+JSON front-matter fields are extracted from artifacts (no speculation):
+
+| Field | Source |
+|---|---|
+| `phase` | The phase being shipped (from current branch + STATE.md) |
+| `shipped_at` | Today's ISO date |
+| `wave_count` | `cat .planning/phases/<phase>/*-PLAN.md \| grep -c '^wave:'` (or count distinct waves from frontmatter) |
+| `parallelism_used` | Max plans in any single wave (read from PLAN frontmatter `wave:` values) |
+| `plan_count` | `ls .planning/phases/<phase>/*-PLAN.md \| wc -l` |
+| `plan_iter_counts.<plan_id>` | From each PLAN's SUMMARY.md "iterations" field; default 0 if SUMMARY missing |
+| `harness_runs` | Count of harness reports under `.planning/verification/runs/<phase>/` |
+| `harness_pass_rate` | (passed iterations / total iterations) from harness reports |
+| `harness_iter_counts.iter_N_resolved` | Count of phase-internal harness loops that resolved at iter N |
+| `harness_iter_counts.iter_3_halt_for_jake` | Count of HALT-ITER-3.md files under runs/ |
+| `ambiguous_vision_halts` | Count of HALT-AMBIGUOUS-VISION.md files under runs/ |
+| `vision_cost_usd` | Sum across all per-commit reports `total_vision_cost_usd` |
+| `vision_cache_hit_rate` | (Layer 3 results with cached=true) / (total Layer 3 results) |
+| `prompt_density_signal` | Default 3 (right). Custodian adjusts based on Jake's QA verdict notes if "verbose"/"terse" mentioned. |
+| `drift_cases` | Count of post-edit hook fires during phase (from QA report) |
+| `process_discipline_violations` | Count of `.planning/lessons.md` entries dated within phase window |
+
+Markdown body sections (What worked / What didn't / Adjustment / Cost / Process):
+
+- **What worked:** Extract from QA verdict's positive findings + plan SUMMARY.md "what landed clean" notes.
+- **What didn't:** Extract from QA verdict's WARNING/MEDIUM findings + plan SUMMARY.md deviations.
+- **Adjustment for next phase:** Synthesize from harness_iter_counts + drift_cases. Heuristic rules in `calibration-log-schema.md` reader rules section.
+- **Cost notes:** Vision cost analysis if `vision_cost_usd > 0`. If 0, write "no Layer 3 vision criteria this phase".
+- **Process notes:** Carry-forward from `.planning/lessons.md` entries.
+
+### Don't
+
+- Don't fabricate data. If `harness_runs == 0` (e.g., the harness wasn't applicable to this phase), say so explicitly.
+- Don't edit existing entries. Append-only per .planning/lessons.md format precedent.
+- Don't skip a phase. Every shipped phase gets an entry, even if the entry is mostly zeros.
+- Don't auto-tune the schema. If extraction rules feel wrong, surface as plan-review feedback in the next phase rather than mutating the schema.
+
+### Plan-review watchpoint #4 self-check
+
+After writing each entry, ask: "Would `/np` orchestrator find this useful when scoping the next phase?" If the entry has all-zeros + body sections of "(no data)", the calibration mechanism may be too noisy for this phase type. Note in custodian's sweep report; surface to next plan-review iter-1.
 
 ### Weekly via `/nightwork-cleanup`
 
