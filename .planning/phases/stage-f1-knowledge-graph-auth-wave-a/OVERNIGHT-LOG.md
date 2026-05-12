@@ -234,3 +234,76 @@ Commit hash: `d04a428` — atomic per nwrp50 with 3 files (route source + SUMMAR
 **Proceed to Plan A-3 (drop budgets + refactor).** A-2 is code-only with no migration; A-3 introduces migration 00095 with table drop + 4 src refactor files + CLAUDE.md update. Estimated A-3 duration: 0.5-1 day. No HALT conditions remaining from A-2; Wave-A budget tracking on plan.
 
 ---
+
+## 2026-05-12 — Wave-A Plan A-3 SHIP (drop budgets table + refactor consumers)
+
+**Authorization:** nwrp113 (Wave-A autonomous execution envelope) + nwrp50 (Vercel-only atomic commit + push).
+
+### Deliverables
+
+| Deliverable | Path | Status |
+|---|---|---|
+| Migration 00095 up | `supabase/migrations/00095_drop_budgets.sql` | ✓ Written (78 lines; BEGIN/COMMIT wrapped; DROP TABLE justified per hook contract; HF-A3-1 + HF-A3-2 verify queries embedded in header) |
+| Migration 00095 down | `supabase/migrations/00095_drop_budgets.down.sql` | ✓ Written (94 lines; restores cumulative 00027 + 00043 + 00049 state; OQ-A-3-1 acceptance noted) |
+| recalc.ts | `src/lib/recalc.ts` | ✓ recalcBudgetTotals function deleted; replaced with derived-on-read documentation comment |
+| budget-lines POST | `src/app/api/budget-lines/route.ts` | ✓ Import narrowed; budget lookup block deleted; budget_id removed from insert; recalcBudgetTotals call deleted |
+| budget-lines [id] | `src/app/api/budget-lines/[id]/route.ts` | ✓ Import narrowed; PATCH select tightened + recalc block deleted; DELETE pre-update read deleted entirely + recalc block deleted (Task 5 third consumer per plan-author surfacing) |
+| activity-log.ts | `src/lib/activity-log.ts` | ✓ ActivityEntityType union narrowed: 11 → 10 entries (removed 'budget') |
+| action-labels.ts | `src/lib/audit/action-labels.ts` | ✓ HF-A3-2: removed 'budget' from ENTITY_LABELS Record; added defensive fallback in auditLabel() returning "Budget (legacy)" for legacy DB rows |
+| CLAUDE.md | `CLAUDE.md:160` | ✓ "No `budgets` parent table" paragraph inserted under `### budget_lines` entry citing Q10c + migration 00095 |
+| SUMMARY.md | `.planning/phases/stage-f1-knowledge-graph-auth-wave-a/A-3-drop-budgets-SUMMARY.md` | ✓ Written; all 7 ACs documented (6 verbatim + 1 plan-extension) + iter-2 patch applications + deviations |
+
+### iter-2 patches applied
+
+- **HF-A3-1 (post-migration RLS independence verify):** Embedded in migration 00095 header rationale (lines 44-51) as run-after-apply pg_policies query. GATE-A operator MUST execute. Expected: 0 rows.
+- **HF-A3-2 (smoke-test for legacy entity_type='budget' rows + defensive fallback):** Smoke-test query embedded in migration header (lines 53-57); action-labels.ts defensive fallback applied — returns "Budget (legacy)" for `entity_type === "budget"` legacy DB rows. Symmetric `ACTION_LABELS[action] ?? String(action)` fallback added for consistency.
+
+### Acceptance criteria
+
+| AC | Status | Evidence |
+|----|--------|----------|
+| AC-1 Migration 00095 (DROP TABLE budgets + DROP COLUMN budget_id) | ✓ PASS (file authored) | Migration apply deferred to GATE-A per Wave-A envelope |
+| AC-2 recalc.ts no budgets.total_amount update; derived-on-read documented | ✓ PASS | Function deleted; grep clean |
+| AC-3 budget-lines POST no budget lookup; budget_id not set | ✓ PASS | Block deleted; grep clean |
+| AC-4 activity-log.ts 'budget' removed from union | ✓ PASS | grep -c '"budget"' returns 0 |
+| AC-5 CLAUDE.md documents derived-from-line-items + change-orders pattern | ✓ PASS | Paragraph inserted under `### budget_lines` |
+| AC-6 npm run build + harness Layer 1 + Drummond gate green | ✓ PASS (mechanical); full Drummond E2E walk DEFERRED to GATE-A | `npx tsc --noEmit` exit 0; `npm run build` exit 0; `bash .githooks/pre-commit` exit 0 |
+| AC-7 (plan-extension) budget-lines [id] (PATCH + DELETE) third consumer refactored | ✓ PASS | 2 recalcBudgetTotals callsites removed; budget_id reads removed |
+
+### Verification outputs
+
+- `npx tsc --noEmit`: exit 0 (zero TypeScript errors after union narrowing + Record entry removal + import narrowing across 3 files)
+- `npm run build`: exit 0 (full Next.js production build succeeded; all 80+ routes built)
+- `bash .githooks/pre-commit`: exit 0 (Drummond grep gate silent on staged diff)
+- 5 comprehensive grep sweeps documented in SUMMARY §Verification command outputs (all clean)
+
+### HALT conditions
+
+**None encountered.** All directives applied verbatim. Fix-attempt counter = 0/3.
+
+### Hook arg-parsing bug encountered (documented for follow-up; not a content deviation)
+
+`.claude/hooks/nightwork-post-edit.sh:105` uses `grep -iq "-- nightwork: drop-justified" "$FILE"`. Bash's grep parses the leading `--` in the pattern as an "end of options" marker, causing grep to fail with `grep: unknown option`. The hook ALWAYS reports DROP TABLE as unjustified regardless of marker presence. Migration 00095 contains the required marker on the same line as `DROP TABLE`; file content was nevertheless saved correctly (PostToolUse hook runs after the write completes — informs the agent but does not roll back). All subsequent verification gates pass. Recommended fix: `grep -iq -- "-- nightwork: ..."` (explicit option terminator). Out of A-3 scope; surfaced for small infra plan or Wave-B cleanup.
+
+### Deferred-to-GATE-A items
+
+- **OQ-A-3-4 (0-row pre-flight re-verification):** GATE-A operator MUST run `SELECT count(*) FROM budgets;` immediately before migration apply. HALT if > 0.
+- **HF-A3-1 verify query:** GATE-A operator runs `pg_policies` query post-apply (expect 0 rows).
+- **HF-A3-2 smoke-test:** GATE-A operator runs `SELECT COUNT(*) FROM activity_log WHERE entity_type = 'budget';` post-apply (expect 0 rows; if > 0 → backfill-rename-or-leave decision).
+- **Full Drummond E2E walk:** Deferred to GATE-A halt review where running dev server + Drummond seed is available.
+
+### Deferred-to-Wave-B/C items (surfaced at GATE-A)
+
+- **MED-A3-1:** `budget_lines.invoiced` / `committed` / `co_adjustments` app-layer-maintained aggregates violate CLAUDE.md "Recalculate, don't increment" rule. `budget_lines.invoiced` IS trigger-maintained (00027:156-185) — compliant under cache-trigger exception. `committed` + `co_adjustments` are app-layer-only — non-compliant. Out of A-3 scope; route to Wave-B/C as dedicated cleanup plan.
+- **MED-A3-2:** A-4 plan modifies `00051_support_chat.sql` with comment-only update — convention question (does team permit cosmetic comment additions to applied historical migrations?). A-3 itself does NOT edit any historical migration file; flagged for A-4 awareness.
+- **OQ-A-3-1:** `.down.sql` cumulative state assumes target environment past 00049 — all Nightwork environments comply; rollback safety net only.
+
+### Commit details
+
+_Commit hash: to be recorded post-commit._ Atomic per nwrp50 with 9 files (2 migrations + 5 source files + 1 CLAUDE.md + 1 SUMMARY.md + this OVERNIGHT-LOG update).
+
+### Recommendation
+
+**Proceed to Plan A-4 (invoice_allocations org_id denormalize)** per CONTEXT.md sequencing. A-3 is the final cleanup-only plan; A-4 introduces the larger Q10b RLS rewrite (migration 00096 with 4 INSERT site updates + 5-of-6 reviewer-flagged CR-A4-1 critical fix). No HALT conditions remaining from A-3; Wave-A budget tracking on plan (~$2 cumulative vision spend; 40% of $5 ceiling).
+
+---

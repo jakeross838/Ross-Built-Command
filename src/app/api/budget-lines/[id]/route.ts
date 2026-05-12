@@ -4,7 +4,7 @@ import { ApiError, withApiError } from "@/lib/api/errors";
 import { getCurrentMembership } from "@/lib/org/session";
 import { canDeleteBudgetLine, formatBlockers } from "@/lib/deletion-guards";
 import { logActivity } from "@/lib/activity-log";
-import { recalcBudgetLine, recalcBudgetTotals } from "@/lib/recalc";
+import { recalcBudgetLine } from "@/lib/recalc";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,7 @@ export const PATCH = withApiError(
 
     const { data: before } = await supabase
       .from("budget_lines")
-      .select("id, budget_id, original_estimate")
+      .select("id, original_estimate")
       .eq("id", params.id)
       .eq("org_id", membership.org_id)
       .is("deleted_at", null)
@@ -58,9 +58,8 @@ export const PATCH = withApiError(
     if (error) throw new ApiError(error.message, 500);
 
     await recalcBudgetLine(params.id);
-    if ((before as { budget_id?: string | null }).budget_id) {
-      await recalcBudgetTotals((before as { budget_id: string }).budget_id);
-    }
+    // Per A-3 (F1-Wave-A) / Q10c: budgets table dropped in migration 00095.
+    // Job-level budget total is computed on read; no stored aggregate to update.
 
     await logActivity({
       org_id: membership.org_id,
@@ -104,25 +103,15 @@ export const DELETE = withApiError(
       throw new ApiError(formatBlockers("delete budget line", guard), 422);
     }
 
-    const { data: before } = await supabase
-      .from("budget_lines")
-      .select("budget_id")
-      .eq("id", params.id)
-      .eq("org_id", membership.org_id)
-      .single();
-
+    // Per A-3 (F1-Wave-A) / Q10c: budgets table dropped in migration 00095.
+    // No pre-update read needed (was only used for budget_id).
     const { error } = await supabase
       .from("budget_lines")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", params.id)
       .eq("org_id", membership.org_id);
     if (error) throw new ApiError(error.message, 500);
-
-    if ((before as { budget_id?: string | null } | null)?.budget_id) {
-      await recalcBudgetTotals(
-        (before as { budget_id: string }).budget_id
-      );
-    }
+    // Job-level budget total is computed on read; no stored aggregate to update.
 
     await logActivity({
       org_id: membership.org_id,

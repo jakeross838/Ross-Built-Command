@@ -228,33 +228,11 @@ export async function recalcJobContract(jobId: string): Promise<{
   return { approved_cos_total, revised_contract };
 }
 
-/**
- * Recompute a budget's total_amount from the sum of its budget_lines'
- * original estimates. Used when an individual line's original_amount is
- * edited.
- */
-export async function recalcBudgetTotals(budgetId: string): Promise<{
-  total_amount: number;
-} | null> {
-  if (!budgetId) return null;
-  const supabase = createServiceRoleClient();
-
-  const { data: lines } = await supabase
-    .from("budget_lines")
-    .select("original_estimate")
-    .eq("budget_id", budgetId)
-    .is("deleted_at", null);
-  const total_amount = (lines ?? []).reduce(
-    (s, bl) => s + ((bl as { original_estimate: number }).original_estimate ?? 0),
-    0
-  );
-
-  await supabase
-    .from("budgets")
-    .update({ total_amount, updated_at: new Date().toISOString() })
-    .eq("id", budgetId);
-  return { total_amount };
-}
+// `recalcBudgetTotals` was removed in PR A-3 (F1-Wave-A) per Q10c — the
+// `budgets` table was dropped (migration 00095). Job-level budget totals
+// are now computed on read as `SUM(budget_lines.revised_estimate) WHERE
+// job_id = ?` by the UI/API surfaces that need them (e.g. budget page,
+// draw header). No stored aggregate is maintained.
 
 /**
  * Nuclear option: recalc every derived total for a job. Useful after bulk

@@ -3,7 +3,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { ApiError, withApiError } from "@/lib/api/errors";
 import { getCurrentMembership } from "@/lib/org/session";
 import { logActivity } from "@/lib/activity-log";
-import { recalcBudgetLine, recalcBudgetTotals } from "@/lib/recalc";
+import { recalcBudgetLine } from "@/lib/recalc";
 
 export const dynamic = "force-dynamic";
 
@@ -57,18 +57,8 @@ export const POST = withApiError(async (request: NextRequest) => {
     );
   }
 
-  // Find a budget_id if the job already has one (budgets table is the
-  // parent container; some phases wire it, some don't). Use the first
-  // active budget if present; otherwise leave null (budget_lines.budget_id
-  // is nullable).
-  const { data: budgetRow } = await supabase
-    .from("budgets")
-    .select("id")
-    .eq("job_id", body.job_id)
-    .is("deleted_at", null)
-    .limit(1)
-    .maybeSingle();
-
+  // Per A-3 (F1-Wave-A) / Q10c: budgets table dropped in migration 00095.
+  // No parent-budget lookup; budget_id column removed from budget_lines.
   const { data: inserted, error } = await supabase
     .from("budget_lines")
     .insert({
@@ -83,19 +73,16 @@ export const POST = withApiError(async (request: NextRequest) => {
       is_allowance: !!body.is_allowance,
       description: body.description ?? null,
       notes: body.notes ?? null,
-      budget_id: (budgetRow as { id?: string } | null)?.id ?? null,
       org_id: membership.org_id,
       created_by: user?.id ?? null,
     })
-    .select("id, budget_id")
+    .select("id")
     .single();
   if (error) throw new ApiError(error.message, 500);
 
-  // Trigger a recalc so committed/invoiced stay at 0 (noop but idempotent)
-  // and ensure budget totals stay in sync.
+  // Trigger a recalc so committed/invoiced stay at 0 (noop but idempotent).
   await recalcBudgetLine((inserted as { id: string }).id);
-  const budgetId = (inserted as { budget_id?: string | null }).budget_id;
-  if (budgetId) await recalcBudgetTotals(budgetId);
+  // (job-level budget total is computed on read; no stored aggregate to update.)
 
   await logActivity({
     org_id: membership.org_id,

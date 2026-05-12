@@ -33,7 +33,11 @@ const ENTITY_LABELS: Record<ActivityEntityType, string> = {
   purchase_order: "Purchase Order",
   change_order: "Change Order",
   budget_line: "Budget line",
-  budget: "Budget",
+  // 'budget' entry removed in PR A-3 (F1-Wave-A) per Q10c — budgets table
+  // dropped in migration 00095. Legacy activity_log rows with
+  // entity_type='budget' (if any) are handled by auditLabel's defensive
+  // fallback below — returns "Budget (legacy)" for backward-compatible
+  // rendering. See HF-A3-2 in ITER-2-PATCHES.md.
   job: "Job",
   vendor: "Vendor",
   cost_code: "Cost Code",
@@ -74,8 +78,17 @@ export function auditLabel(
   entityType: ActivityEntityType,
   action: ActivityAction,
 ): AuditLabel {
-  const entityLabel = ENTITY_LABELS[entityType];
-  const actionLabel = ACTION_LABELS[action];
+  // Defensive fallback for legacy entity_type values that may exist in the
+  // activity_log table from pre-A-3 writes (e.g., entity_type='budget' from
+  // before the budgets table was dropped). Since activity_log.entity_type is
+  // TEXT (not a Postgres ENUM), historical rows survive the TS union narrowing
+  // and can surface here via raw-SQL-read paths. Per HF-A3-2.
+  const entityLabel =
+    ENTITY_LABELS[entityType] ??
+    (entityType === ("budget" as ActivityEntityType)
+      ? "Budget (legacy)"
+      : String(entityType));
+  const actionLabel = ACTION_LABELS[action] ?? String(action);
   return {
     entityLabel,
     actionLabel,

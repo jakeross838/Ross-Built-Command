@@ -23,7 +23,11 @@ export type ActivityEntityType =
   | "purchase_order"
   | "change_order"
   | "budget_line"
-  | "budget"
+  // 'budget' member removed in PR A-3 (F1-Wave-A) per Q10c — the `budgets`
+  // table was dropped in migration 00095. Legacy activity_log rows with
+  // entity_type='budget' (if any — verify via SELECT COUNT(*) at GATE-A;
+  // expected 0 per audit 2026-05-12-migration-inventory.md Section 4 task 4)
+  // remain readable as TEXT but are no longer addressable from TS write paths.
   | "job"
   | "vendor"
   | "cost_code"

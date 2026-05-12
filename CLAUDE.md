@@ -158,6 +158,8 @@ original_estimate (cents), revised_estimate (cents — original + approved COs),
 org_id, created_at, updated_at, deleted_at
 ```
 
+**No `budgets` parent table.** Budgets are derived from line items + change orders, not stored as entities. The job-level budget total is `SUM(budget_lines.revised_estimate)` for the job — computed on read, never stored. Budget versioning intent is encoded by `original_estimate` (the locked baseline) + `revised_estimate` (baseline + approved CO adjustments). Per Q10c (F1 umbrella EXPANDED-SCOPE) the scaffolded `budgets` table was dropped in migration 00095 — re-adding a versioning entity later requires re-litigating this decision.
+
 **Computed fields (never stored, always calculated):**
 - `previous_applications` = sum of invoices in prior draws
 - `this_period` = sum of invoices in current draw
