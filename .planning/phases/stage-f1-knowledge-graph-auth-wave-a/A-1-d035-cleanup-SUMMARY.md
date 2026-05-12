@@ -242,7 +242,8 @@ Both behaviors documented; no surprises for spec-checker review at GATE-A.
 - `src/app/api/jobs/route.ts` — modified, grep verified
 - `CLAUDE.md` — modified, grep verified
 
-**Commit hash:** to be set post-commit (see OVERNIGHT-LOG.md).
+**Commit hash:** `a7034dd` (atomic; 16 files changed, 5540 insertions, 16 deletions).
+**Pushed:** to `origin/main` at 2026-05-12T21:30Z per nwrp50 Vercel-only protocol.
 
 ## Self-Check: PASSED
 
