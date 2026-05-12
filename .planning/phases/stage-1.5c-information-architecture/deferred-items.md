@@ -73,3 +73,45 @@ Out-of-scope discoveries surfaced during plan execution.
 **Status:** DEFERRED to Wave 1.1-Lite polish phase (per Jake nwrp92 Path A authorization). Documented as non-blocking; content remains accessible via horizontal scroll across all affected routes.
 
 **Diagnostic provenance:** `.planning/qa-runs/2026-05-12-manual-smokes.md` (gitignored; full SMOKE 3 detail).
+
+
+---
+
+## F1+ — Production infrastructure decisions (2026-05-12, post-ship)
+
+**Discovered by:** Post-merge production sanity check (nwrp93 STEP 6 / nwrp95).
+**Owner:** Jake decision before Wave 1.1-Lite dispatch.
+
+### F1+-1 — Production domain
+
+**Current state:**
+- `nightwork.build` DNS resolves to `76.223.105.230` + `13.248.243.5` — NOT Vercel IPs (Vercel typically `76.76.21.21`).
+- `vercel domains ls` shows only `rossbuilt.com` registered with the project. `nightwork.build` is registered with a different registrar / pointing elsewhere.
+- Connection to `https://nightwork.build/today` returns connection reset — not a Vercel-served domain currently.
+
+**Decision needed:** Is `nightwork.build` the canonical customer-facing production domain?
+
+- **If YES:** DNS update (`nightwork.build` → Vercel) + Vercel domain config (`vercel domains add nightwork.build` to project) + SSL cert provisioning. Pre-Wave 1.1-Lite work.
+- **Alternative:** Use a different domain (e.g., `app.rossbuilt.com` subdomain) for Wave 1.1-Lite, defer `nightwork.build` for commercial launch later.
+
+**Cross-references:**
+- `CLAUDE.md` Deployment section: production URL "set after `vercel link` + first prod deploy" — placeholder never filled.
+- `.planning/deployment.md` — runbook for first-time Vercel setup.
+
+### F1+-2 — Production deployment-protection (SSO) posture
+
+**Current state:**
+- Vercel SSO enabled on production. Unauthenticated requests return 401 + `_vercel_sso_nonce` cookie.
+- `VERCEL_AUTOMATION_BYPASS_SECRET` header allows automation through (harness uses this).
+- All deployment-protection has been ON since the harness era; this is not a 1.5c-IA regression.
+
+**Decision needed:** SSO posture for Wave 1.1-Lite Ross Built user onboarding.
+
+- **Option A:** Keep SSO on. Ross Built users get a Vercel SSO invitation (awkward — adds an auth layer on top of Nightwork's own auth).
+- **Option B:** Disable SSO. Rely on Nightwork's own auth (Supabase + middleware role gates). Public URLs return Nightwork's `/login`. Recommended posture.
+
+**Recommendation:** Option B. Nightwork's own auth is already production-grade (middleware + role-based redirects + platform_admin gating). Vercel SSO is a redundant outer wall during the harness era when only Jake + Andrew were accessing the deploy; once Ross Built PMs + accounting need access, the outer wall becomes friction.
+
+**Cross-references:**
+- `src/middleware.ts` — Nightwork's own auth + role-gate enforcement.
+- `CLAUDE.md` "Platform admin (cross-tenant)" section — confirms Nightwork's auth model.

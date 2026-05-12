@@ -1036,3 +1036,62 @@ Block N+1 (catch-up): 1.5c-IA brought under harness infrastructure; criteria ret
 Block N+2 (finish): Plans 3a-now / 4 / 5 / 6 / 7 shipped; criteria retrofitted Plans 4/5/6; /nightwork-qa surfaced 7 fixable findings; GATE-B.1 autofix landed all 7; QA re-run all 9 PASS; pre-ship smokes 4/4 PASS.
 
 **stage-1.5c-information-architecture: SHIP-READY.**
+
+
+---
+
+## SHIP COMPLETE — 2026-05-12 16:42 UTC
+
+Per nwrp93 (merge sequence) + nwrp94 (Path A authorization) + nwrp95 (STEPs 7-8 continuation).
+
+### Merge sequence executed
+
+| Action | Outcome | SHA / Timestamp |
+|---|---|---|
+| PR #33 created (1.5b → main) | OPEN | 2026-05-12T16:30:59Z |
+| PR #34 created (1.5c-IA → main) | OPEN | 2026-05-12T16:31:44Z |
+| PR #33 mergeability check | **CONFLICTING / DIRTY** — 28 commits on main from `stage-1.5c-verification-harness` not absorbed into 1.5b | — |
+| PR #34 mergeability check | **CLEAN / MERGEABLE** — 1.5c-IA absorbed all main work; 1.5b is ancestor of 1.5c-IA | — |
+| Diagnostic surfaced | Path A recommended: close #33 as superseded, merge #34 (brings 1.5b ancestor commits along) | nwrp93 STEP 1 halt + nwrp94 authorization |
+| PR #33 closed (superseded) | **CLOSED** with rationale comment | 2026-05-12 |
+| PR #34 merged (--merge strategy) | **MERGED** → `f6da4b3` | 2026-05-12T16:42:32Z |
+| Local cleanup | Both branches deleted (`-d` clean merge) | — |
+| `phase/1.5-b-prototype-gallery` | was `3ebb844` — deleted | — |
+| `phase/1.5-c-information-architecture` | was `7a76f20` — deleted | — |
+
+### Production deploy
+
+| Field | Value |
+|---|---|
+| Vercel deployment URL | `https://nightwork-platform-14upaeea6-jakeross838s-projects.vercel.app` |
+| Build status | **● Ready** |
+| Build duration | 3m |
+| Deploy timestamp | ~2026-05-12T16:43Z (~30s after merge) |
+
+### Production sanity check
+
+| Check | Result |
+|---|---|
+| `curl https://nightwork.build/today` | **Connection reset** — `nightwork.build` not connected to Vercel project (pre-existing config gap, not 1.5c-IA regression) |
+| `curl https://<vercel-url>/today` (no bypass) | **401** — Vercel SSO deployment-protection (pre-existing posture) |
+| `curl https://<vercel-url>/today?x-vercel-protection-bypass=<TOKEN>` | **307 → /login → 200 OK** — app responds healthy with bypass |
+| Build success | ✓ |
+| Runtime errors | none observed |
+
+### Two F1+ decisions captured
+
+Captured to `.planning/phases/stage-1.5c-information-architecture/deferred-items.md` "F1+ — Production infrastructure decisions" section per nwrp95:
+
+1. **F1+-1 Production domain:** Is `nightwork.build` the canonical customer-facing domain? If yes, DNS + Vercel domain config + SSL cert provisioning needed pre-Wave 1.1-Lite. Alternative: `app.rossbuilt.com` subdomain.
+2. **F1+-2 Production SSO posture:** Keep Vercel deployment-protection (awkward) or disable + rely on Nightwork's own auth (recommended). Decision needed before Ross Built user onboarding.
+
+### Post-ship harness retrigger
+
+(see entry below)
+
+### Phase status
+
+**stage-1.5b-prototype-gallery: SHIPPED** ✓ (via PR #34 merge as ancestor commits)
+**stage-1.5c-information-architecture: SHIPPED** ✓ (via PR #34 merge)
+
+Wave 1.1-Lite intake ready (deferred-items.md). F1 expansion dispatch waiting for Jake authorization.
