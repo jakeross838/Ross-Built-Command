@@ -1,220 +1,135 @@
 # Security Review — Stage 1.5c Information Architecture
 
 **Branch:** phase/1.5-c-information-architecture
-**HEAD:** accb55f
+**HEAD verified:** 7fa0725
+**Prior review HEAD:** accb55f
 **Reviewer:** security (Claude)
-**Date:** 2026-05-11
-**Scope:** 235 changed files; focused on 5 key surfaces per brief
+**Review date:** 2026-05-11 (initial); 2026-05-12 (M-1 re-verification after GATE-B.1 fixes)
+**Scope:** M-1 fix verification pass; all other findings from prior review re-confirmed at HEAD 7fa0725
 
 ---
 
 ## Verdict
 
-**CONDITIONAL PASS**
+**PASS**
 
-One MEDIUM finding (W.1 env-gate claim is incorrect) requires documentation correction and a follow-up env-var addition to Vercel project settings before ship. All other findings are LOW or NOTE severity. No BLOCKING or HIGH issues found. The platform-admin gate, sub-portal token posture, audit log client type, and getCurrentMembership chain are all correct.
-
----
-
-## Findings by Severity
+M-1 is resolved. The env passthrough is mechanically correct: Vercel sets `VERCEL_ENV=production` on production deploys; `next.config.mjs` now forwards it into the client bundle as `NEXT_PUBLIC_VERCEL_ENV` via the `env` block; the gate at `src/lib/supabase/client.ts:71` evaluates `"production" !== "production"` = false at build time, making the W.1 bridge dead code in the production bundle. All other findings from the prior CONDITIONAL PASS are unchanged. No new findings introduced by commits between accb55f and 7fa0725.
 
 ---
 
-### MEDIUM
+## M-1 Verification — CLEARED
 
-#### M-1 — W.1 bridge env gate: `NEXT_PUBLIC_VERCEL_ENV` is never set; bridge is active on production
+### What was required
 
-**File:** `src/lib/supabase/client.ts:71`
+The prior review (accb55f) found that `process.env.NEXT_PUBLIC_VERCEL_ENV` was never configured, causing the W.1 harness bridge gate to always evaluate true (undefined !== "production") — the bridge ran on every environment including production. Remediation required adding an explicit passthrough in `next.config.mjs` so Vercel's server-side `VERCEL_ENV` system variable reached the client bundle.
 
-**Condition checked:**
-```
-process.env.NEXT_PUBLIC_VERCEL_ENV !== "production"
-```
+### What commit 7fa0725 did
 
-**Problem:** Vercel provides `VERCEL_ENV` as a server-side system environment variable. It does NOT automatically expose `NEXT_PUBLIC_VERCEL_ENV` to the client bundle. `NEXT_PUBLIC_*` prefixed variables must be either (a) explicitly added in the Vercel project dashboard, or (b) forwarded via `next.config.mjs`'s `env` block. Neither is present in this codebase (confirmed: `next.config.mjs` has no `env` key forwarding `VERCEL_ENV`; `.env.example`, `.env.local.example`, and `.env.local` all lack `NEXT_PUBLIC_VERCEL_ENV`; the GitHub Actions workflow does not set it).
+Added to `next.config.mjs` lines 16-18:
 
-Therefore, `process.env.NEXT_PUBLIC_VERCEL_ENV` evaluates to `undefined` on every environment — local, preview, and **production**. The condition `undefined !== "production"` is always `true`. The bridge is active everywhere, not just in dev/preview.
-
-**The RLS-AUDIT.md claim** ("Vercel inlines NEXT_PUBLIC_* at build time, dead code on prod") is **incorrect** for this specific variable. It would be true only if the variable were configured in Vercel's project settings.
-
-**Actual risk level:** The practical security impact is LOW. The bridge calls `supabase.auth.setSession({ access_token, refresh_token })` but only if `window.__nightwork_harness_session` is set with valid string tokens. An attacker who already holds a valid `access_token` and `refresh_token` is already authenticated — `setSession` would not grant any additional capability. No privilege escalation path exists. The bridge is single-use and self-clearing.
-
-However: (1) the misleading gate claim creates a false production-safety assumption that future reviewers and contributors will inherit; (2) the bridge is unnecessary dead weight in the production bundle; (3) if Vercel ever changes how it handles system env vars, the claim's inaccuracy could mask a real gap.
-
-**Required remediation (before ship):**
-Add `NEXT_PUBLIC_VERCEL_ENV=production` as an environment variable in the Vercel project dashboard scoped to the **Production** environment only (not Preview, not Development). This makes the production build bundle see `"production"` at build time, and the Next.js compiler dead-code-eliminates the bridge block as written.
-
-Alternatively, add to `next.config.mjs`:
 ```js
 env: {
   NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
 },
 ```
-This propagates Vercel's server-side `VERCEL_ENV` into the client bundle at build time, making the gate effective. This is the safer choice as it does not require manual per-environment dashboard configuration.
 
-Update RLS-AUDIT.md and the comment block in `client.ts` to accurately reflect the configured-variable requirement rather than implying it is automatic.
+The commit touched exactly one file (`next.config.mjs`, +14 lines). No other source files were modified.
+
+### Verification of correctness
+
+Three properties confirmed by direct file inspection:
+
+**1. Passthrough is correct for Vercel's system env behavior.**
+Vercel automatically injects `VERCEL_ENV` as a server-side system env var in every build environment: `"production"` on production deploys, `"preview"` on PR/branch deploys, and it is unset in local dev. The `?? ""` fallback means local dev bundles get an empty string, which also satisfies `"" !== "production"` = true (bridge active locally — correct for harness dev use). The passthrough does not require manual per-environment Vercel dashboard configuration; the system variable is always present on Vercel builds.
+
+**2. Gate at client.ts is correctly wired.**
+`src/lib/supabase/client.ts:71` reads `process.env.NEXT_PUBLIC_VERCEL_ENV !== "production"`. Next.js inlines all `NEXT_PUBLIC_*` env vars at build time (static string substitution). On a production Vercel build where `VERCEL_ENV=production`, the compiled output is effectively `"production" !== "production"` which is `false`. The entire `if` block (lines 69-105) is dead code in the production bundle — the bridge is unreachable.
+
+**3. The gate claim in the comment block is now accurate.**
+`src/lib/supabase/client.ts:44-49` documents: "Vercel sets VERCEL_ENV to 'production' on production deploys... Next.js inlines NEXT_PUBLIC_* env vars at build time, so on production builds this block compiles to a no-op (`if (false) { ... }`) — dead code in the production bundle, zero attack surface." This description is now accurate given the `next.config.mjs` passthrough. Previously this was documentation debt; it is not anymore.
+
+### Grep confirming no other VERCEL_ENV consumers were missed
+
+All usages of `NEXT_PUBLIC_VERCEL_ENV` and `VERCEL_ENV` across the source tree:
+
+- `next.config.mjs:17` — the passthrough definition
+- `src/lib/supabase/client.ts:71` — the W.1 bridge gate (reads `NEXT_PUBLIC_VERCEL_ENV`)
+- `src/middleware.ts:86` — `isVerificationBypass` production block (reads server-side `VERCEL_ENV` directly, correct for middleware)
+- `src/middleware.ts:219` — design-system gate production check (reads `VERCEL_ENV`, correct for middleware)
+- `src/lib/verification/_browser.ts:113` — documentation comment only
+
+The middleware correctly reads `VERCEL_ENV` directly (not `NEXT_PUBLIC_VERCEL_ENV`) because middleware executes server-side where the system variable is available without a `NEXT_PUBLIC_` prefix. The client bundle correctly reads `NEXT_PUBLIC_VERCEL_ENV` which is now explicitly configured. Both patterns are correct for their respective runtime contexts.
+
+**M-1: CLEARED.**
 
 ---
+
+## Commits Between accb55f and 7fa0725 — No New Findings
+
+Four commits were added between the prior review HEAD and the current HEAD:
+
+| Commit | Description | Security relevance |
+|--------|-------------|-------------------|
+| 96484db | AppShell layout fix for section overview NavBar | UI/layout only; no API surface changes |
+| 20d6ef5 | Design system hygiene (F-01, F-02, F-04, FLAG-2) | Component token cleanup; no auth or data changes |
+| 9ef5dab | Canonicalize admin/billing StatusBadge to NwBadge | Component substitution; no logic changes |
+| 7fa0725 | NEXT_PUBLIC_VERCEL_ENV passthrough (M-1) | Security fix only |
+
+No new API routes, no new auth surfaces, no new data queries, no schema changes introduced in these four commits. No new security findings.
+
+---
+
+## Prior Findings Status at HEAD 7fa0725
+
+### MEDIUM
+
+| ID | Finding | Status |
+|----|---------|--------|
+| M-1 | W.1 bridge env gate always true in production | **CLEARED** — passthrough in next.config.mjs makes gate effective |
 
 ### LOW
 
-#### L-1 — `verifyCheckoutSession` executes before membership auth check in `/admin/billing`
+| ID | Finding | Status |
+|----|---------|--------|
+| L-1 | `verifyCheckoutSession` executes before membership auth check in `/admin/billing` | **Unchanged — deferred per prior review.** Pre-existing pattern carried over from `settings/billing`. RLS backstop confirmed intact: `createServerClient()` used (not service-role), so any `organizations.update()` is subject to the "admin update own org" RLS policy. Stripe `client_reference_id` cross-check gap remains. Target: Wave 1.1-Lite billing hardening pass. |
 
-**File:** `src/app/admin/billing/page.tsx:84-91`
+### NOTEs (unchanged, no new action needed)
 
-```typescript
-if (searchParams.session_id) {
-  await verifyCheckoutSession(searchParams.session_id);  // line 85 — runs first
-}
-const membership = await getCurrentMembership();  // line 88
-if (!membership) redirect("/login");
-```
-
-**Problem:** Any authenticated (but not yet auth-checked for role) user can supply an arbitrary Stripe `session_id` via `?session_id=cs_xxx` and trigger a Stripe API call plus a conditional `organizations.update()` before membership role is confirmed. The update keys on `session.client_reference_id` (the org ID embedded by Stripe at checkout creation), not the current user's org.
-
-**Actual risk level:** LOW. Three mitigations bound the blast radius: (1) the middleware still requires a valid Supabase session — unauthenticated users are redirected to `/login` before reaching this page; (2) `verifyCheckoutSession` uses `createServerClient()` (not service-role), so the `organizations.update()` is subject to the `"admin update own org"` RLS policy (`USING (id = app_private.user_org_id() AND app_private.user_role() IN ('admin','owner'))`), which blocks cross-org writes at the database layer; (3) the stripe checkout session must be a real completed Stripe session with a matching subscription.
-
-**Pre-existing:** This pattern is identical in `src/app/settings/billing/page.tsx` on `main`. The `admin/billing` page was created as a verbatim copy (Plan 6 Task 1). This is a carry-over deficiency, not a new regression introduced by this branch.
-
-**Recommended fix (deferred, not blocking ship):** Move the membership check and role guard to execute before `verifyCheckoutSession`, and add a cross-check that `session.client_reference_id === membership.org_id` before applying the update. This eliminates the unnecessary Stripe round-trip for non-admin/owner members and closes the theoretical cross-org update window at the application layer (independent of RLS).
+| ID | Finding | Status |
+|----|---------|--------|
+| N-1 | WARNING-1 (NODE_ENV vs VERCEL_ENV in design-system gate) | Resolved at accb55f, confirmed at 7fa0725 |
+| N-2 | Impersonation cookie `secure` flag uses `NODE_ENV` not `VERCEL_ENV` | Not a security gap; `NODE_ENV=production` on all Vercel builds |
+| N-3 | Impersonation end-route redirects to stale `/admin/platform/` paths | Low-priority cleanup; 308 redirect chain works |
+| N-4 | `/admin/cost-codes` reads accessible to all org members | Intentional; PMs need cost codes during review; write ops gated separately |
+| N-5 | `?redirect=` in login URL not consumed by loginAction | No open redirect risk; parameter is ignored, not followed |
 
 ---
 
-### NOTE
+## Surfaces Confirmed Unchanged
 
-#### N-1 — WARNING-1 carry-forward: RESOLVED
+The following checks from the prior review were re-confirmed at HEAD 7fa0725 by direct inspection:
 
-**File:** `src/middleware.ts:219-220`
-
-WARNING-1 from the harness ship QA (commit 704bf65) flagged `NODE_ENV` usage in the design-system gate. The current code at line 219 reads:
-
-```typescript
-const isProd =
-  process.env.VERCEL_ENV === "production" ||
-  process.env.NODE_ENV === "production";
-```
-
-`VERCEL_ENV` is the primary signal (server-side, set by Vercel per-deployment-type). `NODE_ENV` is a secondary fallback for local dev. The comment at line 213-216 explains the reasoning. This is correct. WARNING-1 is **resolved and confirmed** at current HEAD.
-
-The `isVerificationBypass` function at line 86 also correctly uses `process.env.VERCEL_ENV === "production"` (not `NODE_ENV`) as its production-block check. Both paths are consistent.
-
----
-
-#### N-2 — Impersonation cookie `secure` flag uses `NODE_ENV`, not `VERCEL_ENV`
-
-**Files:** `src/app/api/admin/platform/impersonate/route.ts:81`, `src/app/api/admin/platform/impersonate/end/route.ts:51`
-
-```typescript
-secure: process.env.NODE_ENV === "production",
-```
-
-**Analysis:** Vercel sets `NODE_ENV=production` for ALL deployed environments (production and preview). Local dev has `NODE_ENV=development`. Therefore `secure: true` applies correctly to all Vercel deployments and `secure: false` applies only in local dev (where HTTPS is not used anyway). This behavior is correct in practice, though it differs from the middleware pattern (which uses `VERCEL_ENV`).
-
-No action required. Flagging for documentation consistency — if the codebase wants a uniform pattern, these two routes should eventually migrate to `VERCEL_ENV` or `VERCEL_ENV || NODE_ENV`, matching the middleware convention. Not a security gap.
-
----
-
-#### N-3 — Impersonation end route redirects to stale `/admin/platform/` path
-
-**File:** `src/app/api/admin/platform/impersonate/end/route.ts:59-60`
-
-```typescript
-redirect: targetOrgId
-  ? `/admin/platform/organizations/${targetOrgId}`
-  : "/admin/platform",
-```
-
-The end-impersonation response body tells the client to navigate to `/admin/platform/*`. These paths 308-redirect to `/platform-admin/*` per `next.config.mjs`. The redirect chain works but is one hop longer than necessary. A user ending impersonation will land at the old path, receive a 308, then arrive at the correct canonical page. No security gap — the platform-admin gate at `/platform-admin/*` is in place.
-
-Low-priority cleanup: update the redirect targets to `/platform-admin/organizations/${targetOrgId}` and `/platform-admin` respectively.
-
----
-
-#### N-4 — `/admin/cost-codes` has no role restriction (any org member can read)
-
-**File:** `src/app/admin/cost-codes/page.tsx:19-28`
-
-The cost-codes page checks `getCurrentMembership()` but does not gate on `role`. Any authenticated org member can read the cost codes list. This matches the source page at `src/app/settings/cost-codes/page.tsx` which has the same posture. Write operations are handled by `CostCodesManager` server actions which enforce `owner`/`admin` role separately. Read access to cost codes is intentional (PMs need to see cost codes during invoice review). No finding, confirming pre-existing posture is preserved verbatim per Plan 6 iter-2 mechanical #10.
-
----
-
-#### N-5 — `?redirect=` parameter is set in login URL but never consumed at post-login
-
-**File:** `src/middleware.ts:123, 157, 233`; `src/app/login/actions.ts`
-
-The middleware correctly sets `loginUrl.searchParams.set("redirect", pathname)` when bouncing users to `/login`. However, `src/app/login/actions.ts:loginAction` ignores the `redirect` query parameter and always redirects to `/dashboard` (or `/onboard`). The parameter is therefore informational only — no open redirect risk exists (the value is never followed).
-
-Note: when `loginAction` is updated in a future phase to honor `redirect`, it must validate that the target is a same-origin path (starts with `/` and does not start with `//`) before following it, to prevent open redirect.
-
----
-
-## Specific Checks from Brief
-
-### 1. `/platform-admin/*` middleware gate — PASS
-
-`src/middleware.ts:146-167` explicitly gates both `pathname === "/admin/platform"` / `pathname.startsWith("/admin/platform/")` AND `pathname === "/platform-admin"` / `pathname.startsWith("/platform-admin/")` with identical `!isPlatformAdmin` posture. Non-platform-admin authenticated users receive a redirect to `/dashboard`. Unauthenticated users receive a redirect to `/login` with the original path preserved in `?redirect=`. Defense-in-depth secondary check in `src/app/platform-admin/layout.tsx:15-19` calls `getPlatformAdmin()` and redirects to `/dashboard` if null.
-
-The `isPlatformAdmin` boolean is derived in `src/lib/supabase/middleware.ts:246` from a direct DB lookup against `platform_admins` using the session-authenticated `user.id`. Inbound `x-platform-admin` headers are stripped at line 48 before the lookup to prevent header-forgery bypass.
-
-### 2. W.1 harness session bridge env gate — MEDIUM (see M-1 above)
-
-The gate `process.env.NEXT_PUBLIC_VERCEL_ENV !== "production"` is structurally correct in intent but the variable is never configured, making it always active. Practical security risk is LOW (requires valid tokens). Requires Vercel project-settings fix before ship.
-
-### 3. Sub-portal `params.token` reflection grep — PASS
-
-`grep -E "params\.token"` against `src/app/sub-portal/magic/[token]/page.tsx` and `src/app/sub-portal/public/[token]/page.tsx` returns 0 matches. Neither page reads, validates, or reflects the `[token]` route segment into the HTML output. The iter-2 mechanical #5 (a) check passes.
-
-F3 compliance contract is documented in stub copy for both pages. Both stubs explicitly state JWT-with-org-claim REJECTED by-construction, audit-log-on-use requirement, token expiry posture (30-day magic link, 90-day public link), scope binding (single job), and SHA-256 hash pattern (mirroring migration 00074).
-
-### 4. `/platform-admin/audit` client type — PASS (confirms SEC-9 resolution)
-
-`src/app/platform-admin/audit/page.tsx:1,57,136` uses `createServerClient` from `@/lib/supabase/server` (not service-role). Both `fetchAudit()` and `fetchFilterOptions()` call `createServerClient()`. The `platform_admin_audit_staff_read` RLS policy (`FOR SELECT USING (app_private.is_platform_admin())`) gates all reads at the database layer. No service-role bypass on this table. Posture matches the iter-3 plan review approval and the RLS-AUDIT.md entry.
-
-The audit CSV export at `/api/admin/platform/audit/export/route.ts` correctly uses `createServiceRoleClient()` with `requirePlatformAdmin()` called first — service-role is appropriate here because the export needs full cross-org row access and is protected by the application-layer `requirePlatformAdmin()` guard plus the middleware JSON-401 gate for `/api/admin/platform/*` paths.
-
-### 5. `/admin/*` REAL-LOGIC routes — getCurrentMembership chain — PASS
-
-All three REAL-LOGIC re-mounts preserve the `getCurrentMembership()` call:
-
-- `src/app/admin/users/page.tsx:24` — `getCurrentMembership()` + role check (`admin`/`owner`)
-- `src/app/admin/billing/page.tsx:88` — `getCurrentMembership()` + role check (`admin`/`owner`)
-- `src/app/admin/cost-codes/page.tsx:19` — `getCurrentMembership()` (no role gate, matching source)
-
-All queries filter by `membership.org_id`. No hardcoded ORG_ID fallbacks.
-
-### 6. WARNING-1: NODE_ENV → VERCEL_ENV — RESOLVED (see N-1)
-
-Confirmed in place at current HEAD accb55f. Both the `isVerificationBypass` helper (line 86) and the design-system production gate (lines 219-220) use `VERCEL_ENV` as primary signal.
-
----
-
-## Additional Surfaces Reviewed
-
-**No hardcoded secrets or API keys** found in any new file in the changed set.
-
-**No `dangerouslySetInnerHTML` or `innerHTML`** in new pages under `src/app/platform-admin/`, `src/app/sub-portal/`, or `src/app/admin/`. The `AuditRow` component renders DB values via JSX (React-escaped by default) and `JSON.stringify` inside a `<pre>` block — no XSS vector.
-
-**`NwPlaceholderCard`** accepts typed props and renders via standard JSX. No XSS surface.
-
-**CSP in `vercel.json`** covers the main attack surfaces (`script-src`, `connect-src`, `frame-ancestors 'none'`). No changes to CSP in this branch.
-
-**Verification bypass timing-safe compare** in `isVerificationBypass` is correct: lengths are compared first (leaks minimum-length floor only — acceptable), then character-by-character XOR accumulates into `mismatch`. Returns `mismatch === 0`. Correct constant-time pattern for secrets of equal length.
-
-**`harness-auth-state.json`** is gitignored (`.gitignore:160-161`). Live session tokens are not committed.
-
-**`sanitize-drummond.ts`** halts on CI/Vercel (`process.env.CI === "true" || process.env.VERCEL === "1"`) and validates gitignore state of `drummond-invoice-fields.json` before proceeding. No PII leakage path in CI.
+- `/platform-admin/*` middleware gate: `src/middleware.ts:146-167` — PASS (code unchanged)
+- `/platform-admin/audit` uses `createServerClient` (SEC-9): `src/app/platform-admin/audit/page.tsx:1,57,136` — PASS (code unchanged)
+- Sub-portal `params.token` reflection: both pages return comment-only matches confirming the grep is against documentation, not live reads — PASS
+- `isVerificationBypass` timing-safe compare — PASS (code unchanged)
+- `harness-auth-state.json` gitignored — PASS (no change to .gitignore)
+- No hardcoded secrets in changed files — PASS
+- CSP in `vercel.json` — PASS (no changes to vercel.json)
+- `dangerouslySetInnerHTML` audit: three instances exist in the codebase; all are static, developer-controlled strings (CSS string literals in page.tsx/pricing/usage; HTML entity strings from a hardcoded array in typography/page.tsx). No user input reaches any of these sinks.
+- `/api/users/theme` unauthenticated POST: sets only a `nw_theme` cookie with validated enum value (`"light"` or `"dark"`); no data read or write; no tenant data involved. Acceptable — this is a UX preference endpoint.
+- `/api/csv-parse/xlsx` unauthenticated POST: parses caller-uploaded file; returns parsed structure to caller only; no DB writes. Acceptable — the caller is the authenticated browser client uploading their own file; Supabase session auth occurs at the DB write step downstream.
+- Cron `/api/cron/overdue-invoices`: uses `CRON_SECRET` optional guard; when set, enforces timing-unsafe comparison. This is a pre-existing pattern on main. Low-priority improvement: replace `provided !== expectedKey` with a timing-safe compare to prevent timing oracle on the secret. Not a new finding for this branch.
 
 ---
 
 ## Required Actions Before Ship
 
-| # | Severity | Action | Owner |
-|---|----------|--------|-------|
-| 1 | MEDIUM | Add `NEXT_PUBLIC_VERCEL_ENV=production` to Vercel project settings (Production environment only) **or** add `env: { NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "" }` to `next.config.mjs`. Update `client.ts` comment and `RLS-AUDIT.md` to accurately describe the configuration requirement. | Jake / ops |
+None. M-1 is cleared. All other deferred items carry forward at their prior severity.
 
-## Deferred (Non-Blocking)
+## Deferred (Non-Blocking, Carried From Prior Review)
 
-| # | Severity | Action |
-|---|----------|--------|
-| L-1 | LOW | In `/admin/billing/page.tsx`, move `getCurrentMembership()` and role guard before `verifyCheckoutSession()`, and add `session.client_reference_id === membership.org_id` cross-check. Same fix needed in `/settings/billing/page.tsx` (pre-existing). Target: Wave 1.1-Lite billing hardening pass. |
-| N-3 | NOTE | Update impersonation end-route response redirects to `/platform-admin/*` canonical paths. |
+| # | Severity | Action | Target |
+|---|----------|--------|--------|
+| L-1 | LOW | `/admin/billing` and `/settings/billing`: move `getCurrentMembership()` + role guard before `verifyCheckoutSession()`; add `session.client_reference_id === membership.org_id` cross-check | Wave 1.1-Lite billing hardening |
+| N-3 | NOTE | Update impersonation end-route response redirects to `/platform-admin/*` canonical paths | Wave 1.1-Lite cleanup |

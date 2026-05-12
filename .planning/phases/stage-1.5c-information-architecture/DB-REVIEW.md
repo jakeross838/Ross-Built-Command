@@ -1,89 +1,82 @@
 # DB-REVIEW — stage-1.5c-information-architecture
 
 **Branch:** phase/1.5-c-information-architecture
-**HEAD:** accb55f
+**HEAD:** 7fa0725
 **Reviewer:** database-reviewer agent
 **Date:** 2026-05-11
+**Prior review HEAD:** accb55f (2026-05-11) — PASS
 **Verdict: PASS**
 
 ---
 
-## Scope
+## GATE-B.1 re-run scope
 
-This is a navigation restructure and route-migration phase. No new schema objects, no new migrations, no net-new query patterns. The review confirms that characterization and surfaces one pre-existing cross-tenant query that belongs to the migrated platform-admin surface, not to this phase.
+Four fix commits between accb55f and 7fa0725:
+
+| Commit | Description |
+|---|---|
+| 96484db | fix(1.5c-ia): section overview pages persist NavBar via AppShell layout (UI FLAG-1) |
+| 20d6ef5 | chore(1.5c-ia): design system hygiene per QA findings (F-01, F-02, F-04, FLAG-2) |
+| 9ef5dab | refactor(1.5c-ia): canonicalize admin/billing StatusBadge to NwBadge (DS F-03) |
+| 7fa0725 | fix(env): explicit NEXT_PUBLIC_VERCEL_ENV passthrough for W.1 harness bridge gating (SECURITY M-1) |
+
+Prior-review declaration was confirmed by the phase spec: 0 schema changes, 0 migration files, 0 new queries, 0 new aggregations. This re-run verifies that the four fix commits did not introduce any database surface.
 
 ---
 
 ## Check 1 — Migration files
 
-`git diff main...phase/1.5-c-information-architecture --name-only | grep 'supabase/migrations'` → **empty output.**
+`git diff accb55f..7fa0725 -- supabase/` → **0 bytes.**
 
-Zero migration files added, removed, or modified on this branch. The highest-numbered migrations on disk (00092, 00093) are harness fixture migrations that predated the IA work and appear identically on main.
+Zero migration files added, removed, or modified across all four fix commits. Confirmed by byte-count diff of the `supabase/` tree between the GATE-B doc commit and HEAD.
 
-**Result: PASS.**
-
----
-
-## Check 2 — New aggregation patterns
-
-All changed source files were scanned for net-new `.from()`, `.select()`, `.aggregate()`, and application-side aggregation loops. Three categories of DB-touching files were found:
-
-### A. Plans 4 + 6 REAL-LOGIC thin wrappers (admin/billing, admin/cost-codes, admin/users)
-
-These are confirmed verbatim copies of their counterparts on main:
-
-- `src/app/admin/billing/page.tsx` mirrors `src/app/settings/billing/page.tsx`. Queries: `subscriptions` filtered by `org_id`, `organizations.update` keyed on `session.client_reference_id` (Stripe webhook pattern, identical to source).
-- `src/app/admin/cost-codes/page.tsx` mirrors `src/app/settings/cost-codes/page.tsx`. Query: `cost_codes` with `.eq("org_id", membership.org_id)` and `.is("deleted_at", null)`.
-- `src/app/admin/users/page.tsx` mirrors `src/app/settings/team/page.tsx`. Queries: `org_members`, `profiles` (IN on user_ids), `org_invites` — all `.eq("org_id", membership.org_id)`.
-
-All three call `getCurrentMembership()` before any DB access. All queries are org-scoped. No aggregation introduced. **No delta from source.**
-
-### B. Platform-admin route migration (/admin/platform/* → /platform-admin/*)
-
-Fourteen routes were moved, not written from scratch. The source routes on main (`src/app/admin/platform/`) carry identical query logic. Spot-checked: `audit/page.tsx`, `cost-intelligence/page.tsx`, `organizations/page.tsx`, `users/[id]/page.tsx`, `support/[id]/page.tsx`, `feedback/page.tsx`. Every `.from()` call maps 1:1 to the main counterpart.
-
-The `bootstrap-aliases-panel.tsx` component (used by the BootstrapTab) was not modified on this branch (`git diff` returned zero lines).
-
-**No new aggregation patterns introduced.**
-
-### C. Placeholder routes (Plans 4, 5, 6 — ~90 files)
-
-All new placeholder pages (`pipeline/`, `company/`, `people/`, `price-intel/`, `reports/`, `sub-portal/`, `jobs/[id]/*` tab routes) contain zero DB access — confirmed by scanning the diff for any uncommented `supabase`, `.from(`, `createServerClient`, or `createBrowserClient` references. The only supabase references in these files are inside comments documenting what future implementations will do.
-
-`src/app/jobs/[id]/layout.tsx` (the PerJobTabs sub-nav mount) introduces no DB calls.
-
-**Result: PASS.**
+**Result: PASS — zero.**
 
 ---
 
-## Check 3 — src/lib/supabase/client.ts env-gated block
+## Check 2 — New query patterns
 
-The only change to this file is the W.1 harness auth bridge. Full analysis:
+Changed `.ts` / `.tsx` files were scanned for `supabase`, `.from`, `.rpc`, `select`, `insert`, `update`, `delete` references introduced by the four commits. Six files matched the scan; each was inspected:
 
-- The block is guarded by `typeof window !== "undefined"` (client-only) and `process.env.NEXT_PUBLIC_VERCEL_ENV !== "production"`. Because `NEXT_PUBLIC_*` vars are inlined at build time, on production builds this compiles to `if (false) { ... }` — dead code, zero runtime cost, zero attack surface in production.
-- The bridge calls `supabase.auth.setSession()` on the **already-initialized** module-level `supabase` client. It does not create a second client instance, so there is no risk of the multi-instance auth-event deadlock documented in Supabase Discussion #37755 (nwrp85).
-- `setSession` only updates the in-memory session cache and emits a BroadcastChannel event. It performs no database query — it does not touch any tenant table, does not invoke `auth.users`, and does not call `auth.getUser()`. The subsequent `useCurrentRole` calls that benefit from this use the cached session; they still go through the standard Supabase auth path.
-- The global is single-use: it is deleted immediately after `setSession` is called, preventing HMR or React Strict Mode double-mount from re-firing.
-- Token validation: the bridge only proceeds if both `access_token` and `refresh_token` are non-empty strings. An attacker who can set `window.__nightwork_harness_session` would need a valid, live token pair — at which point they are already authenticated. No privilege escalation possible.
+### A. src/app/admin/billing/page.tsx (DS F-03 — NwBadge canonicalization)
 
-**No new query patterns. No new DB access. Result: PASS.**
+The only change in this file across the four commits is the import and usage of `NwBadge` replacing an inline status badge. The two DB-touching functions (`verifyCheckoutSession` and the `subscriptions` select) are **unchanged** from the accb55f baseline and were already reviewed and passed in Check 2A of the prior review. No new queries introduced.
+
+### B. src/app/company/overview/page.tsx (UI FLAG-1 — AppShell layout fix)
+
+The AppShell layout fix adjusted how the component mounts inside the section layout; it did not modify the `org_members` role lookup or the `/api/dashboard` fetch call. Both were present at accb55f and passed prior review. No new queries introduced.
+
+### C. src/app/page.tsx
+
+Root page. The only supabase reference is `supabase.auth.getUser()` — an auth check, not a tenant table query. Unchanged from accb55f.
+
+### D. src/app/price-intel/selections-catalog/page.tsx, src/app/price-intel/vendor-performance/page.tsx
+
+Placeholder pages. The supabase references in these files are inside comments only (documenting future implementation intent). Zero runtime DB access.
+
+### E. src/components/nw/NwPlaceholderCard.tsx
+
+Contains no DB access. The supabase scan match was a false positive on a COMPONENTS.md reference in a comment.
+
+### F. src/lib/supabase/client.ts (SECURITY M-1 — NEXT_PUBLIC_VERCEL_ENV passthrough)
+
+The env fix adds `env.NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? ""` to `nextConfig`. This corrects the production-gate evaluation for the W.1 harness auth bridge (previously `undefined !== "production"` always evaluated true). The bridge itself — analyzed in Check 3 of the prior review — calls `supabase.auth.setSession()` only, which performs no database query. The fix tightens the gate so the bridge is dead code on production builds. No new DB access.
+
+**Result: PASS — zero new queries or aggregations.**
 
 ---
 
-## Pre-existing observations (not introduced by this branch)
+## Carry-forward: pre-existing observations (not introduced by this branch)
 
-These exist identically on main. Not blocking, recorded for the next schema-focused phase.
+These exist identically on main and were noted in the prior review. Unchanged by the four fix commits.
 
-**platform_admin_audit — unbounded action scan in fetchFilterOptions:**
-`src/app/platform-admin/audit/page.tsx` (migrated from `/admin/platform/audit/page.tsx` on main) calls `supabase.from("platform_admin_audit").select("action")` with no LIMIT to populate the filter dropdown. As the audit log grows this becomes a full sequential scan on an append-only table. Mitigation when this matters: add a `DISTINCT action` aggregate or a covering index on `action`; the query is platform-admin only (not tenant-facing) and the table is expected to be small for the foreseeable future. Pre-existing; not introduced here.
+**platform_admin_audit — unbounded action scan in fetchFilterOptions:** `SELECT action` with no LIMIT to populate a filter dropdown. Platform-admin only; table expected small. Pre-existing.
 
-**vendor_item_pricing — unlimited fetch in ItemsTab:**
-`src/app/platform-admin/cost-intelligence/page.tsx` fetches `SELECT item_id, total_cents FROM vendor_item_pricing WHERE deleted_at IS NULL` with no LIMIT to compute per-item spend in application code. This is a full-table read that grows O(n) with invoice volume. Pre-existing on main; platform-admin only. Mitigation when volume warrants: push the aggregation to a SQL view or a `SUM(total_cents) GROUP BY item_id` query.
+**vendor_item_pricing — unlimited fetch in ItemsTab:** Full-table read to compute per-item spend in application code. Platform-admin only. Mitigation when volume warrants: push to a `SUM(total_cents) GROUP BY item_id` query or a SQL view. Pre-existing.
 
-**document_extraction_lines — multi-equality filter with no LIMIT in BootstrapTab:**
-Four equality filters (`verification_status`, `is_allocated_overhead`, `is_transaction_line`, `match_tier`) plus `.is("deleted_at", null)` with no row limit. This will benefit from a composite index on `(match_tier, verification_status, deleted_at)` if the table grows large. Pre-existing on main.
+**document_extraction_lines — multi-equality filter with no LIMIT in BootstrapTab:** Will benefit from a composite index on `(match_tier, verification_status, deleted_at)` if the table grows large. Pre-existing.
 
-None of these are regressions introduced by this branch.
+None of these are regressions introduced by this branch or by the GATE-B.1 autofixes.
 
 ---
 
@@ -92,11 +85,12 @@ None of these are regressions introduced by this branch.
 | Check | Result |
 |---|---|
 | New migration files | PASS — zero |
-| New aggregation patterns | PASS — zero; all DB code is verbatim from main |
-| REAL-LOGIC thin wrappers (Plans 4 + 6) | PASS — org-scoped, getCurrentMembership preserved |
-| client.ts env-gated setSession bridge | PASS — no DB queries; production dead-code |
+| New query patterns (4 fix commits) | PASS — zero |
+| admin/billing NwBadge refactor | PASS — DB functions unchanged |
+| company/overview AppShell fix | PASS — DB calls unchanged |
+| NEXT_PUBLIC_VERCEL_ENV env fix | PASS — no DB access; tightens production gate |
 | Pre-existing platform-admin scan patterns | NOTE — pre-existing on main, not a regression |
 
 **Overall verdict: PASS.**
 
-No database concerns block merge of this branch.
+No database concerns block merge of this branch. The GATE-B.1 autofixes are UI/env-config only and introduce no database surface.
