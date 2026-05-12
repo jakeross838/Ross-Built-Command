@@ -29,9 +29,8 @@ import { deriveIdempotencyKey } from "../idempotency";
 import {
   chromiumLaunchArgs,
   harnessBrowserHeaders,
-  supabaseSessionCookies,
-  supabaseLocalStorageInitScript,
-  type PlaywrightCookie,
+  harnessStorageStateOption,
+  supabaseSetSessionBridgeInitScript,
 } from "../_browser";
 import type { HarnessSessionLike } from "../types";
 
@@ -85,14 +84,22 @@ export async function runDomAssertions(
   });
   const results: VerificationResult[] = [];
 
-  // Per nwrp67 FIX 8: build the Supabase auth cookies once (per harness run)
-  // rather than reconstructing on each viewport context. Empty array if no
-  // session — context.addCookies([]) is a no-op.
-  const authCookies: PlaywrightCookie[] = supabaseSessionCookies(
-    harness_session?.supabase_url,
-    preview_url,
-    harness_session?.raw_session
+  // Y.1.B (nwrp82): auth cookies come from Playwright storageState bootstrap.
+  // Resolved once per runDomAssertions invocation; reused across all 3
+  // viewport contexts. Returns undefined if bootstrap file is missing —
+  // contexts then have no auth state (acceptable for routes that don't
+  // need auth; auth-required routes will FAIL loudly via DOM assertion).
+  const storageState = harnessStorageStateOption();
+  // W.1 (nwrp86): client-side auth hydration via setSession bridge. Built
+  // once per invocation; attached to each viewport context's init scripts
+  // so the bridge fires BEFORE any page <script> runs and client.ts's
+  // env-gated block can force-ingest the session into the production
+  // @supabase/ssr client.
+  const bridgeScript = supabaseSetSessionBridgeInitScript(
+    harness_session?.raw_session?.access_token,
+    harness_session?.raw_session?.refresh_token
   );
+  void preview_url;
 
   try {
     // Run each DOM criterion across all 3 viewports
@@ -105,21 +112,9 @@ export async function runDomAssertions(
       const context = await browser.newContext({
         viewport: { width: viewport.width, height: viewport.height },
         extraHTTPHeaders: harnessBrowserHeaders(),
+        ...(storageState ? { storageState } : {}),
       });
-      // Per nwrp67 FIX 8: attach Supabase auth cookies after newContext()
-      // so the Nightwork app middleware doesn't redirect to /login.
-      if (authCookies.length > 0) {
-        await context.addCookies(authCookies);
-      }
-      // Per nwrp79 Y.2: also inject the session into localStorage so
-      // client-side hooks that call supabase.auth.getUser() can hydrate.
-      // Cookies cover server-side; localStorage covers client-side. No-op
-      // if no session.
-      const initScript = supabaseLocalStorageInitScript(
-        harness_session?.supabase_url,
-        harness_session?.raw_session
-      );
-      await context.addInitScript(initScript);
+      await context.addInitScript(bridgeScript);
       const page: Page = await context.newPage();
 
       for (const criterion of domCriteria) {

@@ -45,7 +45,7 @@ export default function AuditRow({ row }: { row: Row }) {
         <td className="px-4 py-3 text-xs">
           {row.target_org_id ? (
             <Link
-              href={`/admin/platform/organizations/${row.target_org_id}`}
+              href={`/platform-admin/organizations/${row.target_org_id}`}
               className="underline underline-offset-2"
               style={{ color: "var(--text-primary)" }}
             >
@@ -56,7 +56,7 @@ export default function AuditRow({ row }: { row: Row }) {
             <>
               {row.target_org_id ? " · " : ""}
               <Link
-                href={`/admin/platform/users/${row.target_user_id}`}
+                href={`/platform-admin/users/${row.target_user_id}`}
                 className="underline underline-offset-2"
                 style={{ color: "var(--text-primary)" }}
               >

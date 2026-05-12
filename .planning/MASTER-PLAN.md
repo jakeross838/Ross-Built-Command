@@ -144,8 +144,8 @@ The build path is divided into stages. Stages are coarser than phases — a stag
 
 ## 9. CURRENT POSITION
 
-- **Current stage:** **Stage 1.5a SHIPPED to production 2026-05-01.** CP2 closed. Stage 1 + Stage 1.6 + Stage 1.5a complete. Site Office direction + Set B palette locked per D-037.
-- **Current phase:** Stage 1.5b prototype gallery (Drummond fixture data rendered in Site Office + Set B) is next.
+- **Current stage:** **Stage 1.5c iter-3 SHIPPED 2026-05-04 (canonical-docs-smoke Plan 7).** CP2 closed (D-037). Stage 1 + Stage 1.6 + Stage 1.5a + Stage 1.5b + Stage 1.5c iter-3 complete. Site Office direction + Set B palette locked per D-037 + D-057/D-061 production-route wrap. 1.5b ship gate (M3 phone walk bundled per D-17 / Q13=A) is the next phase event.
+- **Current legacy "Current phase" line (pre-1.5c):** Stage 1.5b prototype gallery (reference-fixture data rendered in Site Office + Set B) — superseded by Stage 1.5c iter-3 ship; 1.5b ships after M3 phone walk passes.
 - **Current branch:** `main` (Stage 1.5a merged from `nightwork-build-system-setup`).
 - **Last commit on main:** Stage 1.5a ship merge 2026-05-01 (60+ commits across docs, playground, branding v0, switchers, CP2 lock).
 - **Production deploy:** `https://nightwork-platform.vercel.app` — healthy. `/design-system` route gated to `platform_admin` only via middleware (404 rewrite for non-admin in production); design tokens live; v0 wordmark live.
@@ -212,9 +212,42 @@ Major decisions made during planning. Each entry is point-in-time; do not retroa
 | **D-037** | 2026-05-01 | CP2 picks locked — **Site Office direction** + **Set B palette** (`#5B8699` Stone Blue / `#1A2830` Slate Deep / `#3B5864` Slate Tile / `#F7F5EC` White Sand). DARK + Set A semantic-color special-case rule documented in SYSTEM.md §1b is **NOT applicable** since Set B was picked (Set B clears AA-normal on all four semantic-color × bg-page pairings without the special-case). Brand identity v0 locked per nwrp19; brand designer revisit planned post-Wave 1 when revenue justifies. Marker file: `.planning/design/CHOSEN-DIRECTION.md`. | Per Jake's CP2 review on Vercel preview (philosophy page rendered all 3 directions × 4 renders side-by-side; palette page rendered Set A vs Set B). Direction selection rationale: Site Office's stamped/forms/Telex-ticker vocabulary best fits Ross Built's audit-trail-heavy cost-plus-open-book workflow + most resilient to scaling beyond Florida coastal market. Palette Set B clears AA-normal across more cells (matrix-verified per CONTRAST-MATRIX.md §3-§6) and is the existing implementation, lowering risk. |
 | **D-038** | 2026-05-01 | `1.5a-followup-1` (rgba opacity drift across ~30 sites in 7 design-system pages) deferred to a polish phase per Wave D `/nightwork-qa` MEDIUM-1 finding. Hook extension to catch raw `rgba()` (currently catches only `#hex` literals) is a separate consideration. Logged in §11 tech debt. | Cosmetic drift, not a runtime defect. Polish-pass remediation paths available: `color-mix(in srgb, var(--nw-token), transparent N%)` OR new `--nw-tint-*` tokens. Out-of-scope for 1.5a ship. |
 | **D-039** | 2026-05-01 | `1.5a-followup-2` NEW: CP2 marker-file persistence is local-dev-only (Vercel filesystem read-only at runtime). The pick-direction route at `src/app/api/design-system/pick-direction/route.ts:18-26` documents the limitation. For future strategic picks (CP3, CP4), re-architect to GitHub API commit OR Supabase `org_settings` row OR commit-from-PR-comment. Logged in §11 tech debt; not blocking 1.5a ship. | Discovered when Jake clicked picks on Vercel preview at CP2 — the route's filesystem write succeeded against Vercel's ephemeral storage but didn't persist back to git. Per Option 2 of nwrp22 escalation, marker file written manually with Jake's verbatim picks. Audit footnote in `CHOSEN-DIRECTION.md` records the manual-transcribe path. |
-| **D-073** | 2026-05-11 | Verification pipeline canonical infrastructure (3 layers + state machine + criteria mandate + idempotency + calibration log + loop-with-executor + 2 new agents + GH Action). Documented in `.planning/architecture/VERIFICATION-PIPELINE.md`. Replaces `nightwork-smoke-tester` (Layer 1 absorption per Q4=C); keeps `nightwork-end-to-end-test` as workflow integrity walk. | stage-1.5c-verification-harness shipped 2026-05-XX. Per Jake nwrp47 + nwrp48: per-commit verification on Vercel preview URLs catches bugs that slipped past 3 rounds of manual review (e.g., cost-code-missing-on-line-item in 1.5c IA). 6.5-8 day phase; full vision per Jake; MVP path explicitly rejected. |
+| **D-040** | 2026-05-04 | Top nav 8-section structure locked (Today / Pipeline / Jobs / Financials / Price Intel / People / Company / Reports + Admin ▾ + Platform Admin badge). | Per Stage 1.5c nwrp43 Part 2. Same nav structure for all users; visibility filtered per role (Principle 6). |
+| **D-041** | 2026-05-04 | Today as personal home (Principle 7) — replaces Dashboard. | Action-oriented; role-aware (F2 wires personalization). Cash Flow + Getting Started moved to /company/overview. |
+| **D-042** | 2026-05-04 | Knowledge graph as F1+ data model (Principle 2). | F1 schema design reads ENTITY-INVENTORY.md + WORKFLOW-INTELLIGENCE.md before designing tables. |
+| **D-043** | 2026-05-04 | Roles + permissions engine in F2 (Principle 6). | 15+ default roles catalogued in ROLES-CATALOG.md. F2 wires real permission matrix. |
+| **D-044** | 2026-05-04 | Magic link external access in F3 (Principle 8). | Subs / architects / inspectors / owners act without full accounts. Extends `client_portal_access` (migration 00074). |
+| **D-045** | 2026-05-04 | Aggressive multi-modal ingestion architecture (Principle 5). | Voice / video / photo / email / scanner all route to the same entity layer. See INGESTION-ARCHITECTURE.md. |
+| **D-046** | 2026-05-04 | Price Intel as both layer + destination (Principle 3). | Inline on every cost-quoting screen AND its own primary nav section. F5 wires the engine. |
+| **D-047** | 2026-05-04 | Profile-based feature flags. F2 wires; 1.5c lands placeholder selector at /admin/profile. | Custom Builder / Remodeler / Commercial GC drive nav prominence. Ross Built profile = Custom Builder (default). |
+| **D-048** | 2026-05-04 | Phase-aware per-job nav. F2 wires column + computed view. | 1.5c lands structural More ▾ tabs (Closeout / Warranty / Pre-Con phase-aware visibility hardcoded to phase=active). F2 reads from jobs.phase. |
+| **D-049** | 2026-05-04 | Wave 1.1 split into 1.1-Lite (RB usable post-F6) + 1.1-Full (later). | Cosmetic TDs from 1.5c deferred backlog (TD-21/22/23/24/27/28 per D-056) land in 1.1-Lite when real backend exists. |
+| **D-050** | 2026-05-04 | F1-F6 expanded scope vs original F1-F4. | F1 Knowledge Graph + Auth, F2 Roles + Today, F3 Approval + Notifications, F4 Time + Equipment + Expenses, F5 Price Intel, F6 Pay Apps + Draws. Original F1-F4 was too coarse. |
+| **D-051** | 2026-05-04 | 1.5c full Bills/Pay Apps terminology rename. Audit-log entity_type values continue 'invoice' / 'draw' per existing schema (iter-2 must-fix #5 schema-aware); UI maps via src/lib/audit/action-labels.ts. | Per Stage 1.5c Q1=A. Terminology aligned with US construction industry. Schema-aware approach preserves audit-log integrity across rename. NOT 'bill_*' concat framing. See AUDIT-LOG-STRATEGY.md. |
+| **D-052** | 2026-05-04 | 1.5c Sub Portal 3-stub structure with explicit F3 compliance contracts (per iter-2 mechanical #5). | Per Stage 1.5c Q3=B. /sub-portal/auth, /sub-portal/magic/[token], /sub-portal/public/[id] — each documents F3 compliance contract (token expiry, scope binding, audit-log-on-use, cookie-vs-querystring posture, JWT-with-org-claim REJECTED by-construction). |
+| **D-053** | 2026-05-04 | 1.5c thin-wrapper extraction (12 prototype components → props-only Views). | Per Stage 1.5c Q4=A. Production routes mount props-only Views; prototypes at /design-system/prototypes/* remain accessible to platform_admin. |
+| **D-054** | 2026-05-04 | 1.5c mobile chrome priority (hamburger menu + 56px tap targets on high-stakes mobile actions). | Per Stage 1.5c Q5=A. Same iPhone+Safari device per 1.5b CONTEXT D-31. |
+| **D-055** | 2026-05-04 | Today screen Wave-zero layout = Q6=C. | Action items section (org-wide queues) + Your Day placeholder + Activity Feed. Cash Flow + Getting Started belong in /company/overview, not /today. |
+| **D-056** | 2026-05-04 | 1.5c structural TD fixes (TD-20/25/26) only. | Per Stage 1.5c Q10=B-modified (nwrp44). Cosmetic TDs (TD-21/22/23/24/27/28) deferred to Wave 1.1-Lite when real backend exists. |
+| **D-057** | 2026-05-05 | Site Office direction scope — production routes wrap outer container in `.design-system-scope` className (Decision A). | Extends scope's meaning from "playground-only" to "Site Office consumer." Preserves D-07 by construction. Source: Stage 1.5c iter-2 nwrp45. |
+| **D-058** | 2026-05-05 | Full /admin/platform → /platform-admin migration in 1.5c (Decision B-modified). Wildcard redirect /admin/platform/:path* → /platform-admin/:path* + mount existing 13 sub-route layouts at new path. Sub-routes are real, working, migrated. /platform-admin index stays placeholder. | Per Stage 1.5c iter-2 nwrp45. Jake and Andrew never lose access to audit / orgs / users / feedback / support / items / cost-intelligence during migration. URL hygiene win. |
+| **D-059** | 2026-05-05 | PerJobTabs collapses to dropdown <768px (Decision C). Matches existing nav-bar mobile hamburger pattern. Renders 6 primary tabs + More dropdown on >=768px; collapses to single dropdown showing all tabs on <768px. | Per Stage 1.5c iter-2 nwrp45. Mobile chrome priority (D-054). |
+| **D-060** | 2026-05-05 | Admin dropdown vs /admin section overview both exist with clear precedence (Decision D). Admin dropdown is power-user shortcut (top-nav direct access to settings sub-items); /admin section overview Card grid is canonical destination (clicking "Admin" in main nav lands here). | Per Stage 1.5c iter-2 nwrp45. No UX duplication; both surfaces simultaneously. |
+| **D-061** | 2026-05-05 | Decision A patch (per iter-3 Q-iter2-1=a). Production routes activate Site Office C tokens via TWO prerequisites: (1) root layout `src/app/layout.tsx` imports `@/app/design-system/design-system.css` so the rules bundle into all routes; (2) production route wrappers use `<div data-direction="C" data-palette="B" className="design-system-scope">` mirroring the playground layout. Without BOTH, Site Office C-specific signatures (1px slate-tile left-stamp, 0.18em eyebrow tracking, 16px compact card padding, 16px section gap) are inert. | Investigation outcome: production already inherits ~70% Site Office at root (Inter body, mono UPPERCASE eyebrow at 0.14em base, slate palette, grain texture); iter-3 closes the 30% C-specific gap. Source: Stage 1.5c iter-3 nwrp46. |
+| **D-062** | 2026-05-05 | PATTERNS.md "Site Office direction inheritance" paragraph (iter-2 state lines 471-484) reconciliation. Original claim that production routes inherit Site Office C from root globals.css with NO `data-direction='C'` attribute was a misdiagnosis (verified by iter-3 investigation). iter-2 amendment paragraph kept. New paragraph documents two-prerequisite activation chain. | Source: Stage 1.5c iter-3 nwrp46 (design-pushback W-2 follow-up). |
+| **D-063** | 2026-05-05 | `/platform-admin/audit` migrated viewer Supabase client type explicitly verified + documented in Plan 6 SUMMARY. Source `src/app/admin/platform/audit/page.tsx` uses `createServerClient()` (anon + session cookie + RLS gate via `platform_admin_audit_staff_read` policy from migration 00048) — NOT service-role. Migrated `/platform-admin/audit/page.tsx` MUST preserve `createServerClient()` verbatim; swapping to service-role would bypass RLS on adjacent profiles+organizations queries. | Source: Stage 1.5c iter-3 nwrp46 (security iter-2 SEC-9 follow-up). |
+| **D-064** | 2026-05-05 | Plan 3 verify ADDS defensive grep `grep -rE 'data-org-id|data-org-name|data-tenant' src/app/financials/ src/app/jobs/ src/app/owner-portal/ src/app/people/` returns 0 — confirms production wrappers don't introduce DOM tenant-context attributes (`.design-system-scope` is a CSS scope class only; `data-direction` + `data-palette` are presentation attributes, not tenant identifiers). | Source: Stage 1.5c iter-3 nwrp46 (security iter-2 SEC-10 follow-up). |
+| **D-065** | 2026-05-05 | Plan 7 atomic commit title updated from "4 NEW + 5 UPDATED" to "4 NEW + 6 UPDATED" — COMPONENTS.md §7 NwPlaceholderCard entry counts as the 6th UPDATED doc per PROPAGATION-RULES.md §4b workflow. AC-1.5c-7-12 verifies `git log -1 --stat` shows all 10 docs. | Source: Stage 1.5c iter-3 nwrp46 (planner iter-2 NOTE-3 follow-up). |
+| **D-066** | 2026-05-05 | Cross-entity validation rules are a first-class architectural concern. The "no other tool has this" patterns (WI-028 through WI-039 in `.planning/architecture/WORKFLOW-INTELLIGENCE.md`) are the data-graph-as-moat differentiator. They require entity relationships to be designed for cross-validation from F1 onward, not retrofitted later. F1 schema design MUST read WORKFLOW-INTELLIGENCE.md and design entities/relationships to support eventual implementation of the 39 patterns. | Procore, Buildertrend, and other off-the-shelf tools store invoices, budgets, daily logs, and punchlist as siloed lists. Nightwork's moat is the cross-entity graph: an invoice references a CO references a budget line references a daily-log photo references an inspection. Each link is a validation surface. Building this as bolt-ons after F1 doubles the effort and creates the migration risk Stage 1 warned about. (Source: Jake nwrp48 Part 3.) |
+| **D-067** | 2026-05-05 | Daily-log + time-entry + photo correlation is an F5 Price Intel engine capability. The engine that learns cost intelligence is the same engine that validates work-actually-happened correlations. Single intelligence layer, multiple validation surfaces. Powers WI-010 (daily log invoice validation), WI-011 (time entry labor reconciliation), WI-012 (photo evidence requirement), WI-029 (no-field-activity-no-invoicing), WI-030 (milestone photo requirement), WI-031 (time entry reconciliation), WI-037 (materials-delivered-before-installation). | Avoids building two parallel engines (one for cost intelligence, one for cross-entity validation) that read the same input streams. The Price Intel engine already needs to consume daily logs, time entries, photos, invoices, and historical patterns — adding the validation surface at the same time amortizes the data-pipeline cost. (Source: Jake nwrp48 Part 3.) |
+| **D-068** | 2026-05-05 | Punchlist-blocks-release state machine is an F6 Pay Apps engine capability. Final draw release cannot be authorized while punchlist items remain open. State machine enforced at engine level, not workflow polish. Powers WI-028 (punchlist completion blocks final balance), WI-035 (lien-release-missing-blocks-current-draw), and by extension WI-033 (CO-requires-RFI-before-invoicing) and WI-036 (inspection-required-before-next-phase-invoicing). | The Pay Apps engine is where every "is this draw releasable?" question lands. Embedding punchlist + lien-release + RFI + inspection blocking rules as state-machine guards ensures consistent enforcement across PM, owner-portal, and accounting surfaces. UI-only enforcement is bypassed by direct API calls or rare-path bugs. (Source: Jake nwrp48 Part 3.) |
+| **D-069** | 2026-05-05 | Multi-modal punchlist ingestion (WI-038) is a Wave 3 capability requiring voice + video + AI structured extraction infrastructure. Field UX for PM walks: open camera, talk while filming, AI routes voice + video frames to entities (room location, vendor matched against catalog, description, due date, photo extraction). Each becomes a structured punchlist item; PM finishes a walkthrough with N items entered with zero typing. | This is the surface where Nightwork's data graph + AI advantage becomes visceral for the field user. Voice + video as the input modality matches how PMs actually walk a house. Building it earlier (Wave 1 or Wave 2) requires the F3 multi-modal ingestion infrastructure not yet present. Wave 3 places it after the schema + engine + ingestion infrastructure all exist. (Source: Jake nwrp48 Part 3.) |
+| **D-070** | 2026-05-05 | Auto-generated daily plans (WI-039) is a Wave 3 capability built on roles engine + scheduling intelligence + Today screen personalization. The endgame of role-aware everything (Principle 6) and Today as personal home (Principle 7). PM, sub, accountant, and owner each see a personalized "Today: do X, then Y, then Z" surface generated from schedule + assigned work + role + weather + historical patterns. | Today screen scaffold landed in 1.5c (D-055 Today as personal home). Wave 3's auto-generation extends that scaffold into actual personalization. Requires F2 roles + permissions, F3 schedule engine, and F5 intelligence layer all in place. Earlier waves provide the data; Wave 3 provides the synthesis. (Source: Jake nwrp48 Part 3.) |
+| **D-071** | 2026-05-05 | All 39 WI patterns are tracked in `.planning/architecture/WORKFLOW-INTELLIGENCE.md` as canonical phase-mapped backlog. The doc is canonical (frontmatter `status: canonical`); update protocol documented in the doc itself. F1 schema design MUST read WI patterns and design entities/relationships to support their eventual implementation. Plan 7 of Stage 1.5c will add reciprocal cross-references from ARCHITECTURE.md, ENTITY-INVENTORY.md, ROLES-CATALOG.md, and INGESTION-ARCHITECTURE.md when those docs are created. | Without canonical phase-mapped tracking, the 39 patterns become tribal knowledge that gets forgotten between phases. WORKFLOW-INTELLIGENCE.md is the equivalent of MASTER-PLAN's DECISIONS LOG but for cross-entity behavior commitments — a single source of truth that F1+ planners read before designing schemas. (Source: Jake nwrp48 Part 3.) |
+| **D-072** | 2026-05-05 | 1.5c IA mini-phase scope discipline maintained. Only WI-015 (AI Parse Confidence collapsed by default), WI-016 (Status Timeline collapsed by default), WI-017 CO portion (Committed column derived from approved-unbilled CO uplift; PO portion deferred until PO fixtures land), and WI-027 (footer dev info removal) land in 1.5c via the Plan 2 amendment. All 35 other WI patterns defer to their target phase. The principle: structure now, intelligence when backend lands. | Without discipline, "we should also do WI-001 inline budget context while we're here" expands the 1.5c phase from a 5-7 day mini-phase into another full implementation phase. The 4 WI patterns landing in 1.5c are the ones that affect EXEMPLAR SHAPE — collapsed-by-default contract propagates to 6 InvoiceReviewView consumers in Plan 3; Committed column propagates to 3 BudgetView consumers in Plan 3. Adding them after Plan 3 means refactoring already-extracted components. (Source: Jake nwrp48 Part 3.) |
+| **D-073** | 2026-05-11 | Verification pipeline canonical infrastructure (3 layers + state machine + criteria mandate + idempotency + calibration log + loop-with-executor + 2 new agents + GH Action). Documented in `.planning/architecture/VERIFICATION-PIPELINE.md`. Replaces `nightwork-smoke-tester` (Layer 1 absorption per Q4=C); keeps `nightwork-end-to-end-test` as workflow integrity walk. | stage-1.5c-verification-harness shipped 2026-05-11 at merge commit `128d92a`. Per Jake nwrp47 + nwrp48: per-commit verification on Vercel preview URLs catches bugs that slipped past 3 rounds of manual review (e.g., cost-code-missing-on-line-item in 1.5c IA). 6.5-8 day phase; full vision per Jake; MVP path explicitly rejected. |
 | **D-074** | 2026-05-11 | Layer 2 standards scope: framework + ONE working rule (`conservation/money-line-items-sum`) ships this phase per Q1=A. Other domain rules (aia / accounting / lien-law / dates) populate as future phases need them via `gsd-research-standards` agent (NAHB / AIA / FL state statutes / IRS / GAAP authority hierarchy with caching + TTL). | Construction-domain depth is genuine F1+ territory. Folding into stage-1.5c would have added 1-2 days with marginal incremental value vs incremental population per phase need. |
-| **D-075** | 2026-05-11 | Criteria mandate: every PLAN.md from stage-1.5c-verification-harness onward includes a `<criteria>` yaml block (5 categories: mechanical/dom/visual/behavioral/semantic). Enforced by `nightwork-plan-review` (BLOCKING on missing block, REVISE on vague entries). Consumed by harness Layer 1/2/3 + `nightwork-spec-checker` (per D-19). 1.5c IA Plans 1/2/2-amend/3 retrofit is separate ~1-hour follow-up per Q6=B. | Plan-review watchpoint #5 (friction-tax): ~5 min/plan target + worked examples from this phase's PLANs 1-11 keep mandate enforcing structured thinking without bloating plan-write time. |
+| **D-075** | 2026-05-11 | Criteria mandate: every PLAN.md from stage-1.5c-verification-harness onward includes a `<criteria>` yaml block (5 categories: mechanical/dom/visual/behavioral/semantic). Enforced by `nightwork-plan-review` (BLOCKING on missing block, REVISE on vague entries). Consumed by harness Layer 1/2/3 + `nightwork-spec-checker` (per D-19). 1.5c IA Plans 1/2/2-amend/3 retrofit is separate ~1-hour follow-up per Q6=B (executing in Block N+1 per nwrp76). | Plan-review watchpoint #5 (friction-tax): ~5 min/plan target + worked examples from this phase's PLANs 1-11 keep mandate enforcing structured thinking without bloating plan-write time. |
 | **D-076** | 2026-05-11 | Calibration log at `.planning/calibration-log.md` — append-only phase retrospectives written by `nightwork-custodian` at post-ship sweep per Q7=A. JSON-front-matter (machine-readable, parsed by `/np` orchestrator at next-phase scope time per D-27 dynamic prompting) + markdown body (human-readable). Schema at `.planning/calibration-log-schema.md`. | Plan-review watchpoint #4 (useful lessons not noise): extractable-data-only rule prevents calibration entries from devolving into noisy free-text. Heuristic adjustments for orchestrator: parallelism / prompt density / iter budget / vision cost. |
 | **D-077** | 2026-05-11 | Loop-with-executor: harness loop INSIDE `/gsd-execute-phase` BEFORE `/nightwork-qa` per Q3=A. Max 3 iter ADDITIVE per Q3.1 (does NOT consume halt-after budget). Halt-for-Jake on iter-3 OR Layer 3 confidence < 0.7 (per D-07) OR fix-quality-failure (per ITER-1 MEDIUM-3). State machine bounded; HALT artifacts at `.planning/verification/runs/<phase>/<commit>/HALT-{ITER-3,AMBIGUOUS-VISION,FIX-QUALITY-FAILURE}.md` + git-tracked retention copies at `.planning/verification/reports/<phase>/halts/<sha>-<reason>.md`. New `gsd-fix-executor` agent (frontmatter-branched from gsd-executor) makes one focused commit per loop iteration. | Plan-review watchpoint #2 (state machine cleanly bounded): MAX_ITERATIONS=3 hard cap; pure-function transitions; no recursive calls. Plan-review watchpoint #7 (idempotency contract precise): commit_sha + criterion_hash key tested; rerun-on-same-commit really is no-op (Plan 11 self-test). |
 
@@ -286,20 +319,92 @@ Updated continuously by `nightwork-custodian` after each `/gsd-ship`. Order is a
 - ✅ Skill cross-references (nightwork-design / nightwork-design-tokens / nightwork-ui-template anchored to new design docs).
 - ✅ CLAUDE.md UI rules section deferred to the 6 locked design docs.
 
-**Stage 1.5b — Prototype gallery (next; CP2 already closed):**
-- Throwaway HTML prototypes built on Drummond fixture data covering: invoice review, draw assembly, budget dashboard, CO log, lien-release flow, reconciliation surface (per D-036), settings, owner portal stub.
+**Stage 1.5b — Prototype gallery (CP2 already closed; ships after M3 phone walk per D-17):**
+- Throwaway HTML prototypes built on sanitized reference-fixture data covering: invoice review, draw assembly, budget dashboard, CO log, lien-release flow, reconciliation surface (per D-036), settings, owner portal stub.
 - Rendered in **Site Office direction + Set B palette** (per D-037 lock) — UPPERCASE eyebrows + 0.18em tracking + JetBrains Mono, compact density, 1px slate-tile left-stamp on cards, 150ms ease-out motion.
 
-**Stage 1.5c — Real data + test infrastructure:**
-- Drummond fixture loader, end-to-end Playwright harness, automated `/nightwork-end-to-end-test` runs in CI.
+**Stage 1.5c — Information architecture (COMPLETE 2026-05-04, SHIPPED):**
+- ✅ 8-section top nav + Admin ▾ + Platform Admin badge (D-040)
+- ✅ Today as home (D-041, D-055)
+- ✅ Bills/Pay Apps terminology rename (D-051; schema-aware per iter-2 must-fix #5)
+- ✅ 12 production routes wrapped with `.design-system-scope` data-direction=C data-palette=B (D-057/D-061)
+- ✅ /admin/platform → /platform-admin migration (D-058; 13 sub-routes)
+- ✅ /admin section overview Card grid + Admin ▾ dropdown shortcut (D-060)
+- ✅ Per-job sub-nav 6 primary + More ▾; mobile collapse <768px (D-059)
+- ✅ Sub Portal 3 stubs with F3 compliance contracts (D-052)
+- ✅ ~60 placeholder routes; 32 redirect rules from legacy paths
+- ✅ 4 NEW canonical docs at `.planning/architecture/` (ARCHITECTURE / ENTITY-INVENTORY / ROLES-CATALOG / INGESTION-ARCHITECTURE)
+- ✅ MASTER-PLAN.md DECISIONS LOG updated with D-040..D-065 (atomic per iter-2 mechanical #7 + iter-3 D-27/D-065)
 
-**Stage 2 — Foundations F1–F4** (Strategic Checkpoint #3 at close):
-- Specific scope locked at Stage 1 close.
+**Stage 1.5c-verification-harness (COMPLETE 2026-05-11, SHIPPED per D-073):**
+- ✅ 3-layer verification pipeline + state machine + criteria mandate per D-073/D-074/D-075/D-076/D-077
 
-**Stage 3a — Wave 1 mini (Strategic Checkpoint #4):**
-- Invoice approval + basic draws end-to-end on Drummond.
+**Stage 1.5b ship gate (NEXT — M3 phone walk per D-17 / Q13=A):**
+- Jake walks new 1.5c IA on iPhone+Safari (same device per 1.5b CONTEXT D-31) — single bundled walk
+- 1.5b ships after walk passes
 
-**Stage 3b — Wave 1 full:**
-- Full Wave 1 surface (budgets, POs, COs, lien releases, price intelligence).
+**Stage 2 / F1 — Knowledge Graph Schema + Auth Foundation** (per D-050 + D-066 + D-071):
+- Real data graph entities + relationships in Supabase
+- Multi-tenant RLS at entity level
+- Audit trails on every entity (preserves D-051 schema-aware Bills/Pay Apps posture)
+- Auth + organization model
+- Magic link infrastructure (for F4 magic-link external access)
+- Email-in receiving infrastructure
+- F1 schema design reads WORKFLOW-INTELLIGENCE.md (D-066) + ENTITY-INVENTORY.md
+- F1 commits to ONE Owner Portal auth path (Path A token model OR Path B owner_view role; NOT both) per ARCHITECTURE §8
 
-**Stage 4+ — Wave 2 → 5 in order.**
+**Stage 2 / F2 — Roles Engine + Today Engine** (2-3 weeks per D-043):
+- Roles + permissions engine (real implementation; 15+ roles per ROLES-CATALOG.md)
+- Today screen role-aware logic
+- Phase-aware per-job nav (logic, not just structure per D-048)
+- Profile-based feature flags (D-047)
+
+**Stage 2 / F3 — Approval + Notification Engines** (2 weeks per D-022 + D-044):
+- Approval workflow engine (invoice flow first per D-024)
+- Notification routing (Inngest Cloud per D-022)
+- Magic link external access
+- Sub Portal authenticated experience
+- Email + transcript ingestion routing (basic; full AI in Wave 3)
+
+**Stage 2 / F4 — Time Tracking + Equipment + Expenses** (2 weeks per D-031):
+- Time tracking engine
+- Equipment tracking + allocation
+- Expense management
+- Time → Pay App flow
+- Reference-fixture historical back-import via V.2 portability framework (D-025/D-031)
+
+**Stage 2 / F5 — Price Intel Engine** (3-4 weeks per D-046):
+- Cost intelligence learning engine — the moat starts compounding
+- Cross-entity pollination (Principle 4)
+- WI-010/011/012/029/030/031/037 validators per D-067
+
+**Stage 2 / F6 — Pay App + Draw Engine** (2 weeks):
+- Pay apps assembled from data
+- G702/G703 production-ready printing
+- Lien release workflow
+- WI-028/035/033/036 punchlist-blocks-release state machine per D-068
+
+**Strategic Checkpoint #3** at end of F6 (per D-026).
+
+**Stage 3a — Wave 1.1-Lite (RB usable per D-049):**
+- Subset of Wave 1.1 polish that Ross Built can use immediately post-F6
+- Cosmetic TDs from 1.5c deferred backlog (TD-21/22/23/24/27/28 per D-056) land here when real backend exists
+
+**Stage 3b — Wave 1.1-Full:**
+- Remaining Wave 1.1 polish (larger blast radius items)
+
+**Stage 4 — Wave 2 (Project operations):**
+- Schedules + daily logs + punchlists + to-dos + document management
+- Schedule intelligence schema fields shipped in F3
+
+**Stage 5 — Wave 3 (Communication):**
+- Email intake + weekly owner updates + in-app notifications + client portal
+- Multi-modal punchlist ingestion (WI-038 per D-069)
+- Auto-generated daily plans (WI-039 per D-070)
+
+**Stage 6 — Wave 4 (Intelligence):**
+- Reports + analytics + AI insights
+- Selections catalog full
+- Schedule intelligence (estimated start dates, durations, drift alerts)
+
+**Stage 7+ — Wave 5 (Integrations):** Procore + QuickBooks Online + Bluebeam + Buildertrend.

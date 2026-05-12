@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils/format";
-import JobTabs from "@/components/job-tabs";
+// JobTabs removed per Stage 1.5c Plan 3 iter-2 must-fix CRITICAL #2 —
+// Plan 5's PerJobTabs in /jobs/[id]/layout.tsx is the sole tab surface.
 import JobFinancialBar from "@/components/job-financial-bar";
 import JobOverviewCards from "@/components/job-overview-cards";
 import Breadcrumbs from "@/components/breadcrumbs";
@@ -313,7 +314,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
             </NwButton>
           )}
         </div>
-        <JobTabs jobId={job.id} active="overview" />
+        {/* JobTabs render removed — PerJobTabs in /jobs/[id]/layout.tsx (Plan 5) replaces */}
         <JobFinancialBar jobId={job.id} preloaded={financialBarPreloaded} />
 
         {!editing ? (

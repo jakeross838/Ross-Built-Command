@@ -9,8 +9,19 @@ const PUBLIC_PATHS = ["/", "/login", "/signup", "/pricing", "/forgot-password"];
 // Pages that remain reachable even when the billing gate is "expired".
 // Users need to be able to open the billing page to resubscribe, hit the
 // Stripe portal/checkout APIs, and still log out.
+//
+// iter-2 mechanical #4 (security MEDIUM SEC-5): /admin/billing added
+// alongside /settings/billing because Plan 1 Task 3 redirects
+// /settings/billing → /admin/billing (308 permanent). Without this
+// entry, expired-trial users redirected by the billing gate to
+// /settings/billing would 308 to /admin/billing, hit the gate again
+// (since /admin/billing was not in escape paths), redirect back to
+// /settings/billing, infinite loop. Both paths kept here so the
+// transition period remains safe and the gate redirect destination
+// (line 137 below) lands on /admin/billing without recursion.
 const BILLING_ESCAPE_PATHS = [
-  "/settings/billing",
+  "/settings/billing",   // legacy — kept for transition period; redirects to /admin/billing
+  "/admin/billing",      // iter-2 mechanical #4 — canonical billing path post-1.5c per D-01
   "/api/stripe",
   "/pricing",
   "/login",
@@ -114,13 +125,36 @@ export async function middleware(request: NextRequest) {
   }
 
   // Platform admin route guard. Must run BEFORE the billing gate —
-  // staff need to access /admin/platform even when their own org is
-  // expired, and non-staff shouldn't see the page exists.
-  if (pathname === "/admin/platform" || pathname.startsWith("/admin/platform/")) {
+  // staff need to access platform-admin tools even when their own org
+  // is expired, and non-staff shouldn't see the page exists.
+  //
+  // Per Stage 1.5c Plan 6 Task 2 (iter-2 must-fix CRITICAL #4 LOCKS
+  // Option A — security BLOCKING SEC-1 + compliance W-1): regex
+  // extended to ALSO match /platform-admin/* with the same
+  // isPlatformAdmin posture. The 13 sub-routes migrated from
+  // /admin/platform/* to /platform-admin/* (per iter-2 D-20 / D-058
+  // Decision B-modified) must be gated identically. Plan 1's wildcard
+  // redirect (/admin/platform/:path* → /platform-admin/:path*) sends
+  // existing bookmarks to /platform-admin/*; without this regex
+  // extension, those redirects would land at unprotected pages —
+  // SEC-1 BLOCKING.
+  //
+  // iter-2 watchpoint #3 verification: a PM (non-platform_admin)
+  // authenticated session navigating to /platform-admin/audit MUST
+  // receive redirect to /dashboard (NOT successful render). Plan 6
+  // SUMMARY documents the smoke test result.
+  if (
+    pathname === "/admin/platform" ||
+    pathname.startsWith("/admin/platform/") ||
+    pathname === "/platform-admin" ||
+    pathname.startsWith("/platform-admin/")
+  ) {
     if (!user) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = "/login";
-      loginUrl.searchParams.set("redirect", "/admin/platform");
+      // Use the actual pathname for redirect param so user lands at
+      // the right place after login (not always /admin/platform).
+      loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
     }
     if (!isPlatformAdmin) {
@@ -220,7 +254,12 @@ export async function middleware(request: NextRequest) {
   // Platform admins are exempt — staff need to debug billing issues.
   if (user && !isPlatformAdmin && gate === "expired" && !canEscapeBillingGate(pathname)) {
     const url = request.nextUrl.clone();
-    url.pathname = "/settings/billing";
+    // iter-2 mechanical #4 — canonical billing path post-1.5c per D-01.
+    // Pre-1.5c the gate redirected to /settings/billing; that path now
+    // 308-redirects to /admin/billing via next.config.mjs. Pointing
+    // directly here saves a hop and avoids browsers' redirect-chain
+    // rate limiting.
+    url.pathname = "/admin/billing";
     url.search = "?trial_expired=1";
     return NextResponse.redirect(url);
   }

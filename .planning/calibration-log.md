@@ -69,3 +69,37 @@ process_discipline_violations: 0
 ## Process notes
 
 - 1.5c IA Plan 1 dev-server-kill incident (2026-05-05) is the carry-forward process discipline lesson — every executor brief in this phase reinforced "Never kill running processes" rule.
+
+---
+
+## stage-1.5c-information-architecture Block N+1 follow-ups (post-2026-05-11)
+
+### useCurrentRole onAuthStateChange listener
+
+**What**: Modify `src/hooks/use-current-role.ts` to subscribe to `supabase.auth.onAuthStateChange` for SIGNED_IN events in addition to the existing mount-time `getUser()` call. Would also benefit `src/components/nav-bar.tsx`'s profile fetch (same pattern).
+
+**Why**: Production improvement that would resolve AC-1-8-class harness-incompatible criteria (client-side hook reads auth state with one-shot pattern + no listener; harness-injected sessions land too late to influence the hook before render). Real users would also benefit (cross-tab login sync, no stale-empty-session edge cases during slow networks).
+
+**Effort**: ~30 min, including hook diff + cleanup of any cascading callsites + harness validation re-run.
+
+**Trigger condition**: Pairs with F1 schema work where role-evaluation logic gets touched (will be modifying these hooks anyway). Could also land as a stand-alone polish PR if a future harness gap surfaces.
+
+**Diagnostic provenance**: stage-1.5c-vh Block N+1 surfaced via Y.1.D race-confirmation diagnostic (nwrp86 W.1 validation). Diagnostic chain: nwrp79..nwrp87. Cookie + token + Supabase API all verified working in headless; only the hook's one-shot pattern is the gap.
+
+**Estimated value**: removes 1 known harness limitation entirely; enables future Layer 3 visual/semantic criteria against any auth-gated client-rendered UI.
+
+### F1+ harness extension — multi-viewport + interactive testing
+
+**What**: Extend the verification harness with two categories not in 1.5c-IA scope:
+1. **Multi-viewport Layer 3** — currently L3 vision uses a single 1280×800 viewport. Add 393×852 (iPhone 14 Pro) + 768×1024 (tablet) + 360×800 (smallest phone) as harness-managed standard viewports. Vision evaluates each at each viewport. Estimated +3x Layer 3 cost per criterion; budget impact ~$0.20/run.
+2. **Interactive behavioral testing** — currently Layer 1 + 2 + 3 are non-interactive (page render checks). Add a Layer 1.5 or Layer 4 that scripts Playwright through user flows (click X, expect Y; open dropdown, click nested item, expect navigation). Stage 1.5c-IA's PerJobTabs mobile dropdown smoke had to be done by Jake manually (or one-off Playwright script) because the harness can't traverse interactive UI patterns.
+
+**Why**: Two real issues surfaced post-1.5c-IA ship that the harness couldn't have caught:
+- SMOKE 3 (2026-05-12): 13 of 24 viewport×route checks showed horizontal overflow at tablet 768×1024. Layer 3 single-viewport vision never sees this.
+- SMOKE 4 (2026-05-12): PerJobTabs mobile dropdown traversal — harness can't open the dropdown + verify tab clicks navigate to correct sub-routes.
+
+**Effort**: Likely a Wave 1.1-Full sub-phase. Multi-viewport extends `src/lib/verification/layer3/runner.ts` to loop over viewports; interactive layer is more substantial (~2-3 days of new framework code).
+
+**Diagnostic provenance**: stage-1.5c-information-architecture Block N+2 GATE-B.1 manual smokes 2026-05-12. Both smokes were automatable in principle but not in current harness scope.
+
+**Pairs with**: F1 schema work where many auth-gated routes get real DB-backed implementations and multi-viewport responsive validation becomes load-bearing.

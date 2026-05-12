@@ -16,7 +16,11 @@ export default async function Root() {
   if (user) {
     const org = await getCurrentOrg();
     if (org && !org.onboarding_complete) redirect("/onboard");
-    redirect("/dashboard");
+    // Per CONTEXT D-05 / Q7=A — root redirects authed users to /today
+    // (replaces /dashboard for the personal-home pattern per
+    // Principle 7). Legacy /dashboard URL still 308-redirects to /today
+    // via next.config.mjs (Plan 1 Task 3) so old bookmarks resolve.
+    redirect("/today");
   }
 
   return (
@@ -156,7 +160,7 @@ export default async function Root() {
           <div className="mt-10 text-center">
             <Link
               href="/pricing"
-              className="text-[13px] tracking-[0.08em] uppercase text-[color:var(--text-primary)] hover:text-[color:var(--nw-stone-blue)] border-b border-cream/40 hover:border-[var(--nw-stone-blue)] pb-0.5"
+              className="text-[13px] tracking-[0.08em] uppercase text-[color:var(--text-primary)] hover:text-[color:var(--nw-stone-blue)] border-b border-[var(--border-subtle)] hover:border-[var(--nw-stone-blue)] pb-0.5"
             >
               See all plans &amp; features →
             </Link>
@@ -194,7 +198,7 @@ function PricePreview({ name, price, tagline, highlight }: { name: string; price
   return (
     <div className={`p-6 border bg-[var(--bg-card)] ${highlight ? "border-[var(--nw-stone-blue)] shadow-[0_8px_24px_-12px_rgba(63,88,98,0.25)]" : "border-[var(--border-default)]"}`}>
       {highlight && (
-        <span className="inline-block px-2 py-0.5 bg-[var(--nw-stone-blue)] text-white text-[10px] tracking-[0.12em] uppercase mb-3">
+        <span className="inline-block px-2 py-0.5 bg-[var(--nw-stone-blue)] text-nw-white-sand text-[10px] tracking-[0.12em] uppercase mb-3">
           Most Popular
         </span>
       )}

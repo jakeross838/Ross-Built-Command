@@ -2,43 +2,85 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: halt-pending
-last_updated: "2026-05-06T22:00:00Z"
+status: in-progress
+last_updated: "2026-05-11T22:30:00Z"
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 18
-  completed_plans: 10
-  percent: 56
+  completed_plans: 16
+  percent: 89
 ---
 
 # Nightwork — State
 
-**Updated:** 2026-05-06 (Plan 6 of stage-1.5c-verification-harness shipped — Wave 3 single-plan dispatch; first GH Action on main from this branch).
+**Updated:** 2026-05-11 (Block N+2 in flight; Plan 6 SHIPPED — GATE A halt for Jake review of /platform-admin migration + middleware regex + iter-2 watchpoints #2/#3).
 
 ## Active phase
 
-- Branch: `phase/1.5-c-verification-harness`
-- Phase: stage-1.5c-verification-harness — 3-layer verification pipeline runnable on `phase/*` branches via Vercel preview URL + GitHub Actions.
-- Wave: 3 — GitHub Actions workflow (Plan 6) shipped, `halt_after: true`. Awaiting Jake review before Wave 4 dispatch.
-- Status: Plan 6 SUMMARY at `.planning/phases/stage-1.5c-verification-harness/01.5-c-verification-harness-6-github-actions-workflow-SUMMARY.md`. Wave 4 will dispatch Plan 7 (new agents — `gsd-research-standards` + planner mandate) after halt review. **First push to remote will trigger Plan 6 verifying Plan 6 (watchpoint #8 meta-test).**
+- **Branch:** `phase/1.5-c-information-architecture`
+- **Phase:** Stage 1.5c — Information Architecture (8-section nav, Today scaffold, redirects, thin-wrapper extraction, placeholders, canonical docs).
+- **Plan position:** Plans 1, 2, 2-amend, 3, 3a-now, 4, 5, 6 shipped. Plan 7 (canonical-docs-smoke + atomic CLAUDE.md update) remains.
+- **GATE A halt:** Plan 6 has `halt_after: true` per nwrp88 GATE A. Jake reviews:
+  - iter-2 D-20 full migration (12 /platform-admin/* sub-routes + layout + index)
+  - iter-2 must-fix CRITICAL #4 (middleware.ts regex extension — Option A LOCKED)
+  - iter-2 watchpoint #2 (sub-route functional smoke) + watchpoint #3 (auth bypass test as PM)
+  - iter-2 mechanical #10 (getCurrentMembership preservation per re-mounted route)
+- **Next plan (after GATE A approval):** Plan 7 (atomic CLAUDE.md update + canonical-docs smoke).
 
-## Recent work shipped (per git log + canonical plan)
+## Recently shipped to main
 
-- **2026-05-06: stage-1.5c-verification-harness Plan 6 (GitHub Actions workflow) shipped on `phase/1.5-c-verification-harness`.** 2 atomic task commits + 1 SUMMARY commit: verify-phase.yml workflow YAML (`4dfa994`); workflow README (`3feeb14`). First GH Action on main from this branch (`.github/workflows/` did not exist on main pre-merge). 14-step workflow with push + workflow_dispatch triggers, concurrency cancel-in-progress, Vercel REST API wait-for-Ready gate (live-tests Plan 5 vercel-discovery contract per watchpoint #3), defensive harness-output JSON parser (watchpoint #4), 5 GH secrets wired (the original 2 from plan template + 3 added per Rule 2 missing-critical: HARNESS_FIXTURE_PASSWORD + Supabase URL + anon key), exit-code 0/1/2/3/4 → success/failure/failure/error/error mapping (watchpoint #6), 7-day artifact retention with screenshots/ excluded per C2+D-30. SEC-HIGH-1 verified: 0 violations of `${{ github.* }}` / `${{ inputs.* }}` in shell `run:` bodies (watchpoint #1; precise Python parser tracking shell-block boundaries). Watchpoints #3, #7, #8 deferred to first push (workflow self-test). Halt-pending Jake review before Wave 4 (Plan 7 — new agents). 4 deviations auto-fixed (3 Rule 2 missing-critical + 1 Rule 1 bug fixing transcribed YAML fragment in plan template).
-- **2026-05-05: stage-1.5c-verification-harness Plan 5 (orchestrator + Vercel discovery + criteria-loader + auth-strategy + report-writer + verify-phase.ts CLI) shipped on `phase/1.5-c-verification-harness`.** 3 atomic commits + 1 SUMMARY commit: vercel-discovery + criteria-loader + auth-strategy (`1cc868d`); orchestrator + report-writer (`547c00d`); verify-phase.ts + test fixture + README update (`789fe35`). Wave 2 single-plan dispatch complete; halt-pending Jake review before Wave 3 (Plan 6 GH Actions workflow). All 7 watchpoints (Jake nwrp51) addressed: REST API as PRIMARY discovery (Jake watchpoint #2), real Supabase signInWithPassword auth strategy with NO platform-admin path (watchpoint #3), 141 non-N/A criteria extracted from this phase's 12 PLANs (watchpoint #4), runHarness does NOT drive state machine (watchpoint #1+#5), all 3 active scope items closed (watchpoint #6), calibration-log custodian integration designed (watchpoint #7). HarnessReport.loop_state DELETED per ARCH-CRIT-1; FIXTURE_ORG_UUID added alongside slug (Option A). Iter-1 amendments verified: ARCH-CRIT-1/2/3, C1, C5, SEC-HIGH-2, WARNING-1, W1, D-30.
-- **2026-05-06: stage-1.5c-verification-harness Plan 4 (Layer 3 vision) shipped on `phase/1.5-c-verification-harness`.** Wave 1 sequential complete (Plans 2/3/4 sequenced); halt-pending Jake review before Wave 2.
-- **2026-05-06: stage-1.5c-verification-harness Plans 2 + 3 (Layer 1 static + Layer 2 standards framework) shipped.**
-- **2026-05-06: stage-1.5c-verification-harness Plan 1 (foundation) shipped on `phase/1.5-c-verification-harness`.** 5 atomic commits: types/registry/idempotency/state-machine module (`9b73f57`); standards JSON schema + 5 domain dirs + reports tracked + .gitignore (`a5f213a`); criteria-loader.test.md scaffold (`ba304ec`); fixture-org migration 00092 + .down.sql (`3476854`); README (`ff7861e`). Halt-pending Jake review before Wave 1 dispatch (Plans 2/3/4 parallel). All iter-1 plan-review CRITICAL amendments addressed (ARCH-CRIT-1/2/3, C1, C4, D-30).
-- **PR #31 (2026-04-29)**: Plan consolidation — `docs/nightwork-plan-canonical-v1.md` becomes the single source of truth.
-- **PR #26 (~2026-04-28)**: Phase 3.4 proposals review form aligned with invoice patterns; print-view added; phase pre-merge cleanups.
-- **Phase 3.4 polish** (in-flight before this session): invoice review structure mirrored to proposals.
+- **stage-1.5c-verification-harness** SHIPPED 2026-05-11 at merge commit `128d92a` (95 commits, 5 days). 3-layer verification harness (Layer 1 mechanical/DOM, Layer 2 industry-standards, Layer 3 Claude vision) + runLoop state machine + criteria mandate (D-075) + calibration log + GitHub Actions workflow + Vercel preview discovery + auth chain. Final harness baseline PASS=68/FAIL=1/SKIP=1; /nightwork-qa verdict WARNING (non-blocking carry-forward). Vision spend ~$0.573/$5.00.
+
+## 1.5c-IA outcomes shipped (on this branch)
+
+### Plan 6 (2026-05-11) — GATE A halt-after
+- 13 admin routes at /admin/* (3 REAL-LOGIC: Users/Billing/Cost Codes + 10 placeholders + 1 overview Card grid)
+- /admin/page.tsx overview Card grid resolves Plan-1-introduced redirect loop (Rule 1 fix)
+- /admin/profile stubbed Custom Builder / Remodeler / Commercial GC selector (disabled per Q12=A)
+- /platform-admin/* full migration: 12 sub-route page.tsx + 1 layout + 1 index placeholder = 14 surfaces (iter-2 D-20 / D-058 Decision B-modified)
+- middleware.ts:130 regex extended to gate /platform-admin/* with same isPlatformAdmin posture (iter-2 must-fix CRITICAL #4 Option A LOCKED); redirect param now uses actual pathname
+- Shared component dual-awareness: platform-sidebar matches both /platform-admin/* and /admin/platform/* prefixes; audit-row + end-impersonation-button updated to new canonical paths
+- iter-2 mechanical #10 verified: 14 of 15 routes ZERO DIFF (1 documented divergence in users/[id] — URL-path rewriting only)
+- SEC-9 compliance: /platform-admin/audit preserves createServerClient() verbatim (anon + session cookie + RLS via platform_admin_audit_staff_read policy); NOT service-role
+- 5 auto-fixes documented in SUMMARY (1 bug, 1 blocking-source-missing for /admin/integrations, 2 token-discipline, 1 plan-scope-mismatch for /platform-admin/items)
+- Build green (25 /admin routes + 12 /platform-admin routes); typecheck clean; 0 hardcoded hex across migrated trees
+- Commits: a9f7eb9 (Task 1 — 13 admin routes), 3a9d816 (Task 2 — /platform-admin migration + middleware)
+
+### Plans 4 + 5 (2026-05-09)
+- Plan 4: Pipeline + Financials + People + Reports + Sub Portal sections (50 routes shipped)
+- Plan 5: PerJobTabs sub-nav + /jobs/[id]/layout.tsx mount + 19 per-job tab placeholder routes
+
+### Plan 3a-now (2026-05-08)
+- 10 portfolio prototype routes rewritten as thin wrappers
+
+## 1.5c-IA outcomes shipped (pre-harness, on this branch)
+
+### Plan 3 (2026-05-06)
+- 10 NEW props-only View components at `src/components/prototypes/`.
+- 12 production routes mounted as thin wrappers with `<div data-direction="C" data-palette="B" className="design-system-scope">`.
+- 8 inline JobTabs removed from /jobs/[id]/* pages.
+- SEC-10 defensive grep clean across all 12 production routes.
+- Visual D-07 verification at 3 viewports deferred to Jake's halt-review walk.
+- 88/88 static pages build clean.
+
+### Plan 2 + Amendment (2026-05-05/06)
+- InvoiceReviewView (442 LOC post-amendment) — Document Review pattern exemplar with collapsed-by-default Parse Confidence + Status Timeline panels (WI-015 + WI-016).
+- BudgetView (615 LOC post-amendment) — multi-fixture aggregation pattern with Committed column (WI-017 CO portion) + Available column.
+- WORKFLOW-INTELLIGENCE.md (722 LOC, 39 patterns).
+- MASTER-PLAN D-066..D-072.
+- AUDIT-LOG-STRATEGY.md + action-labels.ts helper.
+
+### Plan 1 (2026-05-05)
+- 8-section top nav LIVE.
+- /today personal-home scaffold replaces /dashboard.
+- 38 legacy-path 308-redirects + middleware billing escape fix.
+- NwPlaceholderCard primitive hoisted; design-system.css imported from root layout.
 
 ## Branches
 
-- `main` — clean, recently merged.
-- `phase/1.5-c-verification-harness` — current; Wave 0 (Plan 1) shipped; halt-pending Jake review before Wave 1.
-- `nightwork-build-system-setup` — predecessor; build-system files staged for review.
+- `main` — Stage 1.5c-vh merged at `128d92a` (harness shipped 2026-05-11).
+- `phase/1.5-c-information-architecture` — current; Plans 1/2/2a/3 shipped; merged main (harness infra integrated); criteria retrofit in flight.
 
 ## Outstanding tech debt + known issues
 
@@ -46,37 +88,14 @@ Canonical §12 is authoritative. Selected highlights:
 
 - **Embedding-on-create wiring gap** — cost intelligence pillar 2 requires this; named as a blocker.
 - **Dashboard 503s on aggregations** — historical pain point; new architecture rules require index plans + caching plans on every aggregation.
-- **Phase 3.4 dropdown optgroup labels** — relabel `[New]` / `[Legacy]` / `[Pending]` to PM-facing terms (per memory `project_phase3_4_polish_dropdown_labels`).
-- **PR #26 follow-up** — extracted_data cache + UI alignment to invoice review (per memory `project_phase3_4_pr26_merge_blockers`).
-
-### Deferred from QA baseline 2026-04-29
-
-These were knowingly deferred from `.planning/qa-runs/2026-04-29-1012-qa-report.md` to keep the build-system phase scoped. Address in a dedicated security-hardening pass before launch.
-
-- **MEDIUM — `vercel.json` X-Frame-Options should be `DENY`** (currently `SAMEORIGIN`). Largely redundant once CSP `frame-ancestors 'none'` is enforced (now in place), but tighten anyway for legacy-browser coverage.
-- **MEDIUM — Permissions-Policy is incomplete.** Add `payment=(), usb=(), fullscreen=(self), clipboard-read=()` alongside the existing camera/mic/geolocation locks. `payment=()` is the relevant Stripe-adjacent surface.
-- **MEDIUM — No Cross-Origin-Opener-Policy.** Add `Cross-Origin-Opener-Policy: same-origin-allow-popups` (Stripe-redirect compatible). Track COEP `require-corp` as a separate roadmap item — every third-party resource must set CORP headers, so it requires a coordinated rollout.
-- **CSP follow-up — migrate from `'unsafe-inline'` to nonces.** The current CSP allows `'unsafe-inline'` in `script-src` and `style-src` because Next.js 14 injects inline scripts (hydration) and inline styles without nonces by default. Next.js docs describe a middleware-based nonce flow; adopt it before launch so the CSP becomes meaningfully strict. (HIGH-finding H1 was resolved by adding the CSP itself; tightening it is the follow-up.)
-
-### Env vars requiring real values before flow activation
-
-- **`STRIPE_WEBHOOK_SECRET`** — currently `whsec_placeholder` in both Production and Preview. Requires the real value from the Stripe Dashboard webhook endpoint before any payment flow is exercised. Wave 1 (subscription / billing activation) blocks on this.
-- **`RESEND_API_KEY`** — currently `re_placeholder`. Requires real Resend account + verified sending domain before any transactional email is sent (notifications, draw approvals, etc.). Wave 1 (notifications activation) blocks on this.
-- **`STRIPE_PRICE_STARTER` / `_PROFESSIONAL` / `_ENTERPRISE`** — empty in `.env.local`, not pushed to Vercel. Populate after Stripe products exist; then `vercel env add` for both envs.
+- **`src/middleware.ts:179` NODE_ENV → VERCEL_ENV one-liner** — security WARNING from harness ship QA; 4-layer defense holds; one-line follow-up.
+- **Phase 3.4 dropdown optgroup labels** — relabel `[New]` / `[Legacy]` / `[Pending]` to PM-facing terms.
+- **PR #26 follow-up** — extracted_data cache + UI alignment to invoice review.
 
 ## Test fixtures
 
-Drummond is the canonical reference job. Real-data fixtures live at `__tests__/fixtures/classifier/.local/` (gitignored). Synthetic fixtures (R.21) are used everywhere else.
+Drummond is the canonical reference job. Real-data fixtures live at `__tests__/fixtures/classifier/.local/` (gitignored). Synthetic fixtures (R.21) used everywhere else.
 
 ## Pre-launch state
 
-Ross Built is Tenant 1, pre-launch — test data only. No migration risk during foundation work. Other tenants will land on production data once the foundation hardens.
-
-## Relevant memory entries
-
-- `feedback_subagent_additions.md` — flag subagent additions at kickoff.
-- `feedback_qa_report_path.md` — write QA reports to `./qa-reports/` (project) not the harness sandbox.
-- `project_phase3_4_pm_role_gate.md` — `org_cost_codes` writes are owner/admin only.
-- `feedback_force_push_rule.md` — `--force-with-lease` OK on solo feature branches post-rebase; never on main/shared; never plain `--force`.
-- `project_phase3_4_polish_dropdown_labels.md` — dropdown relabel before PR ready-for-review.
-- `project_phase3_4_pr26_merge_blockers.md` — fresh-session sequence + open questions.
+Ross Built is Tenant 1, pre-launch — test data only. No migration risk during foundation work.

@@ -6,6 +6,50 @@
 // site], propose extraction in Plan 4 SUMMARY". Centralizes the iter-1
 // SECURITY MEDIUM-2 sandbox-arg policy so future helpers can't drift.
 //
+// Y.1.B (nwrp82) — added HARNESS_AUTH_STATE_PATH and harnessStorageStateOption
+// helper for Playwright storageState bootstrap pattern. Replaces the prior
+// cookie + localStorage manual injection approach (see DEPRECATED markers on
+// supabaseSessionCookies + supabaseLocalStorageInitScript below).
+
+import { existsSync } from "node:fs";
+import * as path from "node:path";
+
+/**
+ * Canonical path for the bootstrap-captured storageState JSON. Produced by
+ * scripts/harness-auth-bootstrap.ts on every CI run BEFORE the main harness
+ * invocation. Consumed by Layer 1 + Layer 3 runners via
+ * `browser.newContext({ storageState: HARNESS_AUTH_STATE_PATH })`.
+ *
+ * File is gitignored (contains live session tokens). Regenerated per CI run
+ * (~30s overhead). Path is repo-relative; helpers resolve to absolute when
+ * passing to Playwright.
+ */
+export const HARNESS_AUTH_STATE_PATH = path.resolve(
+  process.cwd(),
+  ".planning/verification/auth/harness-auth-state.json"
+);
+
+/**
+ * Returns the `storageState` option for `browser.newContext()` if the bootstrap
+ * file exists; otherwise returns `undefined` (caller falls back to unauthenticated
+ * context, useful for routes that don't need auth like the marketing root).
+ *
+ * The fallback path is intentional: routes like `/` (marketing landing) don't
+ * require auth, and a missing bootstrap file should not crash the harness on
+ * those routes. For auth-required routes, the harness's other defenses (route
+ * status 200 check in Layer 1; vision verdict reasoning in Layer 3) will flag
+ * the missing-auth state as a FAIL, surfacing the bootstrap-not-run condition
+ * loudly via test results rather than silent context-creation crash.
+ *
+ * Per nwrp82 STEP 1.2: "Verify _browser.ts handles missing storageState file
+ * gracefully (fail-loudly with actionable error)". The actionable error is
+ * surfaced when the file IS expected but missing — see usage at callsites.
+ */
+export function harnessStorageStateOption(): string | undefined {
+  if (existsSync(HARNESS_AUTH_STATE_PATH)) return HARNESS_AUTH_STATE_PATH;
+  return undefined;
+}
+//
 // Per iter-1 SECURITY MEDIUM-2:
 // - --disable-dev-shm-usage always (works around /dev/shm size constraints
 //   in containers; no security trade-off).
@@ -146,6 +190,19 @@ export interface PlaywrightCookie {
 const SUPABASE_BASE64_PREFIX = "base64-";
 const SUPABASE_MAX_CHUNK_SIZE = 3180; // matches @supabase/ssr/utils/chunker.js
 
+/**
+ * @deprecated since Y.1.B (nwrp82). Use `harnessStorageStateOption()` +
+ * `browser.newContext({ storageState })` instead. This helper produced
+ * Supabase SSR auth cookies for `context.addCookies()`; it worked for
+ * server-side middleware but did NOT hydrate `@supabase/ssr`'s
+ * `createBrowserClient` on the client side — confirmed by Y.1.D diagnostic
+ * 2026-05-11 (cookies present in `document.cookie` but `auth.getUser()`
+ * still returned null). Replaced by Playwright storageState bootstrap which
+ * captures a real authenticated context via the actual login flow.
+ *
+ * Kept in source temporarily for one-more-validation-run comparison; will
+ * be removed in cleanup commit after Y.1.B success confirmed.
+ */
 export function supabaseSessionCookies(
   supabaseUrl: string | undefined,
   previewUrl: string,
@@ -205,6 +262,17 @@ export function supabaseSessionCookies(
 }
 
 /**
+ * @deprecated since Y.1.B (nwrp82). The hypothesis behind this helper —
+ * that injecting into localStorage would hydrate the client-side
+ * `@supabase/ssr` `createBrowserClient` — was disproven by Y.1.D
+ * diagnostic 2026-05-11. The SSR client uses cookies as storage, not
+ * localStorage; this script was a no-op for the SSR variant. Replaced
+ * by Playwright `storageState` bootstrap which captures the real
+ * authenticated context end-to-end via the login flow.
+ *
+ * Kept in source temporarily for one-more-validation-run comparison;
+ * will be removed in cleanup commit after Y.1.B success confirmed.
+ *
  * Inject Supabase session into the browser's localStorage so client-side
  * `@supabase/supabase-js` (and `@supabase/ssr`'s `createBrowserClient`,
  * which also falls back to localStorage in some auth-state code paths)
@@ -253,4 +321,43 @@ export function supabaseLocalStorageInitScript(
   const keyLit = JSON.stringify(key);
   const valueLit = JSON.stringify(value);
   return `try { window.localStorage.setItem(${keyLit}, ${valueLit}); } catch (e) { /* localStorage unavailable (e.g. data: scheme); harmless */ }`;
+}
+
+/**
+ * Y.1.A / W.1 (per stage-1.5c-vh nwrp86) — sibling helper to
+ * `supabaseLocalStorageInitScript` that writes the access/refresh tokens
+ * to `window.__nightwork_harness_session` BEFORE any page `<script>`
+ * runs, so the production-side env-gated block in
+ * `src/lib/supabase/client.ts` can detect the global and call
+ * `supabase.auth.setSession({ access_token, refresh_token })` on the
+ * SAME (module-scoped) client instance the production hooks read from.
+ *
+ * Why this is necessary: Z.1 diagnostic (nwrp84) confirmed the cookie
+ * + token + Supabase API are all valid in headless Playwright Chromium
+ * (raw fetch returned HTTP 200), but @supabase/ssr's createBrowserClient
+ * fails to auto-hydrate `auth.getUser()` from the cookie in that
+ * specific runtime context. The setSession call is the SDK's canonical
+ * escape hatch: it force-ingests the session into the client's in-memory
+ * cache so subsequent getUser() reads succeed without exercising the
+ * broken auto-hydration code path.
+ *
+ * Why not a sibling client (W.4): nwrp85 research found Supabase emits
+ * a "Multiple GoTrueClient Instances Detected" warning and the multi-
+ * instance pattern is documented to cause deadlocks (Discussion #37755).
+ * Calling setSession on the production client (W.1) avoids that risk.
+ *
+ * Idempotent with tokens=undefined: returns no-op comment string.
+ *
+ * @returns The init-script source string ready for `context.addInitScript(string)`
+ */
+export function supabaseSetSessionBridgeInitScript(
+  accessToken: string | undefined,
+  refreshToken: string | undefined
+): string {
+  if (!accessToken || !refreshToken) {
+    return "// supabase-set-session bridge no-op (no tokens)";
+  }
+  const atLit = JSON.stringify(accessToken);
+  const rtLit = JSON.stringify(refreshToken);
+  return `try { window.__nightwork_harness_session = { access_token: ${atLit}, refresh_token: ${rtLit} }; } catch (e) { /* harmless */ }`;
 }

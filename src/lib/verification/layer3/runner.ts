@@ -62,8 +62,8 @@ import { CostCap } from "./cost-cap";
 import {
   chromiumLaunchArgs,
   harnessBrowserHeaders,
-  supabaseSessionCookies,
-  supabaseLocalStorageInitScript,
+  harnessStorageStateOption,
+  supabaseSetSessionBridgeInitScript,
 } from "../_browser";
 
 // Updated 2026-05-07 per nwrp62 FIX 4: see vision-client.ts DEFAULT_MODEL.
@@ -187,32 +187,33 @@ export async function runLayer3(
         // verification bypass headers into Playwright. harnessBrowserHeaders()
         // merges both — Vercel SSO bypass for protected previews and
         // Nightwork app verification bypass for /design-system/* routes.
+        //
+        // Y.1.B (nwrp82): auth comes from Playwright storageState bootstrap
+        // (scripts/harness-auth-bootstrap.ts) rather than manual cookie +
+        // localStorage injection. storageState restores cookies + localStorage
+        // + IndexedDB as a unit — the same state a real authenticated user
+        // would have after a normal login flow. This is the canonical
+        // Playwright auth pattern. The bypass headers are still required
+        // (they protect against Vercel SSO + drive Nightwork's design-system
+        // gate); only the Supabase auth state moved to storageState.
+        const storageState = harnessStorageStateOption();
         const context = await browser.newContext({
           viewport: { width: 1280, height: 800 },
           extraHTTPHeaders: harnessBrowserHeaders(),
+          ...(storageState ? { storageState } : {}),
         });
-        // Per nwrp67 FIX 8: attach Supabase auth cookies so the Nightwork
-        // Next.js middleware doesn't redirect to /login. Without this every
-        // protected route screenshot captures the login page instead of the
-        // targeted app surface (run #25520633491 surfaced this).
-        const authCookies = supabaseSessionCookies(
-          ctx.harness_session?.supabase_url,
-          ctx.preview_url,
-          ctx.harness_session?.raw_session
+        // W.1 (nwrp86) — setSession bridge. Writes
+        // window.__nightwork_harness_session BEFORE any page script runs,
+        // so client.ts's env-gated block force-ingests the session into
+        // the production @supabase/ssr client's in-memory cache. Pairs
+        // with Y.1.B storageState for cookie/server-side auth + W.1 for
+        // client-side getUser() resolution. No-op if no harness_session
+        // tokens available.
+        const bridgeScript = supabaseSetSessionBridgeInitScript(
+          ctx.harness_session?.raw_session?.access_token,
+          ctx.harness_session?.raw_session?.refresh_token
         );
-        if (authCookies.length > 0) {
-          await context.addCookies(authCookies);
-        }
-        // Per nwrp79 Y.2: also inject the session into localStorage so
-        // client-side hooks (useCurrentRole etc.) that call
-        // `supabase.auth.getUser()` can hydrate auth state. Cookies cover
-        // server-side `updateSession()`; localStorage covers client-side
-        // hook reads. Idempotent no-op if no session.
-        const initScript = supabaseLocalStorageInitScript(
-          ctx.harness_session?.supabase_url,
-          ctx.harness_session?.raw_session
-        );
-        await context.addInitScript(initScript);
+        await context.addInitScript(bridgeScript);
         const page = await context.newPage();
         // Per Block N+1 finding: routes with Supabase realtime subscriptions
         // (e.g. /today Activity Feed) or heavy multi-fixture aggregation
@@ -225,6 +226,8 @@ export async function runLayer3(
           waitUntil: "load",
           timeout: 45_000,
         });
+
+
         // nwrp70/71 FIX 11: fullPage screenshot (capped at 7800px height) so
         // long-scroll design-system pages don't lose below-the-fold content.
         // Pre-flight diagnostic confirmed #5B8699 stone-blue (palette/page.tsx:63)

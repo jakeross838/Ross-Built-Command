@@ -572,6 +572,27 @@ Nightwork ships 7 brand-aware primitives under `src/components/nw/` that pre-dat
 | **Mobile** | sizes are intentionally small (6-8px); status dot sits inline next to label text, never as standalone touch target. |
 | **Anti-patterns** | (a) Do not use NwStatusDot as the only status indicator — pair with text or `label` prop (WCAG 1.4.1). (b) Do not size NwStatusDot ≥10px — that's a Badge territory. (c) Do not animate StatusDot (no pulse/blink — that violates SYSTEM §13b "no bouncy" + cognitive-load anti-pattern). |
 
+### 7.8 NwPlaceholderCard (`src/components/nw/NwPlaceholderCard.tsx`) — added Stage 1.5c per iter-2 mechanical #2
+
+Reusable placeholder card for routes whose real backend ships in a future phase. Added via PROPAGATION-RULES.md §4b workflow (iter-2 mechanical #2 + design-pushback CRITICAL 2).
+
+| Field | Value |
+|---|---|
+| **Purpose** | Standardized "Coming Soon" surface across ~50 placeholder routes shipped at 1.5c (Plan 4 + Plan 5 + Plan 6). Eyebrow + headline + body + Wave badge. |
+| **Path** | `src/components/nw/NwPlaceholderCard.tsx` |
+| **Tenant-blind** | Accepts no `org_id` / `membership` / `vendor_id` props (per §8). |
+| **Required props (`NwPlaceholderCardProps`)** | `eyebrow: string` (Section · Subsection — e.g. "Financials · Bills") · `headline: string` (feature name — e.g. "Bills inbox") · `body: string` (2-3 sentence description of what ships in the target phase) · `wave: PlaceholderWave` (`'F1' \| 'F2' \| 'F3' \| 'F4' \| 'F5' \| 'F6' \| 'Wave 1.1-Lite' \| 'Wave 1.1-Full' \| 'Wave 2' \| 'Wave 3' \| 'Wave 4'`). Optional: `className?: string`. |
+| **Token bindings** | Composes `<NwCard padding="md">` (TD-25 fix per D-056). Headline `fontWeight: 500` (TD-26 fix per D-056). Composes `<NwEyebrow tone="muted">` UPPERCASE 0.18em. Body uses `text-[color:var(--text-secondary)]`. Composes `<NwBadge variant="neutral">` with text `"Coming {wave}"`. Inherits Site Office direction tokens when wrapped in `.design-system-scope` `data-direction="C"` `data-palette="B"` per D-057/D-061. |
+| **States** | resting (static placeholder; no interactive state). |
+| **A11y** | Plain `<div>` composing other primitives. Eyebrow + Badge are decorative — headline is the main content (h2 or h3 at caller's discretion). |
+| **Mobile** | Inherits NwCard density mapping (md → sm at `nw-phone` per SYSTEM §10). |
+| **Anti-patterns** | (a) Do not inline placeholder JSX in pages — always use NwPlaceholderCard for consistency across ~50 placeholder routes. (b) Do not use `Card padding="lg"` (TD-25 fix mandates md). (c) Do not use `fontWeight: 600` on headline (TD-26 fix mandates 500). (d) Do not omit Wave badge — every placeholder must declare its target phase so users know when the feature ships. |
+| **Consumers** | **Plan 4 placeholder routes (~35)** — Pipeline / Financials placeholders / Price Intel placeholders / People / Sub Portal stubs / Company / Reports. **Plan 5 per-job placeholder routes (~19)** — More ▾ items. **Plan 6 admin placeholder routes (8)** — Admin section overview + admin sub-routes. See PATTERNS.md §17.1 "Placeholder treatment pattern" for the pattern doc. |
+
+**Decision history:**
+- **iter-2 mechanical #2** (per Plan 7) — COMPONENTS.md §7 entry mandated per PROPAGATION-RULES.md §4b workflow (mirror NwButton / NwEyebrow / NwBadge §7 entry shape)
+- **iter-3 D-065** — atomic commit title updated to "4 NEW + 6 UPDATED" reflecting this entry as the 6th UPDATED doc
+
 ---
 
 ## 8. Tenant-blind primitives rule (per SPEC A12.1, hook C8)

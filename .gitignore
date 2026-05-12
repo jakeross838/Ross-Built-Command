@@ -101,6 +101,7 @@ skills-lock.json
 # (fixtures) also stay local.
 /.planning/*
 !/.planning/MASTER-PLAN.md
+!/.planning/CONTEXT.md
 !/.planning/PROJECT.md
 !/.planning/ROADMAP.md
 !/.planning/REQUIREMENTS.md
@@ -153,6 +154,11 @@ skills-lock.json
 !/.planning/verification/reports/**
 /.planning/verification/runs/
 /.planning/verification/runs/**
+# Harness auth bootstrap output (storageState — contains valid session
+# tokens for harness-fixture@nightwork.local; never commit). Regenerated
+# per CI run via scripts/harness-auth-bootstrap.ts.
+/.planning/verification/auth/
+/.planning/verification/auth/**
 
 # smoke + E2E runtime logs (ephemeral, regenerated each run)
 /e2e-state.json
