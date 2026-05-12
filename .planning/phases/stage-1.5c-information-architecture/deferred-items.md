@@ -117,7 +117,19 @@ Out-of-scope discoveries surfaced during plan execution.
 - `CLAUDE.md` "Platform admin (cross-tenant)" section — confirms Nightwork's auth model.
 
 
-### F1+-3 — Harness production-mode coverage
+### F1+-3 — Harness production-mode coverage — **RESOLVED 2026-05-12** (commit `994d6e0`)
+
+**Resolution:** Fix candidate (b) applied per nwrp96 — Layer 3 runner now SKIPs `/design-system/*` criteria when `VERCEL_ENV === "production"`. Workflow propagates `VERCEL_ENV` via env: block based on `github.ref_name` (`main` → `production`, `phase/**` → `preview`).
+
+**Validation:** Harness run #25750964949 on main HEAD `994d6e0` confirmed all 10 /design-system/* criteria SKIP cleanly with D-30 reason. **PASS=151 / FAIL=0 / SKIP=12**. Vision cost $0.1399 → $0.0754 (45% reduction — no wasted Anthropic spend on architecturally-blocked routes).
+
+**Files changed:**
+- `src/lib/verification/layer3/runner.ts` — early SKIP between cost-cap check and screenshot capture
+- `.github/workflows/verify-phase.yml` — VERCEL_ENV propagation via env: block
+
+---
+
+**Discovery context (preserved for audit trail):**
 
 **Discovered by:** Post-ship `workflow_dispatch` harness run #25749642294 on main HEAD `156c688` (2026-05-12).
 
@@ -140,3 +152,31 @@ Out-of-scope discoveries surfaced during plan execution.
 - `src/middleware.ts:44-86` — `/design-system/*` bypass scope + D-30 reasoning
 - `.planning/architecture/VERIFICATION-PIPELINE.md` — harness 3-layer doc
 - `.github/workflows/verify-phase.yml` — workflow trigger scope (`phase/**` only currently)
+
+### F1+-4 — Layer 3 criterion AC-1-12 (Platform Admin badge absence) chronically ambiguous
+
+**Discovered by:** Validation harness run #25750964949 on main HEAD `994d6e0` (2026-05-12) — same criterion was ambiguous in run #25749642294 too.
+
+**Symptom:** AC-stage-1.5c-information-architecture-1-12 returns verdict=**PASS** but at confidence **0.60** (below D-07 ambiguity threshold of 0.7). Triggers harness state-machine "Halt-for-Jake (failed-ambiguous)" commit-status verdict even though the criterion itself passes and no other criteria fail.
+
+**Vision reasoning (verbatim):**
+> "The top-right area shows only 'Feedback' and 'Sign Out' with no Platform Admin badge visible, consistent with a non-platform-admin viewer, but the fixture user's role cannot be confirmed from the screenshot alone, making this ambiguous."
+
+**Root cause:** Vision verification of an **absence** signal (no badge present) is structurally weaker than verifying presence. Vision can see what's on screen; it cannot confidently confirm what is *intentionally* absent without knowing the user's role context. The criterion phrasing asks for both "no badge visible" AND implicit role-confirmation; vision can answer only the first half.
+
+**NOT introduced by F1+-3 fix.** Same criterion was ambiguous (1) on run #25749642294 BEFORE the fix. Pre-merge phase-branch runs (e.g. #25735210768) likely got higher confidence on this criterion via vision-model non-determinism, but the underlying criterion phrasing is the problem.
+
+**Fix candidates (F1, harness extension):**
+
+| Option | Description | Tradeoff |
+|---|---|---|
+| (a) Rephrase AC-1-12 to verify role-present, not badge-absent | "Verify Platform Admin badge is visible when fixture user IS platform_admin" — flip the assertion to presence | Requires separate platform_admin-fixture harness run or context-aware criterion. More plumbing. |
+| (b) Move AC-1-12 from Layer 3 to Layer 1 (DOM assertion) | DOM-based check for `[data-testid="platform-admin-badge"]` element absent — deterministic | Loses the vision-pass-through validation but cleaner verdict. Recommended. |
+| (c) Lower confidence threshold for absence-criteria | Make D-07's 0.7 threshold criterion-specific (some allow lower) | Erodes the harness's confidence-signal value; not recommended. |
+
+**Owner:** Folds into F1 harness extension work.
+
+**Cross-references:**
+- `src/lib/verification/layer3/runner.ts` — vision pipeline
+- `.planning/verification/standards/D-07.md` (if exists) — confidence threshold rule
+- AC-stage-1.5c-information-architecture-1-12 source: `.planning/phases/stage-1.5c-information-architecture/01.5c-1-nav-today-redirects-PLAN.md`
