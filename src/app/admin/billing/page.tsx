@@ -16,6 +16,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
 import { PLAN_DISPLAY_NAMES, PLAN_MONTHLY_PRICE, isStripeConfigured, type PlanSlug } from "@/lib/stripe-config";
 import BillingActions from "@/app/settings/billing/BillingActions";
+import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
@@ -289,19 +290,20 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Per /nightwork-qa 2026-05-11 DS F-03: this was previously an inline
+// component duplicating NwBadge with off-spec 12% tint. Now thin wrapper
+// over the canonical NwBadge primitive — same status-pill semantics,
+// COMPONENTS.md tint values (6% instead of 12%).
 function StatusBadge({ status }: { status: string }) {
-  const styles = {
-    trialing: "bg-[rgba(91,134,153,0.12)] text-[color:var(--nw-stone-blue)] border-[var(--nw-stone-blue)]",
-    active: "bg-[rgba(74,138,111,0.12)] text-[color:var(--nw-success)] border-[rgba(74,138,111,0.35)]",
-    past_due: "bg-[rgba(201,138,59,0.12)] text-[color:var(--nw-warn)] border-[rgba(201,138,59,0.35)]",
-    cancelled: "bg-[rgba(176,85,78,0.12)] text-[color:var(--nw-danger)] border-[rgba(176,85,78,0.35)]",
-  } as const;
-  const cls = (styles as Record<string, string>)[status] ?? "bg-[var(--bg-subtle)] text-[color:var(--text-muted)] border-[var(--border-default)]";
-  return (
-    <span className={`px-2.5 py-1 border text-[11px] tracking-[0.08em] uppercase ${cls}`}>
-      {formatStatus(status)}
-    </span>
-  );
+  const variant: BadgeVariant = (
+    {
+      trialing: "accent",
+      active: "success",
+      past_due: "warning",
+      cancelled: "danger",
+    } as Record<string, BadgeVariant>
+  )[status] ?? "neutral";
+  return <NwBadge variant={variant}>{formatStatus(status)}</NwBadge>;
 }
 
 function Banner({
