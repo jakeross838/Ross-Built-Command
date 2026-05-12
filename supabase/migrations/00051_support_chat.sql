@@ -72,6 +72,24 @@ CREATE POLICY "support_conversations_user_update"
   ON public.support_conversations FOR UPDATE
   USING (user_id = auth.uid());
 
+-- ---------------------------------------------------------------
+-- support_messages RLS uses RLS-by-join via support_conversations
+-- INTENTIONALLY (Q10b codified rule; CLAUDE.md Architecture Rules):
+--   support_messages is a USER-scoped child entity — the parent
+--   conversation is owned by auth.uid(), not by an org-bounded
+--   workflow. The join is strict: single parent FK (conversation_id)
+--   + ON DELETE CASCADE + support_conversations has proper user_id
+--   RLS at line 57-73. Adding org_id to support_messages would be
+--   a redundant column with no query-path benefit (every meaningful
+--   support_messages query is already filtered by conversation_id,
+--   which itself is user-bounded).
+--
+-- For ORG-scoped children (e.g., invoice_allocations post-00096):
+--   the rule is the opposite — denormalize org_id from day one and
+--   use direct-filter RLS. invoice_allocations was migrated to that
+--   posture in migration 00096.
+-- ---------------------------------------------------------------
+
 -- Messages inherit via conversation ownership
 CREATE POLICY "support_messages_user_read"
   ON public.support_messages FOR SELECT

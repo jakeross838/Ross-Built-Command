@@ -538,6 +538,10 @@ export async function saveParsedInvoice(
         cost_code_id: matchedCostCode.id,
         amount_cents: totalAmountCents,
         description: parsed.description ?? null,
+        // Q10b ORG-scoped child (per migration 00096): org_id NOT NULL,
+        // direct-filter RLS. orgId sourced from caller's getCurrentMembership()
+        // — see SaveInvoiceRequest.org_id contract at top of this file.
+        org_id: orgId,
       });
     } catch (allocErr) {
       console.warn(

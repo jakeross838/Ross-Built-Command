@@ -110,6 +110,9 @@ export const GET = withApiError(async (
           cost_code_id,
           amount_cents: g.amount_cents,
           description: g.description,
+          // Q10b ORG-scoped child (migration 00096): org_id NOT NULL.
+          // Sourced from membership.org_id (server-side getCurrentMembership).
+          org_id: membership.org_id,
         })
       );
       const { data: inserted } = await supabase
@@ -144,6 +147,9 @@ export const GET = withApiError(async (
         cost_code_id: invoice.cost_code_id,
         amount_cents: invoice.total_amount,
         description: invoice.description ?? null,
+        // Q10b ORG-scoped child (migration 00096): org_id NOT NULL.
+        // Sourced from membership.org_id (server-side getCurrentMembership).
+        org_id: membership.org_id,
       })
       .select("id, invoice_id, cost_code_id, amount_cents, description, created_at")
       .single();
@@ -264,6 +270,9 @@ export const PUT = withApiError(async (
     cost_code_id: a.cost_code_id,
     amount_cents: Math.round(a.amount_cents ?? 0),
     description: a.description ?? null,
+    // Q10b ORG-scoped child (migration 00096): org_id NOT NULL.
+    // Sourced from membership.org_id (server-side getCurrentMembership).
+    org_id: membership.org_id,
   }));
   const { error: insErr } = await supabase
     .from("invoice_allocations")
