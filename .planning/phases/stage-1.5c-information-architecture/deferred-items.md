@@ -115,3 +115,28 @@ Out-of-scope discoveries surfaced during plan execution.
 **Cross-references:**
 - `src/middleware.ts` — Nightwork's own auth + role-gate enforcement.
 - `CLAUDE.md` "Platform admin (cross-tenant)" section — confirms Nightwork's auth model.
+
+
+### F1+-3 — Harness production-mode coverage
+
+**Discovered by:** Post-ship `workflow_dispatch` harness run #25749642294 on main HEAD `156c688` (2026-05-12).
+
+**Symptom:** 10 Layer 3 FAILs on `/design-system/prototypes/*` routes (Plan 2 + Plan 3 criteria) with vision rationale "404 page" at 0.95-0.99 confidence.
+
+**Root cause:** `src/middleware.ts:86` intentionally disables the verification-bypass on `/design-system/*` when `VERCEL_ENV === "production"` (per D-30: design-system is platform-presentation, sample-data only; production wall stays platform_admin-only with no env-var escape hatch). Pre-merge harness on `phase/**` preview deploys (`VERCEL_ENV=preview`) bypassed correctly; post-merge harness on production deploy (`VERCEL_ENV=production`) hits the D-30 block, fixture user gets 404'd, vision FAILs.
+
+**NOT a code regression.** `git diff 7a76f20..f6da4b3 --stat` is empty — source identical across merge.
+
+**Fix candidates (F1+, mutually exclusive):**
+
+| Option | Description | Tradeoff |
+|---|---|---|
+| (a) Make `harness-fixture` a platform_admin | Allows /design-system/* to render in production | Revisits D-30 — leaks design-system data via fixture credentials. Likely NO. |
+| (b) Skip /design-system/* Layer 3 in production | Harness detects `VERCEL_ENV=production` + skips matching criteria | Cleanest; matches D-30 intent. Recommended. |
+| (c) Restrict harness to phase branches only | Remove `workflow_dispatch` on main; accept pre-merge harness as authoritative | Loses on-main verification signal; phase branches already validate before merge anyway. Conservative. |
+
+**Owner:** Jake decision before / during F1 harness extension work.
+**Cross-references:**
+- `src/middleware.ts:44-86` — `/design-system/*` bypass scope + D-30 reasoning
+- `.planning/architecture/VERIFICATION-PIPELINE.md` — harness 3-layer doc
+- `.github/workflows/verify-phase.yml` — workflow trigger scope (`phase/**` only currently)

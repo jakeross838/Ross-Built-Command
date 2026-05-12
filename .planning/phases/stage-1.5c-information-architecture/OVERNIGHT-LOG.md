@@ -1095,3 +1095,42 @@ Captured to `.planning/phases/stage-1.5c-information-architecture/deferred-items
 **stage-1.5c-information-architecture: SHIPPED** ✓ (via PR #34 merge)
 
 Wave 1.1-Lite intake ready (deferred-items.md). F1 expansion dispatch waiting for Jake authorization.
+
+
+### Post-ship harness retrigger — RESULT: FAIL (but not a regression)
+
+**Run:** GitHub Actions #25749642294 via workflow_dispatch on main HEAD `156c688`.
+**Preview URL probed:** `nightwork-platform-1tq6dfcr1-jakeross838s-projects.vercel.app` (production deploy of `156c688`)
+**Duration:** 304s (5min 4s)
+**Vision cost:** $0.1399
+
+**Counts:** PASS=151 / FAIL=10 / SKIP=2 (vs pre-merge PASS=159 / FAIL=0 / SKIP=4 on phase/1.5-c-information-architecture preview)
+
+**All 10 FAILs are Layer 3 vision on `/design-system/prototypes/*` routes:**
+- AC-stage-1.5c-information-architecture-2-21, 2-22, 2-23, 2-27, 2-28 (Plan 2 thin-wrapper)
+- AC-stage-1.5c-information-architecture-3-37, 3-38, 3-39, 3-42, 3-43 (Plan 3 extraction-production)
+
+**Vision rationale (all 10):** "404 'This page could not be found.' error page" with 0.95-0.99 confidence.
+
+**Root cause (NOT a regression):**
+`src/middleware.ts:86` intentionally disables the `/design-system/*` verification-bypass when `VERCEL_ENV === "production"` (per architectural decision D-30: design-system is platform-presentation, sample-data only; the production wall stays platform_admin-only with no env-var escape hatch).
+
+- Pre-merge harness ran against `phase/**` Vercel **preview** deploys (`VERCEL_ENV=preview`) — bypass works, /design-system/* renders for fixture user, vision PASSES.
+- Post-merge harness ran against `main` Vercel **production** deploy (`VERCEL_ENV=production`) — bypass blocked by D-30, fixture user (NOT platform_admin) gets 404'd by middleware, vision FAILS at 0.95-0.99 confidence.
+
+**Source code unchanged across merge:** `git diff 7a76f20..f6da4b3 --stat` is empty (fast-forward-equivalent merge from the 1.5c-IA HEAD).
+
+**Verdict:** **NOT a ship regression.** The 10 FAILs reflect correct production gating per D-30 security posture. The deployed app behaves as intended; the harness running in production-mode cannot verify /design-system/* by design.
+
+**F1+ harness work captured:**
+- **F1+-3 Harness production-mode coverage:** verify-phase.yml workflow currently only triggers on `phase/**` branches. Manual `workflow_dispatch` on main is mechanically supported but semantically incomplete because the D-30 production-bypass-block makes /design-system/* Layer 3 always FAIL in production. Future fixes (mutually exclusive):
+  - (a) Make `harness-fixture` user a platform_admin so /design-system/* renders in production (revisits D-30: would the harness fixture user be a real platform_admin? Could leak design-system data via fixture credentials → likely NO).
+  - (b) Skip /design-system/* Layer 3 criteria when harness detects `VERCEL_ENV=production` (cleaner; matches the architectural intent).
+  - (c) Restrict harness to phase branches only (remove workflow_dispatch on main, accept that production "verification" relies on pre-merge harness + manual smokes).
+- Documented in `deferred-items.md` "F1+-3" entry.
+
+**Phase status (final, post-investigation):**
+- stage-1.5b-prototype-gallery: **SHIPPED** ✓
+- stage-1.5c-information-architecture: **SHIPPED** ✓
+- Pre-merge harness run #25735210768 on phase HEAD `946f957` remains the authoritative gate signal (PASS=159 / FAIL=0 / SKIP=4)
+- Post-merge harness run #25749642294 on main HEAD `156c688` flagged the harness production-mode gap (F1+-3)
