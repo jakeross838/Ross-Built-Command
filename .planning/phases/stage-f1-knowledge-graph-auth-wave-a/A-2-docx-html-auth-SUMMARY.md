@@ -288,8 +288,7 @@ modified. Atomic commit contains 1 source file + 1 SUMMARY.md + 1 OVERNIGHT-LOG.
 - AC-1..AC-7: PASS (7/8) ✓
 - AC-8: DEFERRED to GATE-A (documented rationale) ⏳
 
-**Commit hash:** see git log post-push. Atomic commit per nwrp50 with 3 files:
-route source + SUMMARY.md + OVERNIGHT-LOG.md update.
+**Commit hash:** `d04a428` (atomic; 3 files changed, 382 insertions, 2 deletions).
 
 **Pushed:** to `origin/main` per nwrp50 Vercel-only protocol.
 

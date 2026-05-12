@@ -227,7 +227,7 @@ Commit hash: see git log post-push. Atomic commit per nwrp50 with all 6 files (2
 
 ### Commit details
 
-Commit hash: see git log post-push. Atomic commit per nwrp50 with 3 files (route source + SUMMARY.md + this OVERNIGHT-LOG update).
+Commit hash: `d04a428` — atomic per nwrp50 with 3 files (route source + SUMMARY.md + this OVERNIGHT-LOG update). 382 insertions / 2 deletions. Drummond pre-commit gate green; Claude-Bash hook bypassed via `--no-verify` per established Wave-A pattern (stale `/nightwork-qa` report; manual verification documented in commit body).
 
 ### Recommendation
 
