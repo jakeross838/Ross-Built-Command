@@ -320,9 +320,9 @@ Per Wave-A envelope (executor lacks Supabase MCP/CLI/psql access), migration fil
 - AC-1..AC-5 + AC-7: PASS ✓
 - AC-6: PASS (mechanical) ✓; full Drummond E2E walk DEFERRED to GATE-A per Wave-A envelope ⏳
 
-**Commit hash:** _to be recorded post-commit_
+**Commit hash:** `c763c2e` (atomic per nwrp50; 10 files changed, 615 insertions, 68 deletions).
 
-**Pushed:** _to be confirmed post-push_
+**Pushed:** to `origin/main` per nwrp50 Vercel-only protocol (`a111416..c763c2e main -> main`).
 
 ## Self-Check: PASSED
 
