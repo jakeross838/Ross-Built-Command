@@ -2,6 +2,20 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Surface Vercel's VERCEL_ENV system env var to the client bundle as
+  // NEXT_PUBLIC_VERCEL_ENV. Vercel sets VERCEL_ENV automatically
+  // ("production" on prod deploys, "preview" on PR/branch deploys,
+  // "development" locally) but does NOT auto-prefix with NEXT_PUBLIC_;
+  // explicit passthrough is required. Used by src/lib/supabase/client.ts
+  // env-gated W.1 harness setSession bridge — without this, the gate
+  // condition `process.env.NEXT_PUBLIC_VERCEL_ENV !== "production"` is
+  // always true (undefined !== "production"), meaning the bridge runs
+  // on every deploy. Per /nightwork-qa 2026-05-11 SECURITY M-1 +
+  // nwrp90 GROUP 4. Actual risk was LOW (bridge needs valid token
+  // pair to do anything) but documentation accuracy matters.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+  },
   experimental: {
     // isomorphic-dompurify pulls in jsdom on the server side, and jsdom reads
     // its bundled default-stylesheet.css via fs.readFileSync at module-load
