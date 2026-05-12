@@ -176,3 +176,61 @@ Commit hash: see git log post-push. Atomic commit per nwrp50 with all 6 files (2
 **Proceed to Plan A-2 (docx-html auth gate fix).** A-1 is independent of A-2..A-4 by migration numbering + table; A-2 is code-only (no migration concern). Estimated A-2 duration: 0.5 day. No HALT conditions encountered in A-1.
 
 ---
+
+## 2026-05-12 — Wave-A Plan A-2 SHIP (docx-html auth gate fix)
+
+**Authorization:** nwrp113 (Wave-A autonomous execution envelope).
+
+### Deliverables
+
+- `src/app/api/invoices/[id]/docx-html/route.ts` — added `getCurrentMembership()` gate via fast-path `getMembershipFromRequest(req) ?? (await getCurrentMembership())`; added `.eq("org_id", membership.org_id)` defense-in-depth tenant filter to invoice SELECT; expanded JSDoc; HF-A2-1 load-bearing inline comment near tenant filter; renamed `_request` parameter to `request`.
+
+**Net diff:** +18 lines, 1 parameter rename, 2 SELECT-chain lines modified. Code-only — no migration.
+
+### iter-2 patches applied
+
+- **HF-A2-1:** Load-bearing 3-line inline comment immediately before `.eq("org_id", membership.org_id)` filter. Documents that swap to `tryCreateServiceRoleClient()` would make this filter the SOLE tenant boundary; do not remove without verifying RLS is still the sole boundary.
+- **HF-A2-2:** Extended INSERT/upsert grep against `src/`. Two INSERT sites found (`sample-data/route.ts:157`, `import/upload/route.ts:128`); both already pass `org_id: orgId` from server-side membership resolution. No unexpected paths. `.upsert()` returns 0 matches.
+
+### Acceptance criteria
+
+| AC | Status |
+|----|--------|
+| AC-1 docx-html endpoint identified | ✓ PASS |
+| AC-2 `getCurrentMembership()` gate; missing → 401 | ✓ PASS (grep verified line 32) |
+| AC-3 No regression in legitimate-membership case | ✓ PASS (mechanical: typecheck + build + consumer grep unchanged) |
+| AC-4 Harness Layer 1 covers (lenient interpretation per OQ-A-2-1) | ✓ PASS |
+| AC-5 `npm run build` + Drummond gate green | ✓ PASS (build exit 0; pre-commit exit 0) |
+| AC-6 Fast-path `getMembershipFromRequest` precedes fallback | ✓ PASS (grep verified) |
+| AC-7 `.eq("org_id", membership.org_id)` filter present | ✓ PASS (grep verified line 43) |
+| AC-8 Manual cURL Scenarios 1/2/3 executed | ⏳ DEFERRED to GATE-A (no dev server in autonomous executor environment) |
+
+### Verification outputs
+
+- `npx tsc --noEmit`: exit 0 (no TypeScript errors)
+- `npm run build`: exit 0 (full Next.js production build succeeded)
+- `bash .githooks/pre-commit`: exit 0 (Drummond grep gate silent on staged diff)
+
+### HALT conditions
+
+**None encountered.** All directives applied verbatim. Zero deviations from PLAN.md or ITER-2-PATCHES.md. Fix-attempt counter = 0/3.
+
+### Deferred-to-GATE-A items
+
+- AC-8 manual cURL Scenarios 1/2/3 (unauthenticated → 401, authenticated same-org → 200, authenticated cross-org → 404). Rationale: autonomous executor environment lacks `npm run dev` lifecycle; manual scenarios deferred to GATE-A halt review where Jake can stand up `localhost:3000` + Drummond seed and execute cURL scenarios as independent falsifiable evidence atop the mechanical grep + build coverage already in place.
+
+### Deferred-to-Wave-B items (from PLAN.md exclusions + iter-2)
+
+- **MED-A2-1:** Storage file path validation against `{org_id}/` prefix. Plan B-2 (or similar) will add defense-in-depth on `original_file_url` against the `{org_id}/` prefix convention enforced by `import/upload/route.ts:115`.
+- **OQ-A-2-1 (b) strict interpretation:** Layer 2 standards rule asserting `getCurrentMembership()` gate on every `/api/**` route file. Wave-B Plan B-7 (harness extensions).
+- **OQ-A-2-3:** First `.test.ts` file for `src/app/api/**` (test framework + mocking strategy + fixture-session-builder selection). Wave-B Plan B-5 or B-7.
+
+### Commit details
+
+Commit hash: see git log post-push. Atomic commit per nwrp50 with 3 files (route source + SUMMARY.md + this OVERNIGHT-LOG update).
+
+### Recommendation
+
+**Proceed to Plan A-3 (drop budgets + refactor).** A-2 is code-only with no migration; A-3 introduces migration 00095 with table drop + 4 src refactor files + CLAUDE.md update. Estimated A-3 duration: 0.5-1 day. No HALT conditions remaining from A-2; Wave-A budget tracking on plan.
+
+---

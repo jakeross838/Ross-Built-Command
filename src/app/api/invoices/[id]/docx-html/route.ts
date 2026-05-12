@@ -3,6 +3,10 @@ import mammoth from "mammoth";
 import DOMPurify from "isomorphic-dompurify";
 import { createServerClient } from "@/lib/supabase/server";
 import { ApiError, withApiError } from "@/lib/api/errors";
+import {
+  getCurrentMembership,
+  getMembershipFromRequest,
+} from "@/lib/org/session";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -11,15 +15,32 @@ export const maxDuration = 30;
 /**
  * Render a DOCX invoice to sanitized HTML so the browser can display it
  * next to the parsed fields. DOCX can't be iframe-embedded like PDFs.
+ *
+ * Auth: requires an active org membership (per CLAUDE.md Development Rule —
+ * every API route gates on `getCurrentMembership()` before DB access).
+ * Cross-tenant invoice ids resolve to 404 (existence-side-channel-safe,
+ * matching the rest of the /api/invoices/[id]/* family).
+ *
+ * Per F1 Wave-A Plan A-2 (D-035 first-day task #3): closes the gap where
+ * the endpoint previously returned rendered DOCX HTML to unauthenticated
+ * requests that knew or guessed a UUID.
  */
 export const GET = withApiError(
-  async (_request: NextRequest, context: { params: { id: string } }) => {
+  async (request: NextRequest, context: { params: { id: string } }) => {
+    const membership =
+      getMembershipFromRequest(request) ?? (await getCurrentMembership());
+    if (!membership) throw new ApiError("Not authenticated", 401);
+
     const supabase = createServerClient();
 
     const { data: invoice, error } = await supabase
       .from("invoices")
-      .select("id, original_file_url, original_file_type")
+      .select("id, org_id, original_file_url, original_file_type")
       .eq("id", context.params.id)
+      // Defense-in-depth tenant filter — REQUIRED if this route ever switches
+      // to tryCreateServiceRoleClient() (service-role bypasses RLS). Do not
+      // remove without verifying RLS is still the sole tenant boundary.
+      .eq("org_id", membership.org_id)
       .is("deleted_at", null)
       .single();
     if (error || !invoice) throw new ApiError("Invoice not found", 404);
