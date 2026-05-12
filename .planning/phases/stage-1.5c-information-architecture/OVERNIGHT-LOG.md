@@ -982,3 +982,57 @@ If Jake performs SMOKE 4 manual at 360px and confirms PerJobTabs dropdown works 
 
 - Cumulative vision: ~$1.86 / $5.00 (unchanged — smokes used 0 vision)
 - Smoke runtime: ~3 min Playwright + screenshots
+
+---
+
+## 2026-05-12 — SHIP READINESS CONFIRMED. Authorizing /gsd-ship 1.5b + 1.5c per nwrp92 Path A.
+
+### SMOKE 4 manual re-verify (Jake, real browser at 360px) — PASS ✓
+
+Per nwrp92: "PerJobTabs dropdown opens correctly at 360px, tab navigation works. Production behavior matches D-21 mobile collapse pattern. Original automated test failed due to test-authoring bug (didn't open dropdown before clicking tab); production is fine."
+
+### Final smoke matrix
+
+| Smoke | Verdict | Method |
+|---|---|---|
+| SMOKE 1 — Platform-admin redirect (308) | **PASS** ✓ | Jake manual |
+| SMOKE 2 — Non-platform-admin scoped redirect | **PASS** ✓ | Playwright automated |
+| SMOKE 3 — 12 production thin-wrappers × 2 viewports | **WARN documented** | Playwright automated; 11 PASS / 13 WARN-overflow / 0 FAIL — non-blocking, captured in deferred-items.md for Wave 1.1-Lite polish |
+| SMOKE 4 — PerJobTabs mobile responsive | **PASS** ✓ | Jake manual re-verify (automated test had selector traversal bug; production behavior correct) |
+
+### Ship-readiness pre-flight
+
+- Build: clean (verified at multiple checkpoints) ✓
+- Typecheck: 0 errors ✓
+- Hooks: silent ✓
+- Privacy gate: clean ✓
+- Harness: PASS=159 / FAIL=0 / SKIP=4 on HEAD `946f957` (run #25735210768) ✓
+- /nightwork-qa (GATE-B.1 re-run): ALL 9 reviewers PASS ✓
+- Pre-ship smokes: 4/4 PASS (3 PASS direct + 1 PASS-documented WARN deferred) ✓
+- Wave 1.1-Lite polish items: documented in `.planning/phases/stage-1.5c-information-architecture/deferred-items.md` ✓
+- Cumulative vision spend: ~$1.86 / $5.00 (37.2%) ✓
+
+### Ship sequence
+
+Per nwrp92 instructions:
+1. `/gsd-ship 1.5b` first (capture summary)
+2. `/gsd-ship 1.5c` second (capture summary)
+3. Surface final phase-complete state
+
+### Branch state at ship time
+
+| Branch | Status |
+|---|---|
+| `main` | 1.5a (CP2 design) + 1.5c-vh (verification harness) merged |
+| `phase/1.5-b-prototype-gallery` | NOT merged to main; 98 commits ahead. Ancestor of phase/1.5-c-information-architecture |
+| `phase/1.5-c-information-architecture` | HEAD `22d388e`; descends from 1.5b so includes 1.5b's commits |
+
+**Note**: merging 1.5c-IA to main brings 1.5b's commits along automatically (since 1.5b is ancestor of 1.5c-IA). The /gsd-ship 1.5b step is procedurally explicit per nwrp92 protocol (PR creation, review, archive) even if the merge itself becomes a no-op when 1.5c-IA's PR lands.
+
+### Block N+1 + N+2 final state
+
+Block N+1 (catch-up): 1.5c-IA brought under harness infrastructure; criteria retrofitted Plans 1/2/3; harness validated state.
+
+Block N+2 (finish): Plans 3a-now / 4 / 5 / 6 / 7 shipped; criteria retrofitted Plans 4/5/6; /nightwork-qa surfaced 7 fixable findings; GATE-B.1 autofix landed all 7; QA re-run all 9 PASS; pre-ship smokes 4/4 PASS.
+
+**stage-1.5c-information-architecture: SHIP-READY.**

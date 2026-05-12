@@ -37,3 +37,39 @@ Out-of-scope discoveries surfaced during plan execution.
 
 **Status:** Resolved (replaced with Slate CSS var in same Plan 6 Task 2 commit). Documented here for transparency since the fix was technically out of Plan 6's nominal scope.
 
+
+---
+
+## Wave 1.1-Lite — SMOKE 3 responsive polish (2026-05-12)
+
+**Discovered by:** Pre-ship manual smokes per nwrp90, Smoke 3 (12 production thin-wrappers × 2 viewports).
+**Date:** 2026-05-12, post-GATE-B.1 fix groups.
+
+**Findings (non-blocking — content remains accessible via horizontal scroll on all surfaces):**
+
+### iPhone (393×852) — 3 routes overflow
+
+| Route | scrollW | clientW | Cause |
+|---|---|---|---|
+| `/jobs` | 881 | 393 | Data-heavy job list table |
+| `/financials/bills` | 865 | 393 | Bills list table |
+| `/financials/pay-apps` | 649 | 393 | Pay Apps list table |
+
+**Wave 1.1-Lite fix:** Collapse tables to card view below `md` breakpoint (768px). Each table row becomes a stacked Card with key fields. Pattern: existing mobile-approval surface (PerJobTabs Plan 5) demonstrates the card-stack approach for data-heavy views on phone.
+
+### Tablet (768×1024) — 10/12 routes overflow
+
+10 section overview pages overflow at scrollW≈993 (suggests `max-w-[1200px]` container with internal content slightly wider than the viewport-shrunk 768).
+
+**Worst offender:** `/financials/bills` scrollW=1313 (data table — same as iPhone overflow but ~545px overflow at tablet width).
+
+**Wave 1.1-Lite fix candidates:**
+- Tighten `max-w-[1200px]` to `max-w-[768px]` for tablet, OR
+- Adjust internal padding/grid gap so card-grid columns shrink properly at md breakpoint, OR
+- Audit each section overview for fixed-width children that don't reflow
+
+**Scope:** ~30-60 min CATEGORY-F mechanical work; spans 10 section overview pages + 3 list views. Pairs with F1 schema work where some list views become real-data backed.
+
+**Status:** DEFERRED to Wave 1.1-Lite polish phase (per Jake nwrp92 Path A authorization). Documented as non-blocking; content remains accessible via horizontal scroll across all affected routes.
+
+**Diagnostic provenance:** `.planning/qa-runs/2026-05-12-manual-smokes.md` (gitignored; full SMOKE 3 detail).
