@@ -13,12 +13,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function IntegrationsPlaceholderPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Admin · Integrations"
-        headline="Third-party connections"
-        body="QuickBooks Online, Buildertrend, Stripe — manage credentials, sync settings, and audit logs. Stripe billing connection is configured under /admin/billing; this surface adds the broader integration registry."
-        wave="F3"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Admin · Integrations"
+          headline="Third-party connections"
+          body="QuickBooks Online, Buildertrend, Stripe — manage credentials, sync settings, and audit logs. Stripe billing connection is configured under /admin/billing; this surface adds the broader integration registry."
+          wave="F3"
+        />
+      </div>
     </div>
   );
 }

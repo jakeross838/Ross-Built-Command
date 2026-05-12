@@ -18,21 +18,23 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function SubPortalMagicLinkPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Sub Portal · Magic link"
-        headline="Email-driven magic link auth"
-        body={[
-          "Subcontractor clicks 'Respond to RFI' / 'Sign PO' / 'Submit Bill' email link → temporary session via signed token → respond.",
-          "F3 compliance contract:",
-          "(a) Token expiry: 30-day default from email send (configurable per email type).",
-          "(b) Scope binding: single job + single document; no cross-job exposure.",
-          "(c) Audit-log-on-use: every magic link follow logs entity_type='client_portal_access' / action='accessed' to activity_log (mirror migration 00074 pattern).",
-          "(d) Cookie-vs-querystring: magic links use querystring; verified via service-role-API endpoint; querystring is single-use (rotated on first follow).",
-          "(e) JWT-with-org-claim REJECTED by-construction (the org_id leakage on a stolen token is a vulnerability surface; instead, server-side resolves scope from token hash).",
-          "(f) Mirrors client_portal_access pattern (migration 00074): SHA-256 hash + service-role-API + anon-grant + audit-log.",
-        ].join(" ")}
-        wave="F3"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Sub Portal · Magic link"
+          headline="Email-driven magic link auth"
+          body={[
+            "Subcontractor clicks 'Respond to RFI' / 'Sign PO' / 'Submit Bill' email link → temporary session via signed token → respond.",
+            "F3 compliance contract:",
+            "(a) Token expiry: 30-day default from email send (configurable per email type).",
+            "(b) Scope binding: single job + single document; no cross-job exposure.",
+            "(c) Audit-log-on-use: every magic link follow logs entity_type='client_portal_access' / action='accessed' to activity_log (mirror migration 00074 pattern).",
+            "(d) Cookie-vs-querystring: magic links use querystring; verified via service-role-API endpoint; querystring is single-use (rotated on first follow).",
+            "(e) JWT-with-org-claim REJECTED by-construction (the org_id leakage on a stolen token is a vulnerability surface; instead, server-side resolves scope from token hash).",
+            "(f) Mirrors client_portal_access pattern (migration 00074): SHA-256 hash + service-role-API + anon-grant + audit-log.",
+          ].join(" ")}
+          wave="F3"
+        />
+      </div>
     </div>
   );
 }

@@ -10,12 +10,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function ChangeOrdersPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Financials · Change Orders"
-        headline="Org-wide change order list"
-        body="Org-wide change orders across every active job, with PCCO running totals, GC-fee surfacing, and draw-tagging. Job-scoped COs already live at /jobs/[id]/change-orders; F1 unifies them with cross-job rollups."
-        wave="F1"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Financials · Change Orders"
+          headline="Org-wide change order list"
+          body="Org-wide change orders across every active job, with PCCO running totals, GC-fee surfacing, and draw-tagging. Job-scoped COs already live at /jobs/[id]/change-orders; F1 unifies them with cross-job rollups."
+          wave="F1"
+        />
+      </div>
     </div>
   );
 }

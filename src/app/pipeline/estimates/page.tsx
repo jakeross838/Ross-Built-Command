@@ -6,12 +6,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function EstimatesPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Pipeline · Estimates"
-        headline="Price Intel powered estimates"
-        body="Estimates pulled from Price Intel historical cost data + vendor performance. Tracks revision history, win rate, and accuracy delta vs. final job cost for continuous learning."
-        wave="Wave 4"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Pipeline · Estimates"
+          headline="Price Intel powered estimates"
+          body="Estimates pulled from Price Intel historical cost data + vendor performance. Tracks revision history, win rate, and accuracy delta vs. final job cost for continuous learning."
+          wave="Wave 4"
+        />
+      </div>
     </div>
   );
 }

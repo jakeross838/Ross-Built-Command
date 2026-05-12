@@ -6,12 +6,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function LeadsPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Pipeline · Leads"
-        headline="CRM lead intake"
-        body="Track potential clients from first contact through estimate-ready. Source attribution, pipeline stage, last-touch tracking, conversion rate metrics."
-        wave="Wave 4"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Pipeline · Leads"
+          headline="CRM lead intake"
+          body="Track potential clients from first contact through estimate-ready. Source attribution, pipeline stage, last-touch tracking, conversion rate metrics."
+          wave="Wave 4"
+        />
+      </div>
     </div>
   );
 }

@@ -6,12 +6,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function OrgChartPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="People · Org chart"
-        headline="Reporting & approval routing"
-        body="Visual org chart driving reporting structure, approval routing, notification routing, and permission inheritance. F2 derives this from the team membership table + role hierarchy."
-        wave="F2"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="People · Org chart"
+          headline="Reporting & approval routing"
+          body="Visual org chart driving reporting structure, approval routing, notification routing, and permission inheritance. F2 derives this from the team membership table + role hierarchy."
+          wave="F2"
+        />
+      </div>
     </div>
   );
 }

@@ -13,12 +13,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function RolesPlaceholderPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Admin · Roles"
-        headline="Role library"
-        body="15 default roles will live here, customizable per org. Default library: Owner, GM, Sr PM, PM, Estimator, Accountant, Foreman, Field, Designer, Sub Foreman, Sub Bookkeeper, Owner/Homeowner, Architect/External, Inspector, Banker."
-        wave="F2"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Admin · Roles"
+          headline="Role library"
+          body="15 default roles will live here, customizable per org. Default library: Owner, GM, Sr PM, PM, Estimator, Accountant, Foreman, Field, Designer, Sub Foreman, Sub Bookkeeper, Owner/Homeowner, Architect/External, Inspector, Banker."
+          wave="F2"
+        />
+      </div>
     </div>
   );
 }

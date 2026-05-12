@@ -10,12 +10,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function ProposalsPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Pipeline · Proposals"
-        headline="E-sign proposals to clients"
-        body="Generate proposals from estimates, e-sign workflow, version history, and conversion tracking from sent → opened → signed. Owner contract draft on signature."
-        wave="Wave 4"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Pipeline · Proposals"
+          headline="E-sign proposals to clients"
+          body="Generate proposals from estimates, e-sign workflow, version history, and conversion tracking from sent → opened → signed. Owner contract draft on signature."
+          wave="Wave 4"
+        />
+      </div>
     </div>
   );
 }

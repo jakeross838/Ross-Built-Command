@@ -6,12 +6,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function InsurancePage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Company · Insurance"
-        headline="GL + WC + builders-risk policies"
-        body="General liability, workers' comp, builders-risk policies with effective dates, renewal cadence, and certificate management. Feeds sub-vendor insurance verification."
-        wave="Wave 2"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Company · Insurance"
+          headline="GL + WC + builders-risk policies"
+          body="General liability, workers' comp, builders-risk policies with effective dates, renewal cadence, and certificate management. Feeds sub-vendor insurance verification."
+          wave="Wave 2"
+        />
+      </div>
     </div>
   );
 }

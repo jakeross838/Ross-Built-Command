@@ -10,12 +10,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function CashFlowPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Company · Cash Flow"
-        headline="Cash flow forecasting"
-        body="Detailed cash-flow forecasting — payment schedule projections, overhead burn, and incoming draws. Complements the overview-level KPIs at /company/overview with forward-looking modeling."
-        wave="F4"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Company · Cash Flow"
+          headline="Cash flow forecasting"
+          body="Detailed cash-flow forecasting — payment schedule projections, overhead burn, and incoming draws. Complements the overview-level KPIs at /company/overview with forward-looking modeling."
+          wave="F4"
+        />
+      </div>
     </div>
   );
 }

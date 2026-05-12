@@ -160,7 +160,7 @@ export default async function Root() {
           <div className="mt-10 text-center">
             <Link
               href="/pricing"
-              className="text-[13px] tracking-[0.08em] uppercase text-[color:var(--text-primary)] hover:text-[color:var(--nw-stone-blue)] border-b border-cream/40 hover:border-[var(--nw-stone-blue)] pb-0.5"
+              className="text-[13px] tracking-[0.08em] uppercase text-[color:var(--text-primary)] hover:text-[color:var(--nw-stone-blue)] border-b border-[var(--border-subtle)] hover:border-[var(--nw-stone-blue)] pb-0.5"
             >
               See all plans &amp; features →
             </Link>

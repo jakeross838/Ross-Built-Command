@@ -6,12 +6,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function TeamPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="People · Team"
-        headline="Internal team & roles"
-        body="Internal team — employees with roles, comp, performance. F2 expands the existing org_members 4-role table to the full 15-role permission matrix per the role engine spec."
-        wave="F2"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="People · Team"
+          headline="Internal team & roles"
+          body="Internal team — employees with roles, comp, performance. F2 expands the existing org_members 4-role table to the full 15-role permission matrix per the role engine spec."
+          wave="F2"
+        />
+      </div>
     </div>
   );
 }

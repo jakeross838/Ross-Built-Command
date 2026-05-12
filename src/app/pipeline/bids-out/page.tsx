@@ -6,12 +6,14 @@ import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 export default function BidsOutPage() {
   return (
     <div className="px-6 py-8 max-w-[800px] mx-auto">
-      <NwPlaceholderCard
-        eyebrow="Pipeline · Bids out"
-        headline="Sub bids in flight"
-        body="Track sub-bid invitations, response rates, and pending quotes per cost code. Reminder cadence, comparison readiness, and missing-bid surfacing."
-        wave="Wave 4"
-      />
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Pipeline · Bids out"
+          headline="Sub bids in flight"
+          body="Track sub-bid invitations, response rates, and pending quotes per cost code. Reminder cadence, comparison readiness, and missing-bid surfacing."
+          wave="Wave 4"
+        />
+      </div>
     </div>
   );
 }

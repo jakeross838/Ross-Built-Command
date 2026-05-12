@@ -11,10 +11,15 @@
 // payload (org-wide aggregator). F2/Wave 1.1-Lite wires real-time data
 // surfaces; this page is correctly server-rendered today.
 //
-// Per CONTEXT D-19 / Decision A (D-057) — Plan 3 wraps each production
-// route's outer container in `.design-system-scope` to activate Site
-// Office C rules. This page renders inside AppShell which inherits root
-// chrome.
+// Note on .design-system-scope wrap: this page is NOT one of Plan 3's
+// 12 designated thin-wrappers — it was authored in Plan 1 before the
+// Plan 3 D-19 scope-wrap convention was finalized. It renders inside
+// AppShell and inherits the base Slate tokens from globals.css +
+// colors_and_type.css + design-system.css (root-imported per iter-3
+// D-23). The Plan 3 thin-wrappers (12 production routes) opt into
+// Site Office C via the per-route data-direction wrap; this page
+// runs at the base palette and is correct as-is. Wave 1.1-Lite may
+// retrofit if a visual upgrade is needed.
 //
 // Token discipline: Site Office direction inherited from root chain
 // (globals.css + colors_and_type.css + design-system.css imported at

@@ -18,7 +18,7 @@ import Badge from "@/components/nw/Badge";
 
 export type PlaceholderWave =
   | "F1" | "F2" | "F3" | "F4" | "F5" | "F6"
-  | "Wave 1.1-Lite" | "Wave 2" | "Wave 3" | "Wave 4";
+  | "Wave 1.1-Lite" | "Wave 1.1-Full" | "Wave 2" | "Wave 3" | "Wave 4";
 
 export interface NwPlaceholderCardProps {
   eyebrow: string;
