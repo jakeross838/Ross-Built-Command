@@ -911,3 +911,74 @@ These are harness-impossible (the harness fixture user can't toggle platform_adm
 Awaiting Jake authorization to proceed: **GATE-A.1 (defer criteria to Plan 7) / GATE-A.2 (retrofit criteria now, then Plan 7) / GATE-A.3 (skip retrofit, straight to Plan 7) / other.**
 
 Block N+2 remaining work after authorization: Plan 7 atomic 10-doc commit, then /nightwork-qa (GATE B halt).
+
+---
+
+## 2026-05-12 — Manual smokes 1-4 results (post-GATE-B.1 / pre-ship)
+
+Per nwrp90 + nwrp91. SMOKE 1 performed manually by Jake; SMOKES 2/3/4 via `scripts/manual-smoke-tests.ts` (Playwright headless, local).
+
+### SMOKE 1 (manual, Jake) — PASS ✓
+
+Admin login → `/admin/platform/audit` → 308 redirect to `/platform-admin/audit` → audit page renders. Confirmed by Jake in nwrp91 reply.
+
+### SMOKE 2 — PASS
+
+`harness-fixture@nightwork.local` login → `/platform-admin/audit` → final URL `/today`. Looks-like-dashboard: TRUE. Looks-like-platform-admin-audit: FALSE. No leaked content. Middleware regex Option A LOCKED works as designed.
+
+### SMOKE 3 — WARN (11 PASS, 13 WARN-overflow, 0 FAIL across 24 checks)
+
+Tested 12 production routes at iphone14pro (393×852) + tablet (768×1024).
+
+**iPhone (393×852)**: 9/12 PASS, 3/12 WARN-overflow:
+- `/jobs` (scrollW=881)
+- `/financials/bills` (scrollW=865)
+- `/financials/pay-apps` (scrollW=649)
+
+These three are data-heavy list views (jobs list, bills list, pay-apps list). Overflow is expected for tabular data on phone; content still accessible via horizontal scroll.
+
+**Tablet (768×1024)**: 2/12 PASS, 10/12 WARN-overflow:
+- Most section overview pages render at scrollW=993 (suggests `max-w-[1200px]` container with content slightly wider than 993)
+- `/financials/bills` worst: scrollW=1313 (data table)
+
+Findings (action options):
+- **Document as Wave 1.1-Lite polish**: overflow on data tables is intentional + content remains accessible via scroll. Section overview overflow at tablet is a fixed-container issue that should be addressed in the polish pass.
+- **Fix now (CATEGORY-F)**: ~30 min to tighten container max-widths + ensure tables collapse below md breakpoint.
+
+### SMOKE 4 — FAIL (likely test-authoring issue, not production bug)
+
+Tested PerJobTabs at smallphone (360×800) + iphonePlus (414×896) on `/jobs/j-caldwell-1`.
+
+Result: 0/3 tab clicks navigated at both viewports.
+
+Diagnostic from probe details:
+- `dropdownButtons` captured: `["More", "Overview"]` — PerJobTabs IS rendering (mobile collapse-to-dropdown per D-21 working)
+- `documentScrollW === documentClientW` — no horizontal overflow
+- `navCount: 0` — no `<nav>` element on mobile (expected: collapsed to dropdown button)
+
+The test script tried to click `<a:has-text("Schedule")>` directly, expecting them at top level. But on mobile the tabs are INSIDE the collapsed dropdown. The script's attempted dropdown trigger `button:has-text("Overview")` matched the current-tab-label button (not the dropdown chevron). The test never opened the dropdown to access nested tabs.
+
+**Conclusion**: SMOKE 4 FAIL is a test-authoring issue, not a PerJobTabs bug. The component IS rendering correctly + collapsing to dropdown per spec. Real-user click on the dropdown trigger would access Schedule/Budget/Documents.
+
+Recommended re-test (one of):
+- **A** (cheapest): Jake manually opens the dropdown in his real browser at 360px, confirms tabs are clickable. Same approach as SMOKE 1.
+- **B**: Re-author the test to find dropdown trigger by `[aria-haspopup="menu"]` selector + click, then look for tab links inside the now-open menu. ~10 min fix.
+
+### Overall verdict per nwrp90 outcome matrix
+
+Per nwrp90 outcome categorization:
+- SMOKE 1: PASS ✓
+- SMOKE 2: PASS ✓
+- SMOKE 3: WARN (overflow on some pages — non-blocking, content accessible)
+- SMOKE 4: FAIL (test-authoring issue — production behavior likely correct, needs manual re-confirm OR test re-author)
+
+Most charitable read: **Outcome B (minor FAILs, fix-or-document decision)**:
+- SMOKE 3 overflow: document as Wave 1.1-Lite polish OR fix CATEGORY-F now
+- SMOKE 4: Jake manual re-confirm (1 min) OR test re-author (10 min)
+
+If Jake performs SMOKE 4 manual at 360px and confirms PerJobTabs dropdown works → **outcome A: authorize `/gsd-ship` 1.5b + 1.5c**. The overflow findings in SMOKE 3 are documentable; the SMOKE 4 result is test-author noise.
+
+### Cost ceiling
+
+- Cumulative vision: ~$1.86 / $5.00 (unchanged — smokes used 0 vision)
+- Smoke runtime: ~3 min Playwright + screenshots
