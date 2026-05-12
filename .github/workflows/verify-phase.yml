@@ -76,6 +76,15 @@ jobs:
       # x-nightwork-verification-bypass header + VERCEL_ENV != production.
       # If unset, harness behaves as before (fail-closed; no bypass).
       VERIFICATION_BYPASS_SECRET: ${{ secrets.VERIFICATION_BYPASS_SECRET }}
+      # F1+-3 (per nwrp96): propagate target-deploy env to runner.ts so
+      # Layer 3 can correctly skip /design-system/* criteria on production
+      # deploys. The Vercel runtime sets VERCEL_ENV server-side per
+      # deployment; the harness runs in the GHA runner (no Vercel runtime)
+      # and probes a deployed URL, so we set the matching signal here.
+      # main → production (D-30 production-bypass blocked, /design-system/*
+      # Layer 3 SKIPs cleanly). phase/** → preview (bypass works, /design-
+      # system/* renders for fixture user, Layer 3 verifies).
+      VERCEL_ENV: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
 
     steps:
       - name: Checkout

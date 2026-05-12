@@ -178,6 +178,33 @@ export async function runLayer3(
       // "/" (preview URL root).
       const pathMatch = criterion.text.match(/^Page\s+(\S+):/);
       const route = pathMatch ? pathMatch[1] : "/";
+
+      // F1+-3 (per nwrp96): /design-system/* verification-bypass is
+      // intentionally blocked when VERCEL_ENV === "production" per D-30
+      // (design-system is platform-presentation, sample-data only; the
+      // production wall stays platform_admin-only). Pre-merge harness runs
+      // on phase/** preview deploys bypass cleanly; harness runs targeting
+      // production deploys (e.g. workflow_dispatch on main) hit the D-30
+      // block and the fixture user gets 404'd. SKIP rather than FAIL —
+      // the gate is correct behavior, not a regression. Workflow propagates
+      // VERCEL_ENV via .github/workflows/verify-phase.yml env: block.
+      if (
+        process.env.VERCEL_ENV === "production" &&
+        (route === "/design-system" || route.startsWith("/design-system/"))
+      ) {
+        results.push({
+          criterion_id: criterion.id,
+          layer: 3,
+          verdict: "SKIP",
+          error:
+            "D-30: /design-system/* production-bypass intentionally blocked (VERCEL_ENV=production); use phase/** preview deploys for /design-system/* Layer 3 verification",
+          duration_ms: Date.now() - start,
+          idempotency_key: idempotencyKey.composite,
+          vision_cost_usd: 0,
+        });
+        continue;
+      }
+
       const pageUrl = `${ctx.preview_url.replace(/\/$/, "")}${route.startsWith("/") ? route : `/${route}`}`;
       const screenshotPath = path.join(screenshotsDir, `${cacheKey}.png`);
 
