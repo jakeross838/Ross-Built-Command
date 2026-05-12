@@ -4,7 +4,7 @@ import { ApiError, withApiError } from "@/lib/api/errors";
 import { getCurrentMembership } from "@/lib/org/session";
 import { checkPlanLimit, planDisplayName } from "@/lib/plan-limits";
 import { recalcDraftDrawsForJob } from "@/lib/draw-calc";
-import { logActivity } from "@/lib/activity-log";
+import { logActivity, logStatusChange } from "@/lib/activity-log";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -165,9 +165,11 @@ export const PATCH = withApiError(async (request: NextRequest) => {
 
   // Read current value so we can detect an actual retainage change and
   // cascade it to draft draws. Also used for activity-log deltas.
+  // Q12 uniform-rule: also fetch status + status_history so we can append
+  // a transition entry when body.status changes.
   const { data: existing } = await supabase
     .from("jobs")
-    .select("retainage_percent, org_id")
+    .select("retainage_percent, org_id, status, status_history")
     .eq("id", body.id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -175,6 +177,7 @@ export const PATCH = withApiError(async (request: NextRequest) => {
   const previousRetainage = Number(
     (existing as { retainage_percent?: number }).retainage_percent ?? 0
   );
+  const previousStatus = (existing as { status: string }).status;
 
   const patch: Record<string, unknown> = {};
   if (body.name !== undefined) patch.name = body.name;
@@ -212,6 +215,30 @@ export const PATCH = withApiError(async (request: NextRequest) => {
   if (body.pm_id !== undefined) patch.pm_id = body.pm_id;
   if (body.contract_date !== undefined) patch.contract_date = body.contract_date;
   if (body.status !== undefined) patch.status = body.status;
+
+  // Q12 uniform-rule (status_history append on every transition). The append
+  // happens INSIDE the patch object so the UPDATE writes both status and
+  // status_history atomically. user.id is guaranteed non-null here (auth gate
+  // at line 156); no `?? null` fallback needed (jobs PATCH only — lien-releases
+  // routes use `actorId ?? null` per iter-2 HF-A1-1 because their actor fetch
+  // can return null in service-role / RPC fan-out cases).
+  let statusChanged = false;
+  if (typeof body.status === "string" && body.status !== previousStatus) {
+    statusChanged = true;
+    const existingHistory = Array.isArray(
+      (existing as { status_history?: unknown }).status_history
+    )
+      ? ((existing as { status_history: unknown[] }).status_history)
+      : [];
+    const entry = {
+      who: user.id,
+      when: new Date().toISOString(),
+      old_status: previousStatus,
+      new_status: body.status,
+      note: null,
+    };
+    patch.status_history = [...existingHistory, entry];
+  }
   if (body.starting_application_number !== undefined) {
     const n = Number(body.starting_application_number);
     if (Number.isNaN(n) || n < 1) {
@@ -233,6 +260,29 @@ export const PATCH = withApiError(async (request: NextRequest) => {
     .is("deleted_at", null);
 
   if (error) throw new ApiError(error.message, 500);
+
+  // Q12 uniform-rule (cross-entity activity_log row). NEW coverage — this route
+  // previously logged only retainage/baseline changes. entity_type='job' is
+  // already in the ActivityEntityType union (src/lib/activity-log.ts:27 + 37);
+  // action='status_changed' is in ActivityAction (line 36). UI label mapping
+  // exists in src/lib/audit/action-labels.ts (entity_type='job' -> "Job",
+  // action='status_changed' -> "status changed").
+  //
+  // iter-2 HF-A1-3 (scope-exclusion): this plan does NOT migrate audit-log
+  // strategy. entity_type stays TEXT (not Postgres ENUM); Strategy 1-prime
+  // preserved. entity_type='job' is consistent with D-051 Bills/Pay-Apps rename
+  // (jobs is universal parent, not subject to entity rename). Wave-B Plan B-4
+  // handles any future ENUM migration; rows written here remain readable post-B-4.
+  if (statusChanged) {
+    await logStatusChange({
+      org_id: (existing as { org_id: string }).org_id,
+      user_id: user.id,
+      entity_type: "job",
+      entity_id: body.id,
+      from: previousStatus,
+      to: body.status as string,
+    });
+  }
 
   // Cascade: when retainage OR any baseline-history field changes,
   // recompute draft draws so Line 2/5a-c/6/7/8/9 and Application # stay

@@ -35,9 +35,16 @@ export async function PATCH(
     const supabase = ctx.client;
     const body = (await request.json()) as Record<string, unknown>;
 
+    // Fetch acting user for status_history.who (Q12 uniform-rule). iter-2 HF-A1-1:
+    // use null fallback (not "user" literal) so downstream audit-timeline UIs can
+    // distinguish "system/service-role write" from a real user id. Matches
+    // logActivity convention in src/lib/activity-log.ts.
+    const { data: { user: actor } } = await supabase.auth.getUser();
+    const actorId = actor?.id ?? null;
+
     const { data: existing } = await supabase
       .from("lien_releases")
-      .select("id, status, org_id")
+      .select("id, status, status_history, org_id")
       .eq("id", params.id)
       .eq("org_id", membership.org_id)
       .single();
@@ -70,6 +77,29 @@ export async function PATCH(
     }
     if (body.status === "waived" && existing.status !== "waived") {
       updates.waived_at = new Date().toISOString();
+    }
+
+    // Q12 uniform-rule (status_history append on every transition). The append
+    // happens INSIDE the `updates` object so updateWithLock writes both status
+    // and status_history atomically (single UPDATE statement).
+    // iter-2 MED-A1-1: cap body.note at 500 chars to bound PII / abuse surface.
+    if (
+      typeof body.status === "string" &&
+      body.status !== existing.status
+    ) {
+      const existingHistory = Array.isArray(existing.status_history)
+        ? existing.status_history
+        : [];
+      const rawNote = typeof body.note === "string" ? body.note : null;
+      const note = rawNote === null ? null : rawNote.slice(0, 500);
+      const entry = {
+        who: actorId,
+        when: new Date().toISOString(),
+        old_status: existing.status,
+        new_status: body.status,
+        note,
+      };
+      updates.status_history = [...existingHistory, entry];
     }
 
     const expectedUpdatedAt = (body.expected_updated_at as string | undefined) || null;
