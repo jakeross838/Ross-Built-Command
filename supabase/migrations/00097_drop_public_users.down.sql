@@ -1,9 +1,20 @@
 -- ============================================================
--- WARNING: SCHEMA-ONLY RESTORE.
--- This .down.sql restores the public.users TABLE STRUCTURE only.
--- Legacy data (9 internal-team rows from 00004 + 00007) is NOT
--- reseeded. Data lives in auth.users + profiles (unaffected by drop).
--- For data restore: hand-execute 00004:17-26 + 00007:88 seed SQL.
+-- WARNING: SCHEMA + DATA-FROM-PROFILES RESTORE.
+-- This .down.sql restores the public.users TABLE STRUCTURE AND
+-- reseeds rows from `public.profiles` (which is unaffected by the
+-- forward migration). The reseed is SELF-HEALING — rollback executes
+-- cleanly without manual intervention.
+--
+-- Reseed semantics: every profiles row → matching public.users row
+-- (same id; same full_name; same email; same role; same org_id;
+-- same created_at; same updated_at). profiles.id is 1:1 with
+-- auth.users.id per 00007:5 design.
+--
+-- Reseed handles the rollback FK validation problem (iter-2
+-- ai-logic-tester MEDIUM; nwrp118 Option A): without reseed, the
+-- ADD CONSTRAINT step on invoices.assigned_pm_id would fail FK
+-- validation against populated invoice rows pointing at PM UUIDs
+-- that wouldn't exist in an empty restored public.users.
 -- ============================================================
 --
 -- Reverse migration 00097: Restore public.users table.
@@ -102,7 +113,36 @@ DROP POLICY IF EXISTS "users_platform_admin_read" ON public.users;
 CREATE POLICY "users_platform_admin_read" ON public.users
   FOR SELECT USING (app_private.is_platform_admin());
 
--- 4. Revert invoices.assigned_pm_id FK back to users(id).
+-- 4. Reseed public.users from profiles BEFORE FK revert (iter-2 ai-logic-tester
+--    MEDIUM resolution per nwrp118 Option A).
+--
+--    Why: profiles.id === auth.users.id (per 00007:5) === public.users.id
+--    (per 00008 seed where ids were aligned 1:1). Therefore reseeding from
+--    profiles restores the exact UUID set that public.users held pre-drop
+--    (plus any profiles rows that accreted post-Wave-C; these are valid
+--    identities and harmless to include).
+--
+--    Why BEFORE the FK reverts: PostgreSQL's ADD CONSTRAINT validates
+--    existing rows by default. invoices.assigned_pm_id has NOT NULL rows
+--    pointing at PM UUIDs; if public.users is empty, the FK addition fails
+--    with violation mid-transaction. Reseeding first ensures all
+--    assigned_pm_id values resolve.
+--
+--    Idempotent via ON CONFLICT (id) DO NOTHING — re-running the .down on
+--    an already-rolled-back env is a no-op.
+--
+--    Column mapping: profiles columns (id, full_name, email, role, org_id,
+--    created_at, updated_at) → users same columns. profiles.role CHECK
+--    (per 00039 widening) is {admin, pm, accounting, owner} — matches the
+--    users.role CHECK above. No transformation needed.
+INSERT INTO public.users (id, full_name, email, role, org_id, created_at, updated_at)
+SELECT p.id, p.full_name, p.email, p.role, p.org_id, p.created_at, p.updated_at
+  FROM public.profiles p
+ON CONFLICT (id) DO NOTHING;
+
+-- 5. Revert invoices.assigned_pm_id FK back to users(id).
+--    Safe to ADD CONSTRAINT now — Step 4 ensured every assigned_pm_id
+--    value resolves in the freshly-reseeded public.users.
 ALTER TABLE public.invoices
   DROP CONSTRAINT IF EXISTS invoices_assigned_pm_id_fkey;
 
@@ -110,7 +150,8 @@ ALTER TABLE public.invoices
   ADD CONSTRAINT invoices_assigned_pm_id_fkey
   FOREIGN KEY (assigned_pm_id) REFERENCES public.users(id);
 
--- 5. Revert org_workflow_settings.import_default_pm_id FK back to public.users(id).
+-- 6. Revert org_workflow_settings.import_default_pm_id FK back to public.users(id).
+--    Same safety: Step 4 reseed covers every import_default_pm_id value.
 ALTER TABLE public.org_workflow_settings
   DROP CONSTRAINT IF EXISTS org_workflow_settings_import_default_pm_id_fkey;
 
@@ -118,9 +159,12 @@ ALTER TABLE public.org_workflow_settings
   ADD CONSTRAINT org_workflow_settings_import_default_pm_id_fkey
   FOREIGN KEY (import_default_pm_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
--- Note: 9-row legacy data NOT reseeded. If a hard rollback to pre-Wave-C
--- behavior is required, re-run the seed SQL from 00004:17-26 + 00007:88 by
--- hand. The canonical identity data lives in profiles + auth.users (which
--- the up-migration did not touch).
+-- Note: post-rollback rowcount on public.users will match profiles rowcount
+-- (currently 12 rows: original 9 internal-team + 3 accretions). The original
+-- 9-row legacy seed semantically equals the first 9 rows by created_at; the
+-- 3 accretions (Andrew Ross + harness-fixture user + 1 other) are valid
+-- identities that were added to profiles after the 00007 base seed.
+-- Canonical identity data continues to live in auth.users + profiles
+-- (unchanged by either direction of this migration).
 
 COMMIT;
