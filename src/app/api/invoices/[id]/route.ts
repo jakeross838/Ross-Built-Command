@@ -105,12 +105,15 @@ export const GET = withApiError(async (
     invoice.original_file_url
       ? supabase.storage.from("invoice-files").createSignedUrl(invoice.original_file_url, 3600)
       : Promise.resolve({ data: null as { signedUrl: string } | null }),
+    // PM list sourced from org_members + profiles (Plan C-1 — legacy
+    // users-table retirement; see .planning/audits/2026-05-12-migration-inventory.md
+    // GAP item 20).
     supabase
-      .from("users")
-      .select("id, full_name")
-      .in("role", ["pm", "admin"])
-      .is("deleted_at", null)
-      .order("full_name"),
+      .from("org_members")
+      .select("user_id, profiles:user_id (id, full_name)")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+      .in("role", ["pm", "admin"]),
   ]);
 
   const signedUrl = (urlRes as { data: { signedUrl?: string } | null }).data?.signedUrl ?? null;
@@ -149,7 +152,15 @@ export const GET = withApiError(async (
   return NextResponse.json({
     ...invoice,
     signed_file_url: signedUrl,
-    pm_users: pmUsersRes.data ?? [],
+    pm_users: ((pmUsersRes.data ?? []) as Array<{ user_id: string; profiles: { id: string; full_name: string } | { id: string; full_name: string }[] | null }>)
+      .map((m) => {
+        const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+        return profile && profile.id && profile.full_name
+          ? { id: profile.id, full_name: profile.full_name }
+          : null;
+      })
+      .filter((p): p is { id: string; full_name: string } => p !== null)
+      .sort((a, b) => a.full_name.localeCompare(b.full_name)),
     invoice_line_items: lineItemsRes.data ?? [],
     duplicate_of: duplicateOf,
   });

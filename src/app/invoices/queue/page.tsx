@@ -169,11 +169,12 @@ export default function QueuePage() {
  } = await supabase.auth.getUser();
 
  let role: "admin" | "pm" | "accounting" | null = null;
+ let orgId: string | null = null;
  if (user) {
  setCurrentUserId(user.id);
  const { data: membership } = await supabase
  .from("org_members")
- .select("role")
+ .select("role, org_id")
  .eq("user_id", user.id)
  .eq("is_active", true)
  .order("created_at", { ascending: true })
@@ -181,6 +182,13 @@ export default function QueuePage() {
  .maybeSingle();
  role = (membership?.role as typeof role) ?? null;
  setCurrentRole(role);
+ orgId = (membership?.org_id as string | undefined) ?? null;
+ if (!orgId) {
+ console.error("[invoices/queue] Membership has no org_id; PM dropdown will be empty", {
+ user_id: user.id,
+ membership,
+ });
+ }
 
  // For PMs, pre-load the set of jobs they own so we can include
  // any invoice on those jobs (not just ones explicitly assigned).
@@ -203,12 +211,17 @@ export default function QueuePage() {
  .in("status", ["pm_review", "ai_processed", "pm_held", "pm_denied", "info_requested"])
  .is("deleted_at", null)
  .order("received_date", { ascending: true }),
- supabase
- .from("users")
- .select("id, full_name")
+ // PM dropdown sourced from org_members + profiles (Plan C-1 — legacy
+ // users-table retirement; see .planning/audits/2026-05-12-migration-inventory.md
+ // GAP item 20).
+ orgId
+ ? supabase
+ .from("org_members")
+ .select("user_id, profiles:user_id (id, full_name)")
+ .eq("org_id", orgId)
+ .eq("is_active", true)
  .in("role", ["pm", "admin"])
- .is("deleted_at", null)
- .order("full_name"),
+ : Promise.resolve({ data: null, error: null }),
  fetch("/api/workflow-settings").then((r) => (r.ok ? r.json() : null)).catch(() => null),
  ]);
 
@@ -236,7 +249,16 @@ export default function QueuePage() {
  }
  }
  if (!pmResult.error && pmResult.data) {
- setPmUsers(pmResult.data as PmUser[]);
+ const pms = (pmResult.data as Array<{ user_id: string; profiles: { id: string; full_name: string } | { id: string; full_name: string }[] | null }>)
+ .map((m) => {
+ const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+ return profile && profile.id && profile.full_name
+ ? { id: profile.id, full_name: profile.full_name }
+ : null;
+ })
+ .filter((p): p is PmUser => p !== null)
+ .sort((a, b) => a.full_name.localeCompare(b.full_name));
+ setPmUsers(pms);
  }
  if (settingsResult?.settings) {
  setWorkflowSettings({

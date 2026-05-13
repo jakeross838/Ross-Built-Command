@@ -69,8 +69,15 @@ export const GET = withApiError(async (
   ] = await Promise.all([
     timed("job-overview", "jobs.by_id", false,
       supabase.from("jobs").select("*").eq("id", jobId).eq("org_id", orgId).is("deleted_at", null).maybeSingle()),
-    timed("job-overview", "users.pm_admin", false,
-      supabase.from("users").select("id, full_name").in("role", ["pm", "admin"]).is("deleted_at", null).order("full_name")),
+    // PM list sourced from org_members + profiles (Plan C-1 — legacy
+    // users-table retirement; see .planning/audits/2026-05-12-migration-inventory.md
+    // GAP item 20).
+    timed("job-overview", "org_members.pm_admin", false,
+      supabase.from("org_members")
+        .select("user_id, profiles:user_id (id, full_name)")
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .in("role", ["pm", "admin"])),
     timed("job-overview", "budget_lines.by_job", false,
       supabase.from("budget_lines").select("id, revised_estimate, committed, invoiced")
         .eq("job_id", jobId).eq("org_id", orgId).is("deleted_at", null)),
@@ -194,7 +201,15 @@ export const GET = withApiError(async (
   const resp = NextResponse.json({
     membership_role: membership.role,
     job,
-    pms: usersRes.data ?? [],
+    pms: ((usersRes.data ?? []) as Array<{ user_id: string; profiles: { id: string; full_name: string } | { id: string; full_name: string }[] | null }>)
+      .map((m) => {
+        const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+        return profile && profile.id && profile.full_name
+          ? { id: profile.id, full_name: profile.full_name }
+          : null;
+      })
+      .filter((p): p is { id: string; full_name: string } => p !== null)
+      .sort((a, b) => a.full_name.localeCompare(b.full_name)),
     financial_bar: {
       original_contract: original,
       approved_cos: approvedCos,

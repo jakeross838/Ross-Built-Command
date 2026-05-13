@@ -51,7 +51,7 @@ export default function NewJobPage() {
       }
       const { data: membership } = await supabase
         .from("org_members")
-        .select("role")
+        .select("role, org_id")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .order("created_at", { ascending: true })
@@ -63,14 +63,34 @@ export default function NewJobPage() {
       }
       setAuthorized(true);
 
-      // Load PMs (and admins — both can manage jobs)
-      const { data: users } = await supabase
-        .from("users")
-        .select("id, full_name")
-        .in("role", ["pm", "admin"])
-        .is("deleted_at", null)
-        .order("full_name");
-      if (users) setPms(users as PmUser[]);
+      // Load PMs (and admins — both can manage jobs) via org_members + profiles.
+      // (Plan C-1 — legacy users-table retirement; reads from canonical identity
+      // path per .planning/audits/2026-05-12-migration-inventory.md GAP item 20.)
+      const orgId = membership.org_id ?? null;
+      if (!orgId) {
+        console.error("[jobs/new] Membership has no org_id; PM dropdown will be empty", {
+          user_id: user.id,
+          membership,
+        });
+        setPms([]);
+        return;
+      }
+      const { data: members } = await supabase
+        .from("org_members")
+        .select("user_id, profiles:user_id (id, full_name)")
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .in("role", ["pm", "admin"]);
+      const pms = (members ?? [])
+        .map((m) => {
+          const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+          return profile && profile.id && profile.full_name
+            ? { id: profile.id as string, full_name: profile.full_name as string }
+            : null;
+        })
+        .filter((p): p is PmUser => p !== null)
+        .sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setPms(pms);
     }
     load();
   }, [router]);

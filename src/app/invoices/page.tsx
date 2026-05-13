@@ -143,6 +143,32 @@ export default function AllInvoicesPage() {
 
  useEffect(() => {
  async function fetchData() {
+ // Auth pre-flight + membership.org_id fetch (Plan C-1 CR-C1-1; Option A
+ // promoted from Option B per iter-2 multi-tenant-architect BLOCKING +
+ // 4-of-5 reviewer consensus. Explicit org_id filter on PM query —
+ // tenant safety by construction per D-30 / CLAUDE.md
+ // "Filter every query by membership.org_id".)
+ const {
+ data: { user },
+ } = await supabase.auth.getUser();
+ let orgId: string | null = null;
+ if (user) {
+ const { data: membership } = await supabase
+ .from("org_members")
+ .select("role, org_id")
+ .eq("user_id", user.id)
+ .eq("is_active", true)
+ .order("created_at", { ascending: true })
+ .limit(1)
+ .maybeSingle();
+ orgId = (membership?.org_id as string | undefined) ?? null;
+ if (!orgId) {
+ console.error("[invoices] Membership has no org_id; PM dropdown will be empty", {
+ user_id: user.id,
+ membership,
+ });
+ }
+ }
  // Try with partial-approval columns first (migration 00015). Fall back if
  // the columns don't exist yet so the page still renders.
  const INVOICES_FULL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, parent_invoice_id, partial_approval_note, payment_status, jobs:job_id (name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
@@ -167,12 +193,19 @@ export default function AllInvoicesPage() {
  }
  return r;
  }),
- supabase
- .from("users")
- .select("id, full_name")
+ // PM dropdown sourced from org_members + profiles (Plan C-1 — legacy
+ // users-table retirement; see .planning/audits/2026-05-12-migration-inventory.md
+ // GAP item 20). Option A: explicit org_id filter — tenant safety by
+ // construction per D-30 (iter-2 CR-C1-1 promotion from Option B;
+ // 4-of-5 reviewer consensus).
+ orgId
+ ? supabase
+ .from("org_members")
+ .select("user_id, profiles:user_id (id, full_name)")
+ .eq("org_id", orgId)
+ .eq("is_active", true)
  .in("role", ["pm", "admin"])
- .is("deleted_at", null)
- .order("full_name"),
+ : Promise.resolve({ data: null, error: null }),
  ]);
 
  // Build invoice_id → list of unique cost code strings — only for visible invoices
@@ -203,7 +236,18 @@ export default function AllInvoicesPage() {
  }));
  setInvoices(enriched);
  }
- if (!pmResult.error && pmResult.data) setPmUsers(pmResult.data as PmUser[]);
+ if (!pmResult.error && pmResult.data) {
+ const pms = (pmResult.data as Array<{ user_id: string; profiles: { id: string; full_name: string } | { id: string; full_name: string }[] | null }>)
+ .map((m) => {
+ const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+ return profile && profile.id && profile.full_name
+ ? { id: profile.id, full_name: profile.full_name }
+ : null;
+ })
+ .filter((p): p is PmUser => p !== null)
+ .sort((a, b) => a.full_name.localeCompare(b.full_name));
+ setPmUsers(pms);
+ }
  setLoading(false);
  }
  fetchData();
