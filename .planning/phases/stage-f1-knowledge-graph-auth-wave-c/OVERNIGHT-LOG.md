@@ -96,7 +96,11 @@ Captured in ITER-2-PATCHES.md + reaffirmed in SUMMARY.md:
 
 Per nwrp50 atomic-commit + new CLAUDE.md "git add -A && git commit && git push" Dev Rule. Single PR (per plan-author Note #2: SQL migration + 5 src refactors atomic so typecheck passes).
 
-Commit SHA + push timestamp to be appended below post-commit.
+**Commit:** `f509255` (2026-05-13)
+**Push:** `a37a5d4..f509255  main -> main` (origin/main, 2026-05-13)
+**Files changed:** 13 (5 src refactors + 2 migration files + 6 phase docs)
+**Insertions:** +2939
+**Deletions:** -31
 
 ### Next steps
 
