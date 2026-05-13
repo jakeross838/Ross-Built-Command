@@ -102,7 +102,7 @@ if [[ "$FILE_NORM" =~ supabase/migrations/.*\.sql$ ]]; then
 
   # DROP TABLE — block by default, allow only with explicit comment
   DROP_HITS=$(grep -niE "^[^-]*\bDROP TABLE\b" "$FILE" | head -3 || true)
-  if [ -n "$DROP_HITS" ] && ! grep -iq "-- nightwork: drop-justified" "$FILE"; then
+  if [ -n "$DROP_HITS" ] && ! grep -iq -- "-- nightwork: drop-justified" "$FILE"; then
     echo "[migration-safety] DROP TABLE without justification. Add '-- nightwork: drop-justified — <reason>' comment if intentional." >> "$ISSUES_FILE"
     echo "$DROP_HITS" >> "$ISSUES_FILE"
     echo "" >> "$ISSUES_FILE"

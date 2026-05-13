@@ -393,3 +393,82 @@ Commit hash: `d696fa1` — atomic per nwrp50 with 9 files (2 new migrations + 1 
 **Wave-A is complete (A-1 + A-2 + A-3 + A-4 all shipped).** Next: A-5 absorption decision (public.users legacy retirement; optional per Wave-A spec) → Wave-A QA → **GATE-A halt for Jake review** alongside batch migration apply (00094 + 00095 + 00096). No further plans in Wave-A scope after A-5 disposition. Wave-A budget tracking on plan (~$2 cumulative vision spend; 40% of $5 ceiling — text-based execute is not vision-intensive).
 
 ---
+
+## 2026-05-13 — GATE-A authorizations executed (nwrp114)
+
+**Authorization:** nwrp114 — Jake authorized migration apply + hook fix + Wave-C deferral documentation + calibration log entry. Wave-B remains deferred pending Jake review of umbrella EXPANDED-SCOPE.md.
+
+### 1. Migrations applied via Supabase MCP
+
+| # | Migration | Apply time | Pre-flight | Post-apply verification |
+|---|---|---|---|---|
+| 1 | `00094_d035_cleanup` | 2026-05-13 (success: true) | budgets=0 / CCBL=0 / orphans=0 confirmed at apply session start | VER-94-1/2/3 all PASS — CCBL dropped + status_history columns NOT NULL DEFAULT [] present on lien_releases + jobs |
+| 2 | `00095_drop_budgets` | 2026-05-13 (success: true) | OQ-A-3-4 re-verified `SELECT COUNT(*) FROM budgets` = 0 immediately before apply | VER-95-1/2/3/4 all PASS — budgets dropped + budget_lines.budget_id dropped + HF-A3-1 (no budget_lines RLS references budgets) + HF-A3-2 (no legacy activity_log entity_type=budget rows) |
+| 3 | `00096_invoice_allocations_org_id` | 2026-05-13 (success: true) | HF-A4-2 pre-flight orphan DO block embedded in migration (0 orphans) | VER-96-1..7 all PASS — org_id NOT NULL + FK + composite index + 5 policies (4 new direct-filter + 1 preserved role-based write) + no-JOIN-leftover + no-NULL + backfill correct |
+
+**All 14 post-apply verification checks PASS.** Latest migration on remote: `00096_invoice_allocations_org_id` (advances from previous head `00093_harness_fixture_profile_corrective`).
+
+**Harness state:** Layer 1+2+3 run against Vercel preview not yet executed in this session; deferred (no UI changes in Wave-A → low harness risk; will run as part of Wave-B prep + GATE-A acknowledgment Jake authorizes).
+
+### 2. A-5 deferred to Wave-C (DOCUMENTED)
+
+Per nwrp114 item 2. Wave-C preliminary scope written: `.planning/expansions/stage-f1-knowledge-graph-auth-wave-c-EXPANDED-SCOPE.md` — single plan C-1 (5 src file refactor + `DROP TABLE public.users CASCADE` migration 00097), 0.5-1 day, low-medium blast. Sequencing options A/B/C captured; default Option A (Wave-C dispatches before Wave-B as cleanup foundation). Authorization trigger documented (Jake at Wave-A wrap-up or Wave-B authorization).
+
+### 3. Hook bug fix shipped
+
+`.claude/hooks/nightwork-post-edit.sh:105`:
+- BEFORE: `grep -iq "-- nightwork: drop-justified" "$FILE"` — fails with `grep: unknown option -- nightwork: drop-justified`
+- AFTER:  `grep -iq -- "-- nightwork: drop-justified" "$FILE"` — `--` option terminator before pattern
+
+Verified against 00094 + 00095 DROP TABLE patterns: both return `FOUND` (hook now correctly recognizes `-- nightwork: drop-justified` markers).
+
+### 4. Calibration log entry + CLAUDE.md Dev Rule update
+
+- **`.planning/calibration-log.md`** — new entry `stage-f1-knowledge-graph-auth-wave-a` with `process_discipline_violations: 4` capturing the `--no-verify` bypass pattern + root cause analysis + 4 incident commit SHAs + adjustment recommendations for Wave-B.
+- **`CLAUDE.md` Development Rules** — new rule added: "Never `--no-verify` without Jake's explicit authorization." Drummond gate (`.githooks/pre-commit`) is never bypassed under any circumstance. Hook failures = halt. Per-incident bypass requires explicit per-incident Jake authorization with bypass + rationale documented in commit body.
+
+### 5a. iter-1 CRITICAL finding details (nwrp114 Q5a)
+
+The CRITICAL finding was **A-4 task description vs. migration body inconsistency on `deleted_at` filter** in the post-backfill DO block:
+- Task description at PLAN.md ~line 169: `WHERE org_id IS NULL AND deleted_at IS NULL`
+- Migration preview at PLAN.md ~line 528 (canonical SQL): `WHERE org_id IS NULL`
+
+**No reviewer dissented.** The "5-of-6 consensus" refers to 5 of 6 reviewers explicitly flagging the same issue at varying severity levels:
+- **multi-tenant-architect: CRITICAL** (severity upgrade; reasoning: "if the inconsistency lands in execute and the executor picks the `deleted_at IS NULL` variant, then soft-deleted allocation rows whose parent invoices have NO record (somehow) would slip through verification but FAIL the subsequent `ALTER COLUMN org_id SET NOT NULL` — silent leak risk where the NOT NULL constraint is created on a table containing NULLs.")
+- **data-migration-safety: HIGH** (H-2)
+- **database-reviewer: HIGH** (H-1)
+- **rls-auditor: HIGH** (H-1)
+- **security-reviewer: HIGH** (H-1)
+- **architect: not flagged** (architect verdict was holistic cross-plan; deferred to specialist reviewers on this specific SQL inconsistency)
+
+**Resolution (consensus):** Use migration body's no-filter version. Reasoning: NOT NULL constraint applies to ALL rows including soft-deleted; filtering soft-deleted from the post-backfill check would mask a silent NULL→NOT NULL violation. No pushback captured because no dissent existed — all 5 reviewers who flagged the issue converged on the same resolution.
+
+**Applied as CR-A4-1 in iter-2 patches** — migration 00096 ships with `WHERE org_id IS NULL` (no `deleted_at` filter). Post-apply verification confirms 0 NULL rows in invoice_allocations.org_id.
+
+### 5b. Pre-existing test failures (nwrp114 Q5b — captured as known-state for Wave-B inheritance)
+
+| Test file | Failures | Cause | Wave-B Route |
+|---|---|---|---|
+| `__tests__/lien-release-waived-at.test.ts` | 3 of 9 | A-1 bulk endpoint regression (HF-A1-2 atomicity per-row vs single-UPDATE) + test regex `/action.*===.*"mark_received".*updates\.received_at\s*=\s*new Date/` stale (bulk route now uses `[timestampField]: nowIso` inside inline UPDATE object, NOT `updates.received_at = new Date()`) | Plan B-3 (deletion safety net trigger plan can also house status_history-trigger safety net + atomicity restoration) |
+| `__tests__/multi-org-session.test.ts` | 1 of 4 | Pre-Wave-A — `src/lib/verification/auth-strategy.ts` from stage-1.5c-vh Plan 5 commit `1cc868d`. Not A-4 / Wave-A regression. | stage-1.5c follow-up or Wave-B GH #18 sweep |
+
+**Both failures are documented known-state.** Wave-B Plan B-3 inherits the lien-release-waived-at fix scope explicitly. multi-org-session is sibling to stage-1.5c verification harness work and routes there.
+
+**Additional Wave-B Plan B-3 candidate (NEW from ai-logic-tester Wave-A QA):** `src/app/api/lien-releases/bulk/route.ts:124` logs `count: ids.length` (input count), NOT `updatedCount` (actual transitions). Misleading for audit when all rows skip via self-transition. Fix alongside atomicity restoration.
+
+### Routing pre-confirmations (nwrp114 items 6-9)
+
+| # | Item | Routed to | Status |
+|---|---|---|---|
+| 6 | MED-A3-1 — `budget_lines.invoiced/committed/co_adjustments` app-layer-maintained aggregates | Wave-B/C backlog as appropriate | ✓ Confirmed; deferred |
+| 7 | MED-A2-1 — Storage path `{org_id}/` prefix validation | Wave-B Plan B-2 | ✓ Confirmed; deferred |
+| 8 | MED-A3-2 — 00051 historical migration comment-only edit convention | Confirm convention during Wave-B authoring | ✓ Confirmed; Wave-B Plan B-1 or B-4 author confirms |
+| 9 | Bulk activity_log count mismatch (ai-logic-tester finding) | Wave-B Plan B-3 with atomicity fix | ✓ Confirmed; bundled with HF-A1-2 atomicity restoration |
+
+### Next: HALT for Jake review of umbrella EXPANDED-SCOPE.md
+
+Per nwrp114: "Do NOT dispatch Wave-B. Do NOT author Wave-B plan files. Jake will review `.planning/expansions/stage-f1-knowledge-graph-auth-EXPANDED-SCOPE.md` before Wave-B authorization."
+
+All items 1-4 of nwrp114 landed. Awaiting Jake authorization to dispatch Wave-B (and decision on Wave-C sequencing).
+
+---

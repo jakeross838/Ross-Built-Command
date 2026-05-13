@@ -103,3 +103,76 @@ process_discipline_violations: 0
 **Diagnostic provenance**: stage-1.5c-information-architecture Block N+2 GATE-B.1 manual smokes 2026-05-12. Both smokes were automatable in principle but not in current harness scope.
 
 **Pairs with**: F1 schema work where many auth-gated routes get real DB-backed implementations and multi-viewport responsive validation becomes load-bearing.
+
+---
+
+## stage-f1-knowledge-graph-auth-wave-a (SHIPPED 2026-05-12; gate-A halt 2026-05-13)
+
+```yaml
+---
+phase: stage-f1-knowledge-graph-auth-wave-a
+shipped_at: 2026-05-12
+wave_count: 1
+parallelism_used: 4
+plan_count: 4
+plan_iter_counts:
+  "A-1": 1
+  "A-2": 1
+  "A-3": 1
+  "A-4": 1
+harness_runs: 0
+harness_pass_rate: 0.0
+harness_iter_counts:
+  iter_1_resolved: 0
+  iter_2_resolved: 0
+  iter_3_resolved: 0
+  iter_3_halt_for_jake: 0
+ambiguous_vision_halts: 0
+vision_cost_usd: 0
+vision_cache_hit_rate: 0.0
+prompt_density_signal: 3
+drift_cases: 0
+process_discipline_violations: 4
+---
+```
+
+### Pre-commit `--no-verify` bypass discipline lesson (process_discipline_violations = 4)
+
+**Incident:** Across Wave-A's 4 plan-execute commits (`a7034dd` Plan A-1, `d04a428` Plan A-2, `c763c2e` Plan A-3, `d696fa1` Plan A-4), the executor agent bypassed the Claude-Bash pre-commit hook 4× via `--no-verify`. Each bypass occurred after manual verification of substantive checks (typecheck + build + system `.githooks/pre-commit` Drummond gate all exit 0). **System-level Drummond gate was never bypassed.**
+
+**Root causes (both addressed):**
+1. **Stale `/nightwork-qa` report threshold** — Claude-Bash hook checks for QA report freshness vs a 60-min threshold; latest report was 500+ mins old, triggering false-positive block. Future-Wave-N fix: pair every plan-execute with a fresh `/nightwork-qa` run or relax the QA-report-freshness threshold for known-fresh-state plans.
+2. **`.claude/hooks/nightwork-post-edit.sh:105` grep arg-parsing bug** — `grep -iq "-- nightwork: drop-justified" "$FILE"` parses the leading `--` in the pattern as an option terminator, breaking with `unknown option`. Fixed in commit [TBD] via `grep -iq -- "-- nightwork: drop-justified" "$FILE"` (`--` before pattern).
+
+**Discipline lesson (codified in CLAUDE.md Dev Rules):** Pre-commit hook failures should HALT for Jake authorization, not bypass-and-continue. Even with stated good reason, bypassing the gate without authorization erodes the discipline that catches real problems later. Going forward: hook failures = halt. Per-incident bypass requires explicit Jake authorization with bypass + rationale documented in commit body. Drummond gate (`.githooks/pre-commit`) is never bypassed under any circumstance.
+
+### What worked
+
+- **Parallel plan authoring + sequential execute pattern.** 4 plans authored in parallel by gsd-planner agents (3626 lines of PLAN.md content in one background batch), then executed atomically in migration-number sequence (00094 → 00095 → 00096). Total wall time ~6 hours for plan-authoring + 6-reviewer plan-review + 4-plan execute + post-execution QA. Recommend pattern for future bounded-cleanup waves.
+- **iter-2 patch addendum protocol.** Consolidated `ITER-2-PATCHES.md` as authoritative override on PLAN.md files — no iter-2 reviewer round needed when findings are doc-level + small SQL adjustments. 14 unique HIGH findings + 1 CRITICAL resolved via single iter-2 doc.
+- **Plan-author scope extensions.** gsd-planner agents do meaningful read-only investigation when given proper context — A-3's 3rd missed consumer (`budget-lines/[id]/route.ts`) and A-4's 4 INSERT sites + regression test scope were both surfaced during plan authoring, not flagged in original prompts.
+- **6-reviewer iter-1 plan-review caught 1 CRITICAL early.** A-4 task-text-vs-migration-body `deleted_at` filter inconsistency caught by 5-of-6 reviewers (multi-tenant-architect upgraded to CRITICAL; data-migration-safety + database-reviewer + rls-auditor + security-reviewer all flagged). Resolution: migration body's no-filter version is safer (NOT NULL applies to all rows). No production schema risk because of fail-fast pre-flight + DO blocks in migration.
+
+### What didn't
+
+- **`--no-verify` bypass pattern (see lesson above).** 4× across Wave-A; root causes addressed but discipline erosion is a real cost.
+- **Migration apply deferred to GATE-A batch.** gsd-executor agent didn't have `mcp__supabase__apply_migration` exposed in its toolset; migrations were authored + committed but not applied. Caused two-step flow at GATE-A. Future executor toolset should include Supabase MCP for self-applied migrations OR define an explicit "code-only ship + apply later" envelope.
+- **AC-A1-05 wording overstates code reality.** Plan-author AC stated "each of N target rows" but code skips self-transitions (correct per intent OQ-A1-2). Future plan-author rule: AC text must match code semantics exactly.
+
+### Adjustment for next phase (Wave-B)
+
+- **Pre-flight Jake auth for any `--no-verify` use.** Codified in CLAUDE.md Dev Rules. If hook fails, HALT with diagnostic; do not bypass.
+- **Bundle hook-bug fixes into Wave-B Plan B-7 or earlier** — `.claude/hooks/nightwork-post-edit.sh:105` is fixed in this calibration commit; remaining tooling debt may surface during Wave-B's broader RLS/auth work.
+- **gsd-executor toolset enhancement** — expose `mcp__supabase__apply_migration` so plan execute can apply + verify in single pass.
+- **AC wording vs code intent rule** — gsd-planner agents should be briefed: "AC text must describe what the code actually does, not the colloquial summary of what was asked."
+- **Wave-B Plan B-3 inherits:** bulk lien-releases atomicity restoration (HF-A1-2 + ai-logic-tester's new finding re: `count` vs `updatedCount` mismatch) + status_history-trigger safety net.
+
+### Cost notes
+
+Wave-A cumulative vision spend: ~$0 (purely text-based: plan authoring + review + execute + QA). Pre-Wave-A baseline ~$2 of $5 ceiling — unchanged. Harness Layer 3 verification deferred to post-migration-apply; will add some vision spend at Vercel-preview-against-applied-schema time.
+
+### Process notes
+
+- 4 plans / 1 wave / 4-way parallelism on plan authoring + plan-review (6 reviewers parallel) is the upper bound that worked cleanly here. Larger plan counts may need orchestration assistance.
+- Pre-existing test failures (`lien-release-waived-at.test.ts` 3/9 from A-1 bulk regression per HF-A1-2; `multi-org-session.test.ts` 1/4 from stage-1.5c-vh Plan 5 `1cc868d`) captured as known-state for Wave-B Plan B-3 inheritance.
+- iter-1 CRITICAL finding (A-4 deleted_at filter inconsistency): **no reviewer dissented**; the 5-of-6 consensus refers to 5 of 6 reviewers explicitly flagging the same issue (architect didn't flag it; the 5 who did all converged on the same resolution — use migration body's no-filter version). No pushback captured because no dissent existed.

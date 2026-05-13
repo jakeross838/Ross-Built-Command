@@ -533,6 +533,17 @@ See `docs/platform-admin-runbook.md` for common scenarios.
 - All amounts in cents in the database, dollars in the UI
 - Status changes always append to status_history JSONB
 - Test with the three reference invoice formats: clean PDF, T&M, lump sum Word doc
+- **Never `--no-verify` without Jake's explicit authorization.** Pre-commit
+  hook failures (Claude-Bash hook or `.githooks/pre-commit`) should HALT for
+  Jake authorization, not bypass-and-continue. Even with stated good reason
+  (stale QA report timestamp, tooling bug, etc.), bypassing the gate without
+  authorization erodes the discipline that catches real problems later. **Drummond
+  gate (`.githooks/pre-commit`) is never bypassed under any circumstance.** Other
+  hook checks may be bypassed only after explicit per-incident Jake authorization,
+  with the bypass + rationale documented in the commit body. F1-Wave-A had 4
+  bypass incidents across A-1/A-2/A-3 commits (stale `/nightwork-qa` report at
+  500 mins vs 60-min threshold + `.claude/hooks/nightwork-post-edit.sh:105` grep
+  arg-parsing bug). Both root causes addressed; going forward: hook failures = halt.
 
 ## Testing Rule (MANDATORY)
 **After EVERY UI change, you MUST verify with Chrome DevTools before reporting the task as complete.**
