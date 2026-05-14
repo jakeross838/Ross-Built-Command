@@ -34,6 +34,7 @@ export function NwIcon({ size = 32, className, style }: NwIconProps) {
       viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
       className={className}
       style={style}
+      data-slot="org-logo"
     >
       {/* Stone Blue square — token-driven so it survives palette flips */}
       <rect width={VIEWBOX} height={VIEWBOX} fill="var(--nw-stone-blue)" />

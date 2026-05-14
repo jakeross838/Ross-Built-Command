@@ -49,7 +49,14 @@ Walk through the code with each input. Hand-trace the math / state changes. Docu
 
 ### Step 4 — Actual behavior
 
-Either (a) read the code carefully enough that you're confident, or (b) write a test (in `__tests__/.scratch/<surface>.test.ts`) that exercises the input. Compare expected to actual.
+For NON-PostgREST/NON-RLS surfaces (cents math, state machines, status transitions, aggregations): either (a) read the code carefully enough that you're confident, or (b) write a test (in `__tests__/.scratch/<surface>.test.ts`) that exercises the input. Compare expected to actual.
+
+For PostgREST relationship hints (any `.select("...:...(...)")` pattern) and RLS policy claims: code-reading is INSUFFICIENT EVIDENCE. Per CLAUDE.md Workflow posture → Rule 3 (codified Wave-D D-4), you MUST execute a representative query:
+
+- For PostgREST embedding: use Supabase MCP `execute_sql` (read-only) to run the equivalent SQL JOIN, OR fetch the actual route via `curl` against the Vercel preview URL and inspect the JSON response shape. If the relationship resolves, the JSON contains the embedded sub-object; if it fails, PostgREST returns `{"code":"PGRST200","message":"Could not find a relationship..."}`.
+- For RLS: use `execute_sql` to run a SELECT impersonating two different orgs (via `SET LOCAL ROLE authenticated; SET request.jwt.claims = ...`) and confirm cross-org rows do NOT appear in the lower-privilege session. Wave-C surfaced this gap: the org_members.user_id → profiles.id PostgREST embedding READ fine in code but was unresolvable at runtime because no FK existed.
+
+Inferred-but-unverified claims are explicitly disallowed. PASS requires actual query output captured in the LOGIC-TEST-<surface>.md report under a new "Runtime evidence" section.
 
 ### Step 5 — Edge cases enumerate
 
@@ -107,6 +114,11 @@ Write to `.planning/phases/<active-phase>/LOGIC-TEST-<surface>.md` (one per non-
 ## State machine
 - <transitions covered/missing>
 
+## Runtime evidence (for PostgREST/RLS claims — Rule 3)
+- **Query executed**: <SQL or curl command>
+- **Output captured**: <JSON snippet or query result rows>
+- **Resolves at runtime?**: yes / no / N/A (not a PostgREST/RLS claim)
+
 ## Verdict
 <PASS | NEEDS WORK | BLOCKING>
 
@@ -122,6 +134,7 @@ Write to `.planning/phases/<active-phase>/LOGIC-TEST-<surface>.md` (one per non-
 - **Always check the audit log write.** Every state transition must write status_history; every override must write *_overrides.
 - **Always check the lock state.** Locked records (`in_draw`, `submitted`, `paid`) block writes — verify code respects this.
 - **Pass requires affirmative evidence.** "I read the code and it looks fine" is not PASS. Concrete input → expected output → actual output → match is the bar.
+- **PostgREST/RLS claims require runtime evidence.** Per Rule 3 (CLAUDE.md → Workflow posture; codified Wave-D D-4): a verdict of PASS on any claim about "PostgREST resolves this relationship" or "this RLS policy filters cross-tenant access" requires actual query output captured in the report. Reading the code + reasoning forward is INSUFFICIENT — execute the query via Supabase MCP `execute_sql` (read-only) or fetch the preview route via `curl` and inspect the JSON response. Inferred-but-unverified claims are explicitly disallowed.
 
 ## Cross-references
 

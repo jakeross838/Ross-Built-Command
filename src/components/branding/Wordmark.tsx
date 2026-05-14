@@ -85,6 +85,7 @@ export function NwWordmark({
       viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
       className={className}
       style={mergedStyle}
+      data-slot="org-logo"
       data-color={color}
     >
       <defs>

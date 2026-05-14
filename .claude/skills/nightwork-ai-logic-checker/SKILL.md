@@ -5,6 +5,8 @@ description: Use this skill on every business-logic, financial-calculation, work
 
 # Nightwork AI logic checker
 
+> Note: this skill's operating contract is mirrored from `.claude/agents/nightwork-ai-logic-tester.md`. When both files describe the same rule, this SKILL.md is the runtime authority; agent file is the conversational interface.
+
 Type checks pass when types match. Tests pass when assertions hold. Neither catches "the math is wrong" or "this transition is impossible" or "no PM in the field would ever click that." This skill closes that gap by reasoning about the logic against construction-domain reality.
 
 ## When this skill activates
@@ -104,6 +106,26 @@ RECOMMENDED FIXES: <prioritized list>
 - **Always trace the audit log.** If a change happens but no audit row is written, the change is wrong.
 - **Always check the lock state.** A change to a locked record's fields is a bug, even if the code "succeeds."
 - **Always ask: would I tell Jake this output is correct?** If you'd hesitate, escalate.
+
+## Rule 3 runtime-execution contract (per Wave-D D-4 / iter-2 §4.10)
+
+Per CLAUDE.md Workflow posture → Rule 3: for any PostgREST relationship, RLS policy, or schema-resolution claim, the ai-logic-checker MUST execute a representative SQL/REST query against current schema. Inferring correctness from migration text alone is the Wave-C anti-pattern that shipped 3 bugs.
+
+### What counts as "execute"
+
+- **Supabase MCP `execute_sql`** (read-only): run the equivalent SQL JOIN that PostgREST would generate. Capture row output.
+- **`curl` against Vercel preview URL**: hit the actual route + inspect JSON response shape. PostgREST returns `{"code":"PGRST200","message":"Could not find a relationship..."}` on resolution failure.
+- **`pg_constraint` introspection query**: for FK-citation claims, verify the cited constraint actually exists.
+
+### What does NOT count
+
+- Reading migration text + inferring "this should resolve"
+- Code-reading the .select("...") call + inferring "the embedding hint syntax matches PostgREST documentation"
+- Schema-diagram inspection without runtime confirmation
+
+### Inferred-but-unverified claims are explicitly disallowed.
+
+PASS verdict on a PostgREST/RLS claim REQUIRES query output captured in the LOGIC-TEST-<surface>.md report under a "Runtime evidence" section. No exceptions.
 
 ## Cross-references
 

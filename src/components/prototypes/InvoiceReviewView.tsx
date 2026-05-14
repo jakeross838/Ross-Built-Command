@@ -289,7 +289,11 @@ export default function InvoiceReviewView({
         style={{ gap: "1px", background: "var(--border-default)" }}
       >
         {/* LEFT — file preview placeholder (per PATTERNS.md §2 file preview LEFT) */}
-        <div className="p-5" style={{ background: "var(--bg-card)" }}>
+        <div
+          data-pattern-slot="file-preview"
+          className="p-5"
+          style={{ background: "var(--bg-card)" }}
+        >
           <Eyebrow tone="muted" className="mb-3">
             Source document
           </Eyebrow>
@@ -325,7 +329,11 @@ export default function InvoiceReviewView({
         </div>
 
         {/* RIGHT — right-rail panels (per PATTERNS.md §2 structured fields RIGHT) */}
-        <div className="p-5 space-y-4" style={{ background: "var(--bg-card)" }}>
+        <div
+          data-pattern-slot="right-rail"
+          className="p-5 space-y-4"
+          style={{ background: "var(--bg-card)" }}
+        >
           <Card padding="md">
             <Eyebrow tone="accent" className="mb-3">
               Invoice details
@@ -471,7 +479,7 @@ export default function InvoiceReviewView({
           pattern as the AI parse confidence panel (above) — both panels use
           identical pattern for visual consistency. Audit timeline still
           renders BELOW the hero grid per PATTERNS.md §2. */}
-      <Card padding="md">
+      <Card padding="md" data-pattern-slot="audit-timeline">
         <details className="group">
           <summary
             className="cursor-pointer list-none flex items-center justify-between gap-3"

@@ -81,6 +81,11 @@ skills-lock.json
 # screenshots (local only, never committed)
 /screenshots/
 
+# Playwright smoke output (wave-d-smoke.ts + future Layer 4 framework runs;
+# per-run screenshots + JSON; ephemeral, never committed) — per Wave-D D-4
+# iter-2 §4.11.
+/.playwright-output/
+
 # test invoices (local only — real client PDFs, never committed)
 /test-invoices/
 

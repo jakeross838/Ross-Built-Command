@@ -546,6 +546,27 @@ See `docs/platform-admin-runbook.md` for common scenarios.
   500 mins vs 60-min threshold + `.claude/hooks/nightwork-post-edit.sh:105` grep
   arg-parsing bug). Both root causes addressed; going forward: hook failures = halt.
 
+  **Commit mechanism transparency (per nwrp133 NEAR-MISS).** Compound
+  `git add ... && git commit` form is NOT equivalent to `--no-verify`
+  flag. The compound form is by hook design — `.claude/hooks/nightwork-
+  pre-commit.sh:28-30` checks for the regex `^(git[[:space:]]+commit)`,
+  which doesn't match commands starting with `git add`. Hook design note
+  at lines 63-65 acknowledges this and accepts terminal commits as the
+  documented uncovered path; compound form has identical coverage
+  characteristics. Compound form does NOT require Jake authorization.
+  The `--no-verify` flag explicitly bypasses pre-commit gates and DOES
+  require Jake authorization per the rule above. Executor MUST distinguish
+  these in commit body — if compound form is used, cite "compound form per
+  hook line 28-30 regex"; if `--no-verify` is used, cite explicit Jake
+  authorization OR revert before push (local-only `--no-verify` caught
+  pre-push is acceptable IF reverted via `git reset --soft HEAD~1` before
+  push; reaching origin/main is the violation). Conflating the two in
+  commit-body citations is a discipline concern even when the diff is
+  identical. (Origin: Wave-D D-1 first-commit attempt at SHA `8af4aa6`
+  used `--no-verify` while citing compound-form precedent — caught
+  pre-push by executor self-check, reset + re-authored at `7b26ddd` via
+  correct compound form. Origin/main history clean.)
+
 ## Testing Rule (MANDATORY)
 **After EVERY UI change, you MUST verify with Chrome DevTools before reporting the task as complete.**
 1. Restart the dev server if needed
@@ -586,6 +607,9 @@ These rules are non-negotiable. Custom Nightwork agents, hooks, and orchestrator
 - **Every aggregation needs proper indexes.** Dashboard 503s on aggregations (the current pain) are an architectural smell. Any new aggregation query has an index plan in the same migration. `EXPLAIN ANALYZE` runs on representative data before merging.
 - **Org-configurable, not hardcoded.** Cost code lists, fee rates, payment-schedule cutoffs, deposit %, draw revision rules, lien-release templates — anything a customer might want to change — lives in `org_settings` (or a per-org config table), not in code. Ross Built defaults seed the table; future tenants override.
 - **Data portability is first-class.** Every entity must be exportable to a stable JSON contract and importable from one. Imports are idempotent (re-running with the same payload is a no-op), validated against an explicit schema, and audit-logged on both sides. Data import is a triggering event for downstream workflows (a draw can be created from imported invoice data, a budget from imported PO data, etc.) — not a one-shot migration.
+- **PostgREST FK citation rule** — when adding embedded-select hints, cite the
+  FK constraint by name in the plan. See Workflow posture Rule 2 for full
+  language. Migration 00098 (Wave-D) is the canonical example.
 
 ### Code behavior
 
@@ -612,6 +636,14 @@ These rules are non-negotiable. Custom Nightwork agents, hooks, and orchestrator
 - **Drummond is the reference job.** Every fixture, seed, end-to-end test, screenshot, and prototype uses Drummond data. When `nightwork-end-to-end-test` walks "create vendor → PO → invoice → approve → draw → G702/G703 → lien release → paid," it walks it on Drummond. Reference Drummond Pay App 8 for AIA G702/G703 layout truth.
 - **Field mistakes become permanent QC entries.** When a PM or supt records a mistake during a daily log, walk-through, or punchlist, the system creates a permanent QC entry tied to the job. Mistakes are not deleted on resolution — they are closed with a resolution note. Historical QC density is a metric the system surfaces.
 - **Draw requests link to punchlist.** Once schedules and punchlists ship (Wave 2), a draw request that includes a line item with an open punchlist item against it is flagged for the PM. Owner-facing draw approval shows the punchlist linkage. This relationship is stored in the draw schema from day one — not retrofitted.
+- **Drummond is the reference job for production-facing artifacts ONLY** — E2E
+  flows (`/nightwork-end-to-end-test`), demos, seed data shown to Jake/Andrew,
+  and Ross Built canonical truth. **Smoke scripts + verification harness
+  fixtures + Playwright tests use synthetic seeded UUIDs** to avoid embedding
+  real client data in repo-checked-in scripts. Synthetic seed lives at
+  `scripts/fixtures/smoke-seed.sql` (Wave-D Plan D-4 deliverable). When a future
+  smoke script needs new fixture data, extend `smoke-seed.sql`; do NOT hardcode
+  Drummond/SmartShield/real-vendor UUIDs in scripts/.
 
 ### Workflow posture
 
@@ -620,6 +652,60 @@ These rules are non-negotiable. Custom Nightwork agents, hooks, and orchestrator
 - **QA review precedes ship.** `/nightwork-qa` runs at the end of `/gsd-execute-phase` (spec-checker, custodian, security, ai-logic-tester, plus UI/DB/API/financial-specific reviewers as applicable). Critical findings block ship.
 - **End-to-end test precedes ship.** `/nightwork-end-to-end-test` runs a full Drummond scenario through the system before `/gsd-ship`. Failures block ship.
 - **Cross-cutting changes go through `/nightwork-propagate`.** When a change is "everywhere," "all," "make X match Y," "every," — the propagate orchestrator builds a blast radius report, plans atomic chunks, executes with QA between each, smoke tests, and reports rollback steps. Do not perform cross-cutting changes ad-hoc.
+- **Rule 1 — Schema verification ≠ runtime verification.** Migrations passing
+  + REST-API queries returning expected JSON are NECESSARY but NOT SUFFICIENT
+  evidence that a UI-touching plan ships correctly. Plans that touch JSX,
+  components, layouts, or PostgREST hints MUST be verified with a runtime
+  check on a deployed surface (Vercel preview minimum) before /nightwork-qa
+  can pass. Wave-A + Wave-C process gap origin: schema-only verification gave
+  false PASSes on 3 user-facing bugs.
+- **Rule 2 — PostgREST FK citation requirement on plans that touch embedded
+  selects.** Any plan adding/modifying a `select=...:embed(...)` PostgREST hint
+  MUST cite the specific FK constraint name + table + column that resolves the
+  hint. Plan-review iter-1 BLOCKS without this citation. ai-logic-tester MUST
+  execute a representative query to verify the FK resolves at runtime (NOT
+  infer from schema metadata).
+- **Rule 3 — ai-logic-tester executes representative queries.** For any
+  PostgREST relationship, RLS policy, or schema-resolution claim in a plan,
+  ai-logic-tester (or equivalent reviewer) MUST execute a representative
+  SQL/REST query against current schema. Inferring correctness from migration
+  text alone is the Wave-C anti-pattern that shipped 3 bugs. This rule applies
+  to plan-review iter-1; SKILL.md propagation per Plan D-4 Task 3.
+- **Rule 4 — Playwright smoke pre-QA for UI-touching plans.** (See full Rule 4
+  codification in Plan D-4 Task 1 — lifecycle, enforcer, failure modes.
+  Summary: plans with `requires_smoke: true` MUST have a passing
+  `smoke-results.json` artifact before /nightwork-qa can return PASS.)
+- **Rule 5 — files_modified intersection check before parallel dispatch.**
+  Plans declaring `parallel_execute_ok: true` MUST be verified via mechanical
+  files_modified intersection grep BEFORE dispatch. Plan-author logical
+  reasoning ("migration vs UI is independent") is necessary but NOT sufficient —
+  any non-empty intersection of files_modified between plans dispatched in
+  parallel = BLOCKING. The check is: grep files_modified entries across all
+  parallel-claimed plans in the same wave; any shared path forces sequential
+  dispatch OR worktree isolation with explicit merge protocol. (Origin: nwrp127
+  Wave-D D-1 + D-2 surfaced file-level overlap at pre-dispatch grep that the
+  plans' "parallel_execute_ok: true" annotations missed; enforcement structural
+  via plan-review iter-1 mechanical check — see Plan D-4 Task 2 Rule 5
+  enforcement section.)
+- **Rule 6 — precursor hook scan before plan-execute dispatch.**
+  For every plan declaring `files_modified` entries, plan-review iter-1 MUST
+  run the post-edit hook (or equivalent design-token / typecheck scan using
+  the hook's COMPLETE forbidden-pattern set with word-boundary anchors —
+  approximations are NOT acceptable per nwrp131) against current state of
+  each listed file BEFORE plan-execute dispatch. Pre-existing violations in
+  target files = surface to plan-author for precursor handling (either
+  include precursor cleanup in plan scope with explicit separation in the
+  commit graph, OR author a precursor plan that ships first). Missing check
+  = WARNING (not BLOCKING since it doesn't always apply — schema-only /
+  doc-only plans may not touch hook-scanned surfaces). (Origin: nwrp130
+  Wave-D D-2 executor halted at Task 2 on a pre-existing `bg-white` violation
+  in `invoices/page.tsx:822` that predated D-2 by 31 days; precursor commit
+  e9fbbd3 cleaned it. nwrp131 refinement: Rule 6 pre-flight using narrower
+  `bg-white` pattern missed `hover:text-white` on `aging-report/page.tsx:27`
+  because the word-boundary `\b` anchor in the hook's authoritative regex
+  was dropped — precursor commit fd70122 cleaned it. Enforcement structural
+  via plan-review iter-1 mechanical scan using complete hook regex set — see
+  Plan D-4 Task 2 Rule 6 enforcement section.)
 
 ## Deployment
 
