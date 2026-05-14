@@ -24,7 +24,7 @@ export default function AgingReportPage() {
           <div className="mt-4 inline-flex items-center gap-3">
             <Link
               href="/invoices/payments"
-              className="inline-flex items-center gap-1.5 px-4 py-2 border border-[var(--nw-stone-blue)] text-[color:var(--nw-stone-blue)] hover:bg-[var(--nw-stone-blue)] hover:text-white text-sm font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-4 py-2 border border-[var(--nw-stone-blue)] text-[color:var(--nw-stone-blue)] hover:bg-[var(--nw-stone-blue)] hover:text-[color:var(--nw-white-sand)] text-sm font-medium transition-colors"
             >
               Payment Tracking
             </Link>
