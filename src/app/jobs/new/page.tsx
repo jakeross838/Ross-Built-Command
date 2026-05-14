@@ -317,7 +317,7 @@ export default function NewJobPage() {
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 bg-[var(--nw-stone-blue)] hover:bg-[var(--nw-gulf-blue)] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+              className="px-5 py-2 bg-[var(--nw-stone-blue)] hover:bg-[var(--nw-gulf-blue)] disabled:opacity-60 disabled:cursor-not-allowed text-[color:var(--nw-white-sand)] text-sm font-medium transition-colors"
             >
               {saving ? "Creating…" : "Create Job"}
             </button>
@@ -329,8 +329,8 @@ export default function NewJobPage() {
         .input {
           width: 100%;
           padding: 0.5rem 0.75rem;
-          background: var(--bg-subtle, #F5F5F5);
-          border: 1px solid var(--border-default, #E8E8E8);
+          background: var(--bg-subtle);
+          border: 1px solid var(--border-default);
           color: var(--text-primary);
           font-size: 14px;
         }
