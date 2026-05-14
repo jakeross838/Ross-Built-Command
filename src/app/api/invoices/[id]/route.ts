@@ -105,12 +105,13 @@ export const GET = withApiError(async (
     invoice.original_file_url
       ? supabase.storage.from("invoice-files").createSignedUrl(invoice.original_file_url, 3600)
       : Promise.resolve({ data: null as { signedUrl: string } | null }),
-    // PM list sourced from org_members + profiles (Plan C-1 — legacy
-    // users-table retirement; see .planning/audits/2026-05-12-migration-inventory.md
-    // GAP item 20).
+    // PM list sourced from org_members + profiles. Plan D-1 (Wave-D Issue 1
+    // fix): hint syntax updated from the broken column-disambiguation form
+    // (which returned PGRST200) to `profile:profiles (...)` resolving via the
+    // FK org_members_user_id_profiles_fkey created in 00098.
     supabase
       .from("org_members")
-      .select("user_id, profiles:user_id (id, full_name)")
+      .select("user_id, profile:profiles (id, full_name)")
       .eq("org_id", orgId)
       .eq("is_active", true)
       .in("role", ["pm", "admin"]),
@@ -152,9 +153,9 @@ export const GET = withApiError(async (
   return NextResponse.json({
     ...invoice,
     signed_file_url: signedUrl,
-    pm_users: ((pmUsersRes.data ?? []) as Array<{ user_id: string; profiles: { id: string; full_name: string } | { id: string; full_name: string }[] | null }>)
+    pm_users: ((pmUsersRes.data ?? []) as Array<{ user_id: string; profile: { id: string; full_name: string } | { id: string; full_name: string }[] | null }>)
       .map((m) => {
-        const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+        const profile = Array.isArray(m.profile) ? m.profile[0] : m.profile;
         return profile && profile.id && profile.full_name
           ? { id: profile.id, full_name: profile.full_name }
           : null;

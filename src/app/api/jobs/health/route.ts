@@ -108,9 +108,11 @@ export const GET = withApiError(async (req: NextRequest) => {
         .eq("org_id", orgId).is("deleted_at", null)
         .order("updated_at", { ascending: false }).limit(50)),
     // Pre-fetch all org PM names via org_members join — covers any PM on any job.
+    // Plan D-1 (Wave-D Issue 1 fix): hint syntax updated to `profile:profiles (...)`
+    // resolving via the FK org_members_user_id_profiles_fkey created in 00098.
     timed("jobs-health", "profiles.org_members", false,
       supabase.from("org_members")
-        .select("user_id, profiles:user_id (id, full_name)")
+        .select("user_id, profile:profiles (id, full_name)")
         .eq("org_id", orgId).eq("is_active", true)),
   ]);
 
@@ -125,7 +127,7 @@ export const GET = withApiError(async (req: NextRequest) => {
   // PM name map — orgProfilesRes is org_members with joined profiles.
   const pmNameMap = new Map<string, string>();
   for (const raw of (orgProfilesRes.data ?? []) as unknown as Array<Record<string, unknown>>) {
-    const profile = Array.isArray(raw.profiles) ? raw.profiles[0] : raw.profiles;
+    const profile = Array.isArray(raw.profile) ? raw.profile[0] : raw.profile;
     const p = profile as { id?: string; full_name?: string | null } | null;
     if (p?.id && p.full_name) pmNameMap.set(p.id, p.full_name);
   }

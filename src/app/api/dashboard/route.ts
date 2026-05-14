@@ -156,7 +156,7 @@ export const GET = withApiError(async (req: NextRequest) => {
     // (the feed only shows the last 20, all recent).
     timed("dashboard", "profiles.org_members", false,
       supabase.from("org_members")
-        .select("user_id, profiles:user_id (id, full_name)")
+        .select("user_id, profile:profiles (id, full_name)")
         .eq("org_id", orgId).eq("is_active", true)),
     timed("dashboard", "invoices.recent_for_activity", false,
       supabase.from("invoices")
@@ -421,7 +421,7 @@ export const GET = withApiError(async (req: NextRequest) => {
   void userIds; void invoiceIds; void drawIds;
   const userNameMap = new Map<string, string>();
   for (const raw of (orgProfilesRes.data ?? []) as unknown as Array<Record<string, unknown>>) {
-    const p = pickFirst(raw.profiles) as { id: string; full_name: string | null } | null;
+    const p = pickFirst(raw.profile) as { id: string; full_name: string | null } | null;
     if (p?.id && p.full_name) userNameMap.set(p.id, p.full_name);
   }
 
