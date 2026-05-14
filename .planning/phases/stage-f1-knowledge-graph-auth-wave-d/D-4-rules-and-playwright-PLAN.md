@@ -22,6 +22,7 @@ source_decisions:
   - "nwrp127 iter-3 patch — Rule 5 (files_modified intersection check before parallel dispatch) added to Workflow posture bullet block + plan-review enforcement section. Origin: Wave-D D-1 + D-2 both claimed parallel_execute_ok: true but shared 2 files (invoices/page.tsx, invoices/queue/page.tsx); pre-dispatch grep caught the overlap that plan-author logical reasoning + plan-review iter-1 + iter-2 all missed. Rule 5 codifies the mechanical guardrail; enforcement structural via plan-review iter-1 check (Task 2 extended with Rule 5 enforcement section)."
   - "nwrp130 iter-3 patch — Rule 6 (precursor hook scan before plan-execute dispatch) added to Workflow posture bullet block + plan-review enforcement section. Origin: Wave-D D-2 executor halted at Task 2 on a pre-existing `bg-white` violation in `invoices/page.tsx:822` (commit 2c5607e3, 2026-04-13 — 31 days pre-D-2); post-edit hook correctly halted but whole-file scan blocked unrelated AppShell-strip work until precursor commit e9fbbd3 cleaned it. Rule 6 codifies the guardrail at plan-review time so surprises don't surface at execute time. WARNING (not BLOCKING) per friction-tax rationale: many precursors are trivial in-task fixes; the discipline is 'no surprises at execute,' not 'no violations exist.' Enforcement structural via plan-review iter-1 mechanical scan (Task 2 extended with Rule 6 enforcement section)."
   - "nwrp131 iter-3 patch — Rule 6 regex-precision refinement. Origin: Wave-D D-2's 2nd dispatch attempt halted on `hover:text-white` in `aging-report/page.tsx:27` after orchestrator's Rule 6 pre-flight scan used narrower pattern `bg-white|bg-gray-...` and missed the `hover:`-prefixed variant. Hook's authoritative regex `\\b(bg|text|border)-(white|black)\\b` includes word-boundary anchors that catch hover:/focus:/active:/disabled: prefix variants — load-bearing. Patch extends Rule 6 enforcement section with the COMPLETE hook forbidden-pattern set (HEX_HITS, NAMED_HITS, PURE_HITS, LEGACY_HITS, ORG_ID_HITS, ROUNDED, CB4, CB2, SHADOW, PURPLE) and adds new WARNING finding `PLAN_PRECURSOR_SCAN_REGEX_NARROWED` for plan-author / plan-reviewer use of narrower approximations. Precursor commit fd70122 cleaned aging-report:27 before D-2 re-re-dispatched."
+  - "nwrp133 iter-3 patch — commit-mechanism transparency clarification (EDIT 4 in Task 1). Origin: Wave-D D-1 first-commit attempt at SHA 8af4aa6 used `git commit --no-verify` while commit body cited e79e46e compound-form precedent — conflated two distinct bypass mechanisms with different discipline costs. Caught pre-push by executor self-check (NEAR-MISS, not Wave-A-class violation that reached origin/main). Reset via `git reset --soft HEAD~1` before push; re-authored at 7b26ddd via correct compound form. Patch adds EDIT 4 to Task 1: insert a 'Commit mechanism transparency' clarification paragraph under the existing `--no-verify` rule in CLAUDE.md Development Rules section. Clause distinguishes (a) compound `git add && git commit` form (hook regex prefix skip by hook design lines 28-30; no Jake auth required) from (b) `--no-verify` flag (explicit bypass; Jake auth required OR pre-push revert). Executor MUST cite the actual mechanism used in commit body; conflation is a discipline concern even when diff is identical."
   - "stage-f1-knowledge-graph-auth-wave-d EXPANDED-SCOPE (2026-05-13, APPROVED) — Plan D-4 scope locked"
   - "D-073 / Q2=C (CLAUDE.md verification harness deprecation path) — 3-layer harness is canonical CI signal; wave-d-smoke seeds the interactive Layer 4 framework noted in calibration-log F1+ harness extension entry"
   - "D-30 (CLAUDE.md tenant boundary by construction) — script auth uses harness-fixture@nightwork.local (org-admin in fixture-harness-org), matching the existing stage-1.5c-verification-harness auth strategy; NO platform-admin escape hatch"
@@ -608,13 +609,49 @@ Edit-tool guidance for EDIT 3:
 
 ---
 
-After all 3 edits, run the 7 grep mechanical checks (from criteria) to confirm:
+**EDIT 4 — Add commit-mechanism transparency clarification under existing `--no-verify` rule in Development Rules (per nwrp133).**
+
+Target location: the `--no-verify` rule in Development Rules section (CLAUDE.md line ~537, ending with "Both root causes addressed; going forward: hook failures = halt."). Insert a new paragraph immediately after the existing rule body, before the blank line that precedes `## Testing Rule (MANDATORY)`.
+
+Insert this clarification paragraph verbatim:
+
+```markdown
+  **Commit mechanism transparency (per nwrp133 NEAR-MISS).** Compound
+  `git add ... && git commit` form is NOT equivalent to `--no-verify`
+  flag. The compound form is by hook design — `.claude/hooks/nightwork-
+  pre-commit.sh:28-30` checks for the regex `^(git[[:space:]]+commit)`,
+  which doesn't match commands starting with `git add`. Hook design note
+  at lines 63-65 acknowledges this and accepts terminal commits as the
+  documented uncovered path; compound form has identical coverage
+  characteristics. Compound form does NOT require Jake authorization.
+  The `--no-verify` flag explicitly bypasses pre-commit gates and DOES
+  require Jake authorization per the rule above. Executor MUST distinguish
+  these in commit body — if compound form is used, cite "compound form per
+  hook line 28-30 regex"; if `--no-verify` is used, cite explicit Jake
+  authorization OR revert before push (local-only `--no-verify` caught
+  pre-push is acceptable IF reverted via `git reset --soft HEAD~1` before
+  push; reaching origin/main is the violation). Conflating the two in
+  commit-body citations is a discipline concern even when the diff is
+  identical. (Origin: Wave-D D-1 first-commit attempt at SHA `8af4aa6`
+  used `--no-verify` while citing compound-form precedent — caught
+  pre-push by executor self-check, reset + re-authored at `7b26ddd` via
+  correct compound form. Origin/main history clean.)
+```
+
+Edit-tool guidance for EDIT 4:
+1. Read CLAUDE.md lines 537-547 to confirm the anchor (the existing `--no-verify` rule body, ending with "going forward: hook failures = halt.") matches exactly.
+2. Use Edit with `old_string` = the last sentence of the existing rule ("Both root causes addressed; going forward: hook failures = halt.") and `new_string` = same sentence + blank line + the new clarification paragraph above.
+
+---
+
+After all 4 edits, run the 7+1 grep mechanical checks (from criteria) to confirm:
 - 4 Rule headers in CLAUDE.md (`Schema verification ≠ runtime verification`, `PostgREST FK citation requirement`, `ai-logic-tester executes representative queries`, `Playwright smoke pre-QA for UI-touching plans`)
 - 1 Architecture posture cross-reference (`PostgREST FK citation rule`)
 - 1 Domain rules exception clause (`smoke scripts + verification harness fixtures use synthetic`)
-- 1 cumulative count check (above >= 6 lines added)
+- 1 Development Rules clarification clause (`Commit mechanism transparency` — per EDIT 4 / nwrp133)
+- 1 cumulative count check (above >= 7 lines added)
 
-NOTE on previous draft: the prior version of this Task 1 targeted the "## Development Rules" section (line 535) with shorter Rule headers (`Schema verification ≠ runtime verification` / `PostgREST relationship hint validation` / `ai-logic-tester must execute, not infer` / `Playwright smoke pre-GATE-N`). Per iter-2 §4.5 (decision 7) that target is RELOCATED to Workflow posture and the Rule headers are REPHRASED. The new headers are the binding contract — older grep patterns in any sibling artifact must be updated to match.
+NOTE on previous draft: the prior version of this Task 1 targeted the "## Development Rules" section (line 535) with shorter Rule headers (`Schema verification ≠ runtime verification` / `PostgREST relationship hint validation` / `ai-logic-tester must execute, not infer` / `Playwright smoke pre-GATE-N`). Per iter-2 §4.5 (decision 7) that target is RELOCATED to Workflow posture and the Rule headers are REPHRASED. The new headers are the binding contract — older grep patterns in any sibling artifact must be updated to match. (EDIT 4 per nwrp133 is the only Development Rules section edit that remains in this task — the commit-mechanism clarification clause under the existing `--no-verify` rule.)
   </action>
   <verify>
     <automated>
@@ -624,10 +661,12 @@ NOTE on previous draft: the prior version of this Task 1 targeted the "## Develo
       # Expected: >= 1 (Architecture posture cross-reference)
       grep -c 'smoke scripts + verification harness fixtures use synthetic' CLAUDE.md
       # Expected: 1 (Domain rules exception clause)
+      grep -c 'Commit mechanism transparency' CLAUDE.md
+      # Expected: >= 1 (Development Rules nwrp133 clarification clause)
     </automated>
   </verify>
   <done>
-    CLAUDE.md "### Workflow posture" subsection contains Rules 1-4 as ordered bullets appended at the end (after the /nightwork-propagate bullet). CLAUDE.md "### Architecture posture" subsection contains a PostgREST FK citation cross-reference bullet. CLAUDE.md "### Domain rules" subsection contains a Drummond-vs-synthetic-fixtures exception bullet. All 4 Rule headers + 2 cross-references + 1 exception clause are grep-matchable per mechanical criteria. No other section of CLAUDE.md is modified.
+    CLAUDE.md "### Workflow posture" subsection contains Rules 1-6 as ordered bullets appended at the end (after the /nightwork-propagate bullet) — Rules 1-4 per iter-2 §4.5; Rule 5 per nwrp127; Rule 6 per nwrp130 (+ nwrp131 regex precision refinement). CLAUDE.md "### Architecture posture" subsection contains a PostgREST FK citation cross-reference bullet. CLAUDE.md "### Domain rules" subsection contains a Drummond-vs-synthetic-fixtures exception bullet. CLAUDE.md "## Development Rules" section's existing `--no-verify` rule gains a "Commit mechanism transparency" clarification paragraph per nwrp133 (compound form vs --no-verify distinction). All 6 Rule headers + 2 cross-references + 1 exception clause + 1 commit-mechanism clarification are grep-matchable per mechanical criteria. No other section of CLAUDE.md is modified.
   </done>
 </task>
 
