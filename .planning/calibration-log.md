@@ -250,6 +250,33 @@ process_discipline_violations: 0
 
   **Discipline working as designed:** Wave-C shipped 3 user-facing bugs because no pre-ship runtime verification gate existed. Wave-D caught 8 process gaps before ship because Rules 1-6 + precursor scans exist. The 8 gaps are NOT failures — they're the system detecting and surfacing issues that previously would have shipped silently. Wave-A "got lucky" per nwrp113; Wave-D is showing what "unlucky-but-caught" looks like. The 8-gap count is the cost of the new discipline finding actual TD. Wave-B's 9 plans + 2-3 weeks of foundational work will surface more. That's expected and correct.
 
+- **nwrp136 finding (9th and most consequential Wave-D process gap): Deployment architecture incompatible with Wave-D verification discipline.** All 15 Wave-D commits pushed to `main` → deployed to production per CLAUDE.md deployment section. The push-to-main = production workflow has no preview/staging layer. Rule 4 (smoke between executor-done and /nightwork-qa) presupposes a preview deployment to review BEFORE production exposure. That layer doesn't exist.
+
+  **Severity: Critical for Wave-B planning.** The discipline Wave-D built doesn't work in this deployment topology. Wave-B's 9 plans + 2-3 weeks of foundational schema work would each push directly to production without smoke firing as a pre-ship gate. This stacks the same risk Wave-C had at 9× scope.
+
+  This is also a meta-finding about Wave-D itself: 15 commits, including foundational schema migration 00098, went to production without GATE-N or smoke firing once. The current Wave-D ship is therefore not the protected ship Wave-D was designed to be — it's an unprotected ship that incidentally followed the new discipline at the code-author/review layer but skipped the runtime-verification layer entirely.
+
+  **Adjustment for Wave-B: deployment architecture decision REQUIRED before Wave-B dispatch.** Three options surfaced for Jake decision:
+
+  - **(D-arch-1) Preview-branch workflow** — Wave-B plans dispatch to feature branches → preview deployment → smoke + QA → merge to main → production. Setup cost ~1-2 hours; every wave benefits.
+
+  - **(D-arch-2) Manual-promote workflow** — push to main = staging-equivalent; `vercel promote` to prod is manual gate.
+
+  - **(D-arch-3) Accept direct deploys + post-deploy smoke** — treat 5-min-post-merge as smoke window. Acceptable for sole-user phase; must change before paying customers.
+
+  Decision deferred to Jake. **Wave-B authorization gates on resolving this BEFORE plan dispatch.**
+
+- **Wave-B authorization prerequisites (cumulative; supersedes nwrp124-135 list):**
+  1. EXPANDED-SCOPE.md approved for Wave-B
+  2. SETUP-COMPLETE.md exists for Wave-B preflight
+  3. Wave-A (Plan B-3) inherits HF-A1-2 + `count` vs `updatedCount` resolution
+  4. Plan-review iter-1 honors Rules 1-6 (CLAUDE.md current state)
+  5. Wave-B plans use the 4 sub-checks of revised Rule 6 (hook regex / fixture collision / path reachability / files_modified intersection)
+  6. **NEW (nwrp136):** Deployment architecture decision made + CLAUDE.md updated to reflect chosen workflow (D-arch-1 / D-arch-2 / D-arch-3)
+  7. Wave-D GATE-N halt resolved with Jake authorization to advance
+
+  Wave-B remains REVOKED until all 7 prerequisites resolved.
+
 - **Wave-D execute sequencing.** Per nwrp127 sequencing decision: D-5 (shipped 2026-05-13 c84b4a0) → D-2 → D-1 → D-4 → D-3 → migration apply + Vercel preview + wave-d-smoke + /nightwork-qa + GATE-N. Originally planned parallel D-1 + D-2; flipped to sequential post-files_modified-overlap finding.
 
 ### What worked (preliminary)
