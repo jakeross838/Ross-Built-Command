@@ -546,6 +546,33 @@ See `docs/platform-admin-runbook.md` for common scenarios.
   500 mins vs 60-min threshold + `.claude/hooks/nightwork-post-edit.sh:105` grep
   arg-parsing bug). Both root causes addressed; going forward: hook failures = halt.
 
+  **Secret presence verification (per nwrp139 leak).** Bash secret-presence
+  checks MUST use explicit `if [ -n ... ]; then ... else ... fi`, never the
+  `:-` fallback operator. The `${VAR:-NOT_SET}` expansion returns the
+  variable's VALUE when VAR is set, NOT the fallback string. So when a
+  secret IS set (happy path), stdout includes the secret value.
+
+  Correct form:
+  ```
+  if [ -n "$VAR" ]; then
+    echo "VAR: SET (len=${#VAR})"
+  else
+    echo "VAR: NOT SET"
+  fi
+  ```
+
+  Wrong form (leaks `$VAR` when set):
+  ```
+  echo "VAR: ${VAR:+SET}${VAR:-NOT_SET}"
+  ```
+
+  Origin: nwrp139 — an advisor-authored verification command leaked
+  HARNESS_FIXTURE_PASSWORD to the conversation transcript while ostensibly
+  checking only its presence. Account was fixture-only RLS-scoped so blast
+  radius was contained, but the bash pattern needs to be canonical for
+  Wave-B+ to avoid recurrence. Applies equally to plan-author SQL probes,
+  executor shell scripts, and orchestrator verification helpers.
+
   **Commit mechanism transparency (per nwrp133 NEAR-MISS).** Compound
   `git add ... && git commit` form is NOT equivalent to `--no-verify`
   flag. The compound form is by hook design — `.claude/hooks/nightwork-

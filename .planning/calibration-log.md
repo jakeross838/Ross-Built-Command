@@ -266,7 +266,26 @@ process_discipline_violations: 0
 
   Decision deferred to Jake. **Wave-B authorization gates on resolving this BEFORE plan dispatch.**
 
-- **Wave-B authorization prerequisites (cumulative; supersedes nwrp124-135 list):**
+- **nwrp139 finding (10th Wave-D process gap): bash secret-check command leaked the secret it was verifying.** nwrp138 Step 2 verification command used `echo "VAR: ${VAR:+SET}${VAR:-NOT_SET}"`. The `${VAR:-fallback}` operator returns the variable's VALUE when set, not the fallback string. When `HARNESS_FIXTURE_PASSWORD` was set (happy path), stdout printed the password value alongside "YES (len=44)". Severity: LOW. Account is fixture-only (harness-fixture@nightwork.local), RLS-scoped to synthetic fixture-harness-org. Leak surface: orchestrator's local terminal + Claude Code session transcript. User decided not to rotate given contained scope. Pattern: this is the 3rd Wave-D process gap originating from CLAUDE-CHAT advisor prompts (vs Claude Code plan-author or executor outputs) — nwrp136 (catastrophizing on incomplete deployment info), nwrp138 ambiguous URL framing (rossbuilt.com vs nightwork-platform.vercel.app vs Squarespace targeting), nwrp139 buggy secret-check.
+
+  **Codified fix (CLAUDE.md Development Rules — landing this commit):** Secret-presence verification MUST use explicit if/else, never bash `:-` fallback. Correct form: `if [ -n "$VAR" ]; then echo "VAR: SET (len=${#VAR})"; else echo "VAR: NOT SET"; fi`. Wrong form: `echo "VAR: ${VAR:+SET}${VAR:-NOT_SET}"` — the `:-NOT_SET` branch prints `$VAR`'s value when VAR is set.
+
+- **nwrp140 finding (11th Wave-D process gap): smoke harness selectors don't match production DOM (3 reviewers converged).** Wave-D D-4 plan-authored `scripts/wave-d-smoke.ts` selectors `header.app-shell-nav, header[data-component="nav-bar"]` + `aside.app-shell-sidebar` against intended-but-not-implemented contracts. Production `nav-bar.tsx:280` and `job-sidebar.tsx:259` carry neither class nor attribute. Result: smoke run reported 12/13 routes FAILED with `NavBar=0` across the board — false negatives caused by harness selector miss, not production breakage. Plus 3 additional bugs in wave-d-smoke.ts surfaced by ai-logic-tester:
+  - `select[name='pm_id|assigned_pm|import_default_pm_id']` selectors target form `name=` attributes that don't exist on production forms (verified via grep returning 0 hits)
+  - `waitUntil: "load"` doesn't wait for React hydration; NavBar is `"use client"` and selectors run before hydration completes → false-null bounding boxes
+  - `/financials/bills/[id]` route uses in-memory Caldwell fixtures (string IDs like `inv-caldwell-001`), not `public.invoices` UUID lookups. Synthetic seed UUID `33333333-...` can never match. The ONLY Document Review pattern test route is structurally incoherent with the synthetic seed approach until F1 wires real DB reads.
+
+  Pattern: this is the EXACT Rule 1 anti-pattern (schema verification ≠ runtime verification) that D-4 was authored to prevent. The plan-author wrote selectors against intended DOM contracts that were never implemented on the production components. The plan-review iter-1 didn't catch this because selector-matches-DOM verification wasn't part of the iter-1 checklist. Meta-gap: Wave-D's verification discipline depended on a harness that doesn't observe the things it claims to observe.
+
+  **Adjustment for Wave-B:** plan-review iter-1 mechanical check for ANY Playwright smoke selector authored in a plan: grep the selector against the actual rendered DOM (or component source if the DOM isn't available). Missing check = WARNING. Falls under revised Rule 6 sub-check (a) "Hook regex sweep" — extend to "selector contract verification" as a new sub-category.
+
+  Resolution path documented in `.planning/qa-runs/2026-05-14-1700-qa-report.md` Blocking findings 1-4. Fix order: (1) add `data-component="nav-bar"` + `data-component="job-sidebar"` to production components; (2) update wave-d-smoke.ts hydration wait + primary-UX selectors; (3) decide on /financials/bills/[id] route (wire real DB reads OR Caldwell ID waiver); (4) re-run smoke + /nightwork-qa.
+
+- **Cumulative Wave-D process gaps: 11 total.** iter-2-patch propagation (nwrp124, nwrp128, nwrp129) + precursor-violation scan (nwrp130) + precursor-scan regex precision (nwrp131) + precursor sub-category refinement (nwrp132) + commit-mechanism conflation (nwrp133 NEAR-MISS) + smoke-seed fixture collision (nwrp135) + deployment architecture incompatibility (nwrp136) + bash secret-check leak (nwrp139) + smoke harness selector mismatch (nwrp140). Three additional minor advisor-prompt issues NOT promoted to top-level findings: rossbuilt.com Squarespace targeting (nwrp138 redirect investigation), "running smoke against live customer domain" framing concern (resolved by nightwork-platform.vercel.app pivot), --no-verify slip pre-push (subsumed under nwrp133).
+
+  **Verdict on Wave-D ship:** code-layer discipline shipped 5 plans correctly per AC. Runtime-verification layer is itself in need of corrective work. Wave-D code is on origin/main; Wave-D verification gate is BLOCKING per /nightwork-qa synthesis. The discipline Wave-D was meant to install caught its own broken harness — that's the system working, but it means Wave-B must absorb the harness fixes before its first plan dispatches.
+
+- **Wave-B authorization prerequisites (cumulative; supersedes nwrp124-139 list):**
   1. EXPANDED-SCOPE.md approved for Wave-B
   2. SETUP-COMPLETE.md exists for Wave-B preflight
   3. Wave-A (Plan B-3) inherits HF-A1-2 + `count` vs `updatedCount` resolution
@@ -274,8 +293,10 @@ process_discipline_violations: 0
   5. Wave-B plans use the 4 sub-checks of revised Rule 6 (hook regex / fixture collision / path reachability / files_modified intersection)
   6. **NEW (nwrp136):** Deployment architecture decision made + CLAUDE.md updated to reflect chosen workflow (D-arch-1 / D-arch-2 / D-arch-3)
   7. Wave-D GATE-N halt resolved with Jake authorization to advance
+  8. **NEW (nwrp140):** Smoke harness selector fixes landed — NavBar + sidebar selectors match production DOM; hydration wait fixed; primary-UX selectors target real form attributes; /financials/bills/[id] route resolution path decided
+  9. **NEW (security HIGHs):** Vendor PII embed narrowed in invoices/[id]/route.ts; 9 production smoke-* auth.users rows deleted; seed password rotated to `gen_random_uuid()`
 
-  Wave-B remains REVOKED until all 7 prerequisites resolved.
+  Wave-B remains REVOKED until all 9 prerequisites resolved.
 
 - **Wave-D execute sequencing.** Per nwrp127 sequencing decision: D-5 (shipped 2026-05-13 c84b4a0) → D-2 → D-1 → D-4 → D-3 → migration apply + Vercel preview + wave-d-smoke + /nightwork-qa + GATE-N. Originally planned parallel D-1 + D-2; flipped to sequential post-files_modified-overlap finding.
 
