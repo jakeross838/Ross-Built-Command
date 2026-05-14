@@ -20,6 +20,7 @@ source_decisions:
   - "nwrp121 Addition 2 — wave-d-smoke.ts is a Playwright script (NOT manual smoke); seeds Wave 1.1-Full Layer 4 framework"
   - "nwrp122 iter-2 decisions 3-7 — Rule 4 lifecycle gate codified between executor and /nightwork-qa; /nightwork-qa is single canonical enforcer; screenshots are DIAGNOSTIC-ONLY (no baseline diff); synthetic fixture seed replaces Drummond UUIDs; Rules 1-4 placement is Workflow posture (NOT Development Rules)"
   - "nwrp127 iter-3 patch — Rule 5 (files_modified intersection check before parallel dispatch) added to Workflow posture bullet block + plan-review enforcement section. Origin: Wave-D D-1 + D-2 both claimed parallel_execute_ok: true but shared 2 files (invoices/page.tsx, invoices/queue/page.tsx); pre-dispatch grep caught the overlap that plan-author logical reasoning + plan-review iter-1 + iter-2 all missed. Rule 5 codifies the mechanical guardrail; enforcement structural via plan-review iter-1 check (Task 2 extended with Rule 5 enforcement section)."
+  - "nwrp130 iter-3 patch — Rule 6 (precursor hook scan before plan-execute dispatch) added to Workflow posture bullet block + plan-review enforcement section. Origin: Wave-D D-2 executor halted at Task 2 on a pre-existing `bg-white` violation in `invoices/page.tsx:822` (commit 2c5607e3, 2026-04-13 — 31 days pre-D-2); post-edit hook correctly halted but whole-file scan blocked unrelated AppShell-strip work until precursor commit e9fbbd3 cleaned it. Rule 6 codifies the guardrail at plan-review time so surprises don't surface at execute time. WARNING (not BLOCKING) per friction-tax rationale: many precursors are trivial in-task fixes; the discipline is 'no surprises at execute,' not 'no violations exist.' Enforcement structural via plan-review iter-1 mechanical scan (Task 2 extended with Rule 6 enforcement section)."
   - "stage-f1-knowledge-graph-auth-wave-d EXPANDED-SCOPE (2026-05-13, APPROVED) — Plan D-4 scope locked"
   - "D-073 / Q2=C (CLAUDE.md verification harness deprecation path) — 3-layer harness is canonical CI signal; wave-d-smoke seeds the interactive Layer 4 framework noted in calibration-log F1+ harness extension entry"
   - "D-30 (CLAUDE.md tenant boundary by construction) — script auth uses harness-fixture@nightwork.local (org-admin in fixture-harness-org), matching the existing stage-1.5c-verification-harness auth strategy; NO platform-admin escape hatch"
@@ -477,6 +478,20 @@ Insert the 4 bullets verbatim per iter-2 §4.5:
   plans' "parallel_execute_ok: true" annotations missed; enforcement structural
   via plan-review iter-1 mechanical check — see Plan D-4 Task 2 Rule 5
   enforcement section.)
+- **Rule 6 — precursor hook scan before plan-execute dispatch.**
+  For every plan declaring `files_modified` entries, plan-review iter-1 MUST
+  run the post-edit hook (or equivalent design-token / typecheck scan) against
+  current state of each listed file BEFORE plan-execute dispatch. Pre-existing
+  violations in target files = surface to plan-author for precursor handling
+  (either include precursor cleanup in plan scope with explicit separation in
+  the commit graph, OR author a precursor plan that ships first). Missing
+  check = WARNING (not BLOCKING since it doesn't always apply — schema-only /
+  doc-only plans may not touch hook-scanned surfaces). (Origin: nwrp130
+  Wave-D D-2 executor halted at Task 2 on a pre-existing `bg-white` violation
+  in `invoices/page.tsx:822` that predated D-2 by 31 days; precursor commit
+  e9fbbd3 cleaned it before D-2 re-dispatched. Enforcement structural via
+  plan-review iter-1 mechanical scan — see Plan D-4 Task 2 Rule 6 enforcement
+  section.)
 ```
 
 The full Rule 4 codification (per iter-2 §4.1 + §4.2) is the canonical reference for the lifecycle gate + enforcer + failure-mode taxonomy. The text below is the authoritative full text of Rule 4 (per iter-2 §4.1) that the bullet above abbreviates:
@@ -691,16 +706,61 @@ When a `PLAN_PARALLEL_FILES_OVERLAP` finding fires, the plan-author has three op
 ### Friction-tax watchpoint
 
 If plan-review iter-1 finds itself flagging >20% of waves with `PLAN_PARALLEL_FILES_OVERLAP`, the parallel_execute_ok claim is being over-asserted by plan-authors — escalate to template-level guidance (extend `.planning/templates/plan-template.md` with a "before declaring parallel_execute_ok: true, list files_modified across all parallel candidates and confirm disjoint" pre-check) OR to D-amendment that defaults parallel_execute_ok to false unless explicitly justified.
+
+## Rule 6 precursor hook scan enforcement (per nwrp130 + Wave-D D-2 surface)
+
+Per CLAUDE.md Workflow posture → Rule 6: every plan declaring `files_modified` entries must pass a pre-execute hook scan against each target file's current state. Pre-existing violations (design-token, typecheck, lint) surface during plan-review iter-1 rather than at executor's first edit attempt. Origin: nwrp130 Wave-D D-2 executor halted at Task 2 on a pre-existing `bg-white` violation in `invoices/page.tsx:822` that predated D-2 by 31 days; the post-edit hook's whole-file scan posture blocked unrelated AppShell-strip work until the precursor was cleaned. A pre-execute hook scan at plan-review time surfaces the same finding before dispatch, allowing precursor handling without an executor halt.
+
+### Check
+
+For each PLAN.md in the phase:
+1. **Extract files_modified paths** via:
+   ```bash
+   awk '/^files_modified:/,/^[a-z_]+:/' PLAN-FILE.md | grep -oP '^\s+-\s+\K\S+'
+   ```
+2. **Filter to hook-scanned surfaces** (the post-edit hook scans `.ts`/`.tsx`/`.css` per `.claude/hooks/nightwork-post-edit.sh`):
+   ```bash
+   grep -E '\.(ts|tsx|css)$'
+   ```
+3. **For each filtered path**, run the post-edit hook against current file state:
+   ```bash
+   for f in <filtered-paths>; do
+     CLAUDE_TOOL_OUTPUT='{"filePath":"'$f'"}' .claude/hooks/nightwork-post-edit.sh
+   done
+   ```
+   OR equivalent (typecheck + lint + design-token grep covering same surface).
+4. **For each HALT**, flag finding `PLAN_PRECURSOR_VIOLATION` with file path + violation type + recommended precursor handling.
+
+### Verdict integration
+
+- Any pre-existing hook violation in a target file → WARNING finding (`PLAN_PRECURSOR_VIOLATION`); plan-author MUST acknowledge with a precursor handling decision before plan ships. Two acceptable paths:
+  (a) **Include precursor cleanup in plan scope** with explicit task-level separation (e.g. Task 1 = precursor cleanup; Tasks 2..N = main plan body). Commit graph should still produce a single precursor commit + single main commit OR a precursor task that pre-dates the main task.
+  (b) **Author a precursor plan** that ships before this plan. Precursor plan has its own files_modified + ACs + verification.
+- All target files hook-clean → no finding.
+- Schema-only / migration-only / doc-only plans with no hook-scanned surfaces → finding N/A (vacuous PASS).
+
+### Default reviewer disposition
+
+`architect` is the **primary** reviewer for this check (cross-plan scope-handling lens — should precursor be in-plan or its own plan?). `planner` is **co-primary** (the planner agent authored the plan and is responsible for scope decisions). No secondary reviewer needed — the check is mechanical (hook runs deterministically).
+
+### Why WARNING not BLOCKING
+
+Unlike Rule 2 (FK citation) or Rule 5 (parallel overlap), Rule 6's "precursor violation" finding doesn't always require plan-author action — many violations are trivial 1-line fixes the executor can apply in-task with no scope creep concern. The friction-tax of BLOCKING every such finding would force pointless plan-author cycles. WARNING lets the plan-author triage: trivial fixes get an "include in scope" note; non-trivial fixes get a precursor plan; truly out-of-scope fixes get a Wave 1.1-Lite TD entry. The discipline is "no surprises at execute time," not "no violations exist."
+
+### Friction-tax watchpoint
+
+If plan-review iter-1 finds itself flagging >40% of waves with `PLAN_PRECURSOR_VIOLATION`, the codebase has accumulated more hook-scannable tech debt than the plan-level workflow can absorb — escalate to a dedicated design-token / hygiene sweep (Wave 1.1-Lite or similar) rather than continuing per-plan precursor handling.
 ```
 
 Edit-tool guidance:
 1. Read .claude/commands/nightwork-plan-review.md lines 155-170 to locate the end of the Criteria-mandate-enforcement section (look for the "Drop-in template" subsection or the file's final lines).
-2. Append BOTH new sections (Rule 2 + Rule 5) AFTER the criteria-mandate section, BEFORE the file's final block (preserve trailing newline).
-3. Use a single Edit call with old_string ending at a stable anchor in the criteria-mandate section (e.g. the "Drop-in template" header line) and new_string = anchor + Rule 2 section + Rule 5 section.
+2. Append THREE new sections (Rule 2 + Rule 5 + Rule 6) AFTER the criteria-mandate section, BEFORE the file's final block (preserve trailing newline).
+3. Use a single Edit call with old_string ending at a stable anchor in the criteria-mandate section (e.g. the "Drop-in template" header line) and new_string = anchor + Rule 2 section + Rule 5 section + Rule 6 section.
 
 After the edit, run the grep mechanical checks:
 - `grep -n 'PLAN_MISSING_FK_CITATION' .claude/commands/nightwork-plan-review.md` returns >= 1 match.
 - `grep -n 'PLAN_PARALLEL_FILES_OVERLAP' .claude/commands/nightwork-plan-review.md` returns >= 1 match.
+- `grep -n 'PLAN_PRECURSOR_VIOLATION' .claude/commands/nightwork-plan-review.md` returns >= 1 match.
 - `grep -c 'architect\|database-reviewer' .claude/commands/nightwork-plan-review.md` (scoped to the Rule 2 enforcement block) returns >= 2.
   </action>
   <verify>
@@ -709,12 +769,14 @@ After the edit, run the grep mechanical checks:
       # Expected: >= 2 (section header + finding code)
       grep -c 'PLAN_PARALLEL_FILES_OVERLAP\|Rule 5 files_modified intersection enforcement' .claude/commands/nightwork-plan-review.md
       # Expected: >= 2 (section header + finding code)
+      grep -c 'PLAN_PRECURSOR_VIOLATION\|Rule 6 precursor hook scan enforcement' .claude/commands/nightwork-plan-review.md
+      # Expected: >= 2 (section header + finding code)
       grep -c 'architect\|database-reviewer' .claude/commands/nightwork-plan-review.md
       # Expected: >= 2 in the Rule 2 enforcement block per iter-2 §4.18
     </automated>
   </verify>
   <done>
-    nightwork-plan-review.md contains BOTH a "Rule 2 FK-citation enforcement" section AND a "Rule 5 files_modified intersection enforcement" section. Rule 2 section names PLAN_MISSING_FK_CITATION as a BLOCKING finding code (per iter-2 §4.17/§4.18). Rule 5 section names PLAN_PARALLEL_FILES_OVERLAP as a BLOCKING finding code (per nwrp127 origin). Both sections mirror the Criteria-mandate-enforcement precedent shape. No other section is modified.
+    nightwork-plan-review.md contains THREE enforcement sections: "Rule 2 FK-citation enforcement" + "Rule 5 files_modified intersection enforcement" + "Rule 6 precursor hook scan enforcement". Rule 2 names PLAN_MISSING_FK_CITATION as BLOCKING (per iter-2 §4.17/§4.18). Rule 5 names PLAN_PARALLEL_FILES_OVERLAP as BLOCKING (per nwrp127 origin). Rule 6 names PLAN_PRECURSOR_VIOLATION as WARNING (per nwrp130 origin; WARNING not BLOCKING per Rule 6 friction-tax rationale). All three sections mirror the Criteria-mandate-enforcement precedent shape. No other section is modified.
   </done>
 </task>
 
