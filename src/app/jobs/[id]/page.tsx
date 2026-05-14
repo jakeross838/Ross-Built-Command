@@ -342,7 +342,11 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                   label="Retainage %"
                   value={`${Number(job.retainage_percent ?? 0).toFixed(1)}%`}
                 />
-                <Detail label="Assigned PM" value={pms.find((p) => p.id === job.pm_id)?.full_name ?? "Unassigned"} />
+                <Detail
+                  label="Assigned PM"
+                  value={pms.find((p) => p.id === job.pm_id)?.full_name ?? "Unassigned"}
+                  dataPmName
+                />
                 <Detail label="Status" value={job.status} />
               </div>
             </NwCard>
@@ -590,11 +594,25 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
   );
 }
 
-function Detail({ label, value }: { label: string; value: string | null | undefined }) {
+function Detail({
+  label,
+  value,
+  dataPmName,
+}: {
+  label: string;
+  value: string | null | undefined;
+  dataPmName?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-1">
       <NwEyebrow tone="muted">{label}</NwEyebrow>
-      <p className="text-sm" style={{ color: "var(--text-primary)" }}>{value ?? "—"}</p>
+      <p
+        className="text-sm"
+        style={{ color: "var(--text-primary)" }}
+        {...(dataPmName ? { "data-pm-name": value ?? "" } : {})}
+      >
+        {value ?? "—"}
+      </p>
     </div>
   );
 }

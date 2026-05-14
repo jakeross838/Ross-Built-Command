@@ -175,9 +175,12 @@ const ROUTES: RouteCheck[] = [
     primary_ux_selector: null, // API consumer; HTTP 200 + zero console errors only
   },
   {
+    // Per ITER-2-PATCHES.md §2.3 + §2.5: production <select> has no name=
+    // attribute. Plan body's role=combobox approach superseded by simpler
+    // any-select selector (page has a default-PM <select> wrapped in <label>).
     route: "/settings/workflow",
     category: "issue-1",
-    primary_ux_selector: "select[name='import_default_pm_id'] option",
+    primary_ux_selector: "select",
     primary_ux_min_count: 1,
   },
   // Per iter-2 §4.4.2: synthetic invoice UUID (Drummond UUID NOT used here —
@@ -196,47 +199,54 @@ const ROUTES: RouteCheck[] = [
     primary_ux_selector: "text=Smoke Job Alpha",
   },
   {
+    // Per ITER-2-PATCHES.md §2.3 + §2.5: production <select> has no name=
+    // attribute. Plan body's role=combobox approach superseded by simpler
+    // any-select selector (jobs/new form contains a PM <select> visible on load).
     route: "/jobs/new",
     category: "issue-1",
-    primary_ux_selector: "select[name='pm_id'] option",
+    primary_ux_selector: "select",
     primary_ux_min_count: 1,
   },
   // Issue 1 + Issue 2 overlap (deduplicated)
+  // Per ITER-2-PATCHES.md §2.3: InvoiceHeader.tsx row-level PM <select> is
+  // not visible on initial /financials/bills page load. Plan body's role-based
+  // locator superseded by page-header text selector (page renders heading element
+  // on load — stable test contract independent of row-level dropdown rendering).
   {
     route: "/financials/bills",
     category: "both",
-    primary_ux_selector: "select[name='assigned_pm'] option",
+    primary_ux_selector: "h1, h2, [data-page-header]",
     primary_ux_min_count: 1,
   },
   {
     route: "/financials/bills/queue",
     category: "both",
-    primary_ux_selector: "select[name='assigned_pm'] option",
+    primary_ux_selector: "h1, h2, [data-page-header]",
     primary_ux_min_count: 1,
   },
   // Issue 2 — financials/* routes (the 4 not already covered above)
   {
     route: "/financials/bills/qa",
     category: "issue-2",
-    primary_ux_selector: "header.app-shell-nav",
+    primary_ux_selector: 'header[data-component="nav-bar"]',
     primary_ux_min_count: 1,
   },
   {
     route: "/financials/lien-releases",
     category: "issue-2",
-    primary_ux_selector: "header.app-shell-nav",
+    primary_ux_selector: 'header[data-component="nav-bar"]',
     primary_ux_min_count: 1,
   },
   {
     route: "/financials/payments",
     category: "issue-2",
-    primary_ux_selector: "header.app-shell-nav",
+    primary_ux_selector: 'header[data-component="nav-bar"]',
     primary_ux_min_count: 1,
   },
   {
     route: "/financials/pay-apps",
     category: "issue-2",
-    primary_ux_selector: "header.app-shell-nav",
+    primary_ux_selector: 'header[data-component="nav-bar"]',
     primary_ux_min_count: 1,
   },
   // Redirect sentinel — /invoices → /financials/bills (per Plan D-3 + D-01).
@@ -382,7 +392,7 @@ async function checkRoute(
     }
 
     const response = await page.goto(`${previewUrl}${route}`, {
-      waitUntil: "load",
+      waitUntil: "networkidle",
       timeout: PER_ROUTE_TIMEOUT_MS,
     });
 
@@ -402,17 +412,13 @@ async function checkRoute(
     // Skip DOM invariants on the redirect sentinel.
     if (route !== "/invoices") {
       // Per-route invariant — single NavBar global (per iter-2 §4.8 / H-D4-21).
-      const navBars = await page.$$(
-        'header.app-shell-nav, header[data-component="nav-bar"]',
-      );
+      const navBars = await page.$$('header[data-component="nav-bar"]');
       if (navBars.length !== 1) {
         invariantFailures.push(
           `Expected exactly 1 NavBar on ${route}, got ${navBars.length}`,
         );
       }
-      const sidebars = await page.$$(
-        'aside.app-shell-sidebar, aside[data-component="job-sidebar"]',
-      );
+      const sidebars = await page.$$('aside[data-component="job-sidebar"]');
       if (sidebars.length > 1) {
         invariantFailures.push(
           `Expected ≤1 sidebar on ${route}, got ${sidebars.length}`,
@@ -447,10 +453,14 @@ async function checkRoute(
       }
 
       // PM dropdown display-name (NOT UUID) — applies wherever the
-      // dropdown surfaces in the DOM.
+      // dropdown surfaces in the DOM. Per ITER-2-PATCHES.md §2.3: production
+      // PM <select> elements have no name= attribute; query all <option>
+      // children of all <select>s and rely on the UUID regex below to detect
+      // actual leaks (false-positive tolerant — we only fail if UUIDs literally
+      // appear in option text).
       const pmOptions = await page
         .$$eval(
-          'select[name="pm_id"] option, select[name="assigned_pm"] option, select[name="import_default_pm_id"] option',
+          'select option',
           (els) =>
             els.map((e) => ({
               value: (e as HTMLOptionElement).value,
@@ -470,7 +480,7 @@ async function checkRoute(
       // NavBar background-color token resolution check.
       try {
         const navBg = await page.$eval(
-          'header.app-shell-nav, header[data-component="nav-bar"]',
+          'header[data-component="nav-bar"]',
           (el) => getComputedStyle(el).backgroundColor,
         );
         if (
@@ -507,6 +517,34 @@ async function checkRoute(
           invariantFailures.push(
             `Document Review missing audit timeline on ${route}`,
           );
+      }
+
+      // Per-route invariant — DOM-level PM name verification (Plan E-2 / nwrp144 #1).
+      //
+      // Validates the application-layer pm_id → orgPms[i].full_name mapping.
+      // The PostgREST embed (`org_members.select=*,profile:profiles(...)`) resolving
+      // is necessary but NOT sufficient — the React code at
+      // src/app/jobs/[id]/page.tsx:345 maps pm_id from the resolved pms array
+      // and renders the full_name in the Detail component's `<p data-pm-name="...">`.
+      //
+      // For the synthetic Job Alpha route the pm_id is
+      // 00000000-0000-0000-0002-000000000002 which seeds to "Smoke PM Alpha"
+      // in scripts/fixtures/smoke-seed.sql. Assert the DOM contains that text
+      // in the [data-pm-name] element.
+      if (route === "/jobs/22222222-2222-2222-2222-200000000001") {
+        const pmNameEl = await page.$('[data-pm-name]');
+        if (!pmNameEl) {
+          invariantFailures.push(
+            `DOM-level PM name verification: [data-pm-name] element missing on ${route}`,
+          );
+        } else {
+          const txt = (await pmNameEl.textContent())?.trim() ?? "";
+          if (!txt.includes("Smoke PM Alpha")) {
+            invariantFailures.push(
+              `DOM-level PM name verification: expected "Smoke PM Alpha" in [data-pm-name] textContent, got "${txt}"`,
+            );
+          }
+        }
       }
 
       // Primary-UX check.

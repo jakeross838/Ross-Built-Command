@@ -37,32 +37,73 @@
 -- CLAUDE.md → Domain rules → Drummond-vs-synthetic-fixtures exception
 -- (Wave-D D-4 deliverable; iter-2 §4.4.4).
 --
+-- ============================================================================
+-- PASSWORD LIFECYCLE (per Plan E-2 / ITER-2-PATCHES.md §2.1 + §2.2 / FINDING-2):
+-- ============================================================================
+--
+-- The cleartext password for the 9 smoke-* synthetic users is NOT stored in
+-- this file. The literal placeholder string
+--   '__PLACEHOLDER_REPLACED_BY_ORCHESTRATOR__'
+-- below MUST be substituted by the orchestrator at apply time. The placeholder
+-- is UUID-incompatible by shape — any accidental direct apply produces a
+-- runtime cleartext password that will not authenticate via any expected
+-- pattern (defensive against `psql -f` of an unsubstituted file).
+--
+-- APPLY PROCEDURE (orchestrator-driven; NOT via direct `psql -f`):
+--
+--   1. Orchestrator generates a single shared password via Node
+--      `crypto.randomUUID()` (122 bits entropy from 128-bit UUID).
+--   2. Orchestrator reads this file as a string template.
+--   3. Orchestrator substitutes '__PLACEHOLDER_REPLACED_BY_ORCHESTRATOR__'
+--      with the generated UUID (SQL-escaping single quotes; UUIDs do not
+--      contain quotes but defense-in-depth).
+--   4. Orchestrator submits the resulting SQL via Supabase MCP `execute_sql`.
+--   5. On apply success, orchestrator writes the credentials file at
+--      `.planning/qa-runs/wave-d/smoke-seed-credentials-DO-NOT-COMMIT.txt`
+--      with one `<email> <password>` line per smoke-* user.
+--
+-- Why this mechanism (per ITER-2-PATCHES.md §2.1 root cause analysis):
+--   - `COPY TO '/path'` requires pg_write_server_files (denied on Supabase).
+--   - `psql \o` redirects RESULT output, NOT PL/pgSQL RAISE NOTICE.
+--   - Supabase MCP execute_sql does NOT surface NOTICE-level messages.
+--   - RAISE NOTICE goes to stderr (not stdout) under `psql -f`; capture
+--     requires `2>&1` stderr-merging which is brittle across environments.
+--   Orchestrator-driven substitution + post-apply credentials-file write
+--   sidesteps all 4 failure modes.
+--
+-- Idempotency on re-apply (per ITER-2-PATCHES.md §2.2):
+--   The ON CONFLICT (id) DO UPDATE clause now includes
+--   `encrypted_password = EXCLUDED.encrypted_password` so a re-apply with
+--   a NEW orchestrator-generated password rotates the bcrypt hash to match
+--   the new cleartext written to the credentials file. Without this, a
+--   re-apply would skip the password update and the credentials file would
+--   diverge from the stored hash — smoke could not authenticate.
+--
+-- SKIPS the harness-fixture@nightwork.local user — that user already exists
+-- with UUID 5eb26edc-5989-477f-ac42-d1e9264db0e2 from migration 00092/00093
+-- (Layer 3 verification harness). Its password rotates via the existing
+-- HARNESS_FIXTURE_PASSWORD env var (don't-rotate posture per nwrp139/141).
+--
 -- Schema alignment notes:
 --   - `profiles.id` is FK to `auth.users(id)` (migration 00007). Synthetic
 --     profiles rows require corresponding auth.users entries first.
 --   - `activity_log` schema (migration 00026) uses `created_at` (not
 --     `occurred_at`) and `details JSONB` (not `action_metadata`).
 --   - `invoices.assigned_pm_id` does not exist as a column; omitted.
---
--- Application:
---   psql -f scripts/fixtures/smoke-seed.sql  (local Supabase)
---   OR Supabase MCP execute_sql with file content (preview environment)
 
 BEGIN;
 
 -- ============================================================================
 -- Step 1: 9 NEW synthetic auth.users (supporting users for smoke harness).
 --
--- SKIPS the harness-fixture@nightwork.local user — that user already exists
--- with UUID 5eb26edc-5989-477f-ac42-d1e9264db0e2 from migration 00092/00093
--- (Layer 3 verification harness). Reinserting it would collide on the
--- auth.users.email uniqueness constraint (nwrp135 finding).
---
--- ON CONFLICT (id) DO UPDATE preserves idempotency for the 9 new users.
+-- SKIPS the harness-fixture@nightwork.local user — see header for rationale.
+-- ON CONFLICT (id) DO UPDATE preserves idempotency AND rotates the bcrypt
+-- hash so re-apply with a fresh orchestrator password matches the new
+-- credentials file content.
 -- ============================================================================
 DO $$
 DECLARE
-  v_password TEXT := 'SmokeSeed2026!';  -- synthetic; never used at runtime
+  v_password TEXT := '__PLACEHOLDER_REPLACED_BY_ORCHESTRATOR__';  -- orchestrator replaces this string before execute_sql
   v_user RECORD;
 BEGIN
   FOR v_user IN
@@ -102,7 +143,8 @@ BEGIN
     )
     ON CONFLICT (id) DO UPDATE SET
       email_confirmed_at = COALESCE(auth.users.email_confirmed_at, NOW()),
-      updated_at = NOW();
+      updated_at = NOW(),
+      encrypted_password = EXCLUDED.encrypted_password;  -- §2.2 patch: rotate hash on re-apply so credentials file matches
 
     INSERT INTO auth.identities (
       id, user_id, provider_id, identity_data, provider,
@@ -199,6 +241,11 @@ ON CONFLICT (id) DO NOTHING;
 -- ============================================================================
 -- Step 6: 5 synthetic invoices in existing fixture-harness-org.
 -- invoices.invoice_type CHECK CONSTRAINT ('progress','time_and_materials','lump_sum').
+--
+-- vendor_id deliberately NULL: production invoices arrive unmatched (parsed
+-- from email PDF; vendor_name_raw populated, vendor_id NULL pending PM matching).
+-- E-3's /financials/bills/[id] shim handles the null-vendor case via
+-- vendor_name_raw fallback (per ITER-2-PATCHES.md §3.1).
 -- ============================================================================
 INSERT INTO public.invoices (
   id, org_id, job_id, vendor_name_raw, total_amount, invoice_type, status, received_date

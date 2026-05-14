@@ -279,6 +279,7 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
     <>
     <header
       ref={menuRef}
+      data-component="nav-bar"
       className="bg-nw-slate-deeper border-b border-[rgba(247,245,236,0.08)] sticky top-0 z-40"
     >
       <div className="max-w-[1600px] mx-auto px-8 h-[54px] flex items-center justify-between gap-[22px]">

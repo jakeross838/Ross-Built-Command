@@ -161,7 +161,7 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
           {canCreateJob && (
             <Link
               href="/jobs/new"
-              className="flex items-center justify-center gap-1.5 w-full py-1.5 text-[11px] tracking-[0.06em] uppercase font-medium border border-nw-stone-blue text-nw-stone-blue hover:bg-nw-stone-blue hover:text-white transition-colors"
+              className="flex items-center justify-center gap-1.5 w-full py-1.5 text-[11px] tracking-[0.06em] uppercase font-medium border border-nw-stone-blue text-nw-stone-blue hover:bg-nw-stone-blue hover:text-[color:var(--nw-white-sand)] transition-colors"
             >
               + New Job
             </Link>
@@ -222,7 +222,10 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
   // Collapsed rail
   if (collapsed) {
     return (
-      <aside className="hidden md:flex flex-col items-center w-12 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-card)] py-4 gap-3">
+      <aside
+        data-component="job-sidebar"
+        className="hidden md:flex flex-col items-center w-12 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-card)] py-4 gap-3"
+      >
         <button
           onClick={toggleCollapse}
           className="w-8 h-8 flex items-center justify-center text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] hover:bg-[var(--bg-subtle)] transition-colors"
@@ -256,7 +259,10 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
 
   // Expanded sidebar
   return (
-    <aside className="hidden md:flex flex-col w-[220px] shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-card)] overflow-hidden">
+    <aside
+      data-component="job-sidebar"
+      className="hidden md:flex flex-col w-[220px] shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-card)] overflow-hidden"
+    >
       {/* Header */}
       <div className="p-3 border-b border-[var(--border-default)] space-y-2">
         <div className="flex items-center justify-between">
@@ -281,7 +287,7 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
         {canCreateJob && (
           <Link
             href="/jobs/new"
-            className="flex items-center justify-center gap-1.5 w-full py-1.5 text-[11px] tracking-[0.06em] uppercase font-medium border border-nw-stone-blue text-nw-stone-blue hover:bg-nw-stone-blue hover:text-white transition-colors"
+            className="flex items-center justify-center gap-1.5 w-full py-1.5 text-[11px] tracking-[0.06em] uppercase font-medium border border-nw-stone-blue text-nw-stone-blue hover:bg-nw-stone-blue hover:text-[color:var(--nw-white-sand)] transition-colors"
           >
             + New Job
           </Link>

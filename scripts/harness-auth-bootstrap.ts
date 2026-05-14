@@ -27,9 +27,19 @@
 //
 // USAGE
 //   npx tsx scripts/harness-auth-bootstrap.ts --preview-url <https://...>
+//   npx tsx scripts/harness-auth-bootstrap.ts --preview-url <https://...> --email smoke-pm-alpha@nightwork.local
+//
+// OPTIONAL ARGS
+//   --email <user>                    — defaults to harness-fixture@nightwork.local
+//
+// REQUIRED CREDENTIALS (one of, depending on --email)
+//   For harness-fixture@nightwork.local:
+//     HARNESS_FIXTURE_PASSWORD env var (existing pattern; don't-rotate per nwrp139/141)
+//   For smoke-*@nightwork.local:
+//     .planning/qa-runs/wave-d/smoke-seed-credentials-DO-NOT-COMMIT.txt (gitignored;
+//     written by orchestrator post-seed-apply per Plan E-2 / ITER-2-PATCHES.md §2.1)
 //
 // REQUIRED ENV
-//   HARNESS_FIXTURE_PASSWORD          — fixture user password
 //   NEXT_PUBLIC_SUPABASE_URL          — (only for assertion logging; not used for login flow)
 //   VERCEL_AUTOMATION_BYPASS_SECRET   — protected-preview SSO bypass (if set)
 //   VERIFICATION_BYPASS_SECRET        — Nightwork app /design-system bypass (if set)
@@ -43,7 +53,7 @@
 //   1  failed (validation, login error, navigation timeout, write error)
 
 import { chromium, type Browser, type BrowserContext } from "playwright";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import {
   chromiumLaunchArgs,
@@ -53,33 +63,73 @@ import {
 
 const FIXTURE_USER_EMAIL = "harness-fixture@nightwork.local";
 
-function parseArgs(argv: string[]): { previewUrl: string } {
+function parseArgs(argv: string[]): { previewUrl: string; email: string } {
   let previewUrl = "";
+  let email = FIXTURE_USER_EMAIL; // default to harness-fixture for backward compatibility
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--preview-url" && i + 1 < argv.length) {
       previewUrl = argv[i + 1];
     }
+    if (argv[i] === "--email" && i + 1 < argv.length) {
+      email = argv[i + 1];
+    }
   }
-  return { previewUrl };
+  return { previewUrl, email };
+}
+
+function resolvePassword(email: string): string {
+  // For smoke-* synthetic accounts (created by scripts/fixtures/smoke-seed.sql):
+  // read password from gitignored credentials file written by the orchestrator
+  // post-seed-apply step (per Plan E-2 / ITER-2-PATCHES.md §2.1).
+  if (email.startsWith("smoke-") && email.endsWith("@nightwork.local")) {
+    const credPath = path.resolve(
+      process.cwd(),
+      ".planning/qa-runs/wave-d/smoke-seed-credentials-DO-NOT-COMMIT.txt",
+    );
+    if (!existsSync(credPath)) {
+      throw new Error(
+        `Cannot find smoke-user credentials file at ${credPath}. ` +
+        `Did the orchestrator write credentials after applying scripts/fixtures/smoke-seed.sql? ` +
+        `See the seed file header for the apply procedure.`,
+      );
+    }
+    const content = readFileSync(credPath, "utf-8");
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      const [credEmail, credPw] = line.split(/\s+/, 2);
+      if (credEmail === email && credPw) return credPw;
+    }
+    throw new Error(
+      `No password line for ${email} in credentials file at ${credPath}. ` +
+      `Re-run the seed apply to regenerate.`,
+    );
+  }
+
+  // For harness-fixture@nightwork.local: HARNESS_FIXTURE_PASSWORD env var
+  // (existing pattern; don't-rotate decision per nwrp139/141).
+  const envPassword = process.env.HARNESS_FIXTURE_PASSWORD;
+  if (!envPassword) {
+    throw new Error(
+      "Missing HARNESS_FIXTURE_PASSWORD env. Set the harness fixture user password before running bootstrap.",
+    );
+  }
+  return envPassword;
 }
 
 async function bootstrap(): Promise<void> {
-  const { previewUrl } = parseArgs(process.argv.slice(2));
-  const password = process.env.HARNESS_FIXTURE_PASSWORD;
+  const { previewUrl, email } = parseArgs(process.argv.slice(2));
 
   if (!previewUrl) {
     throw new Error(
       "Missing --preview-url argument. Usage: tsx scripts/harness-auth-bootstrap.ts --preview-url <https://...>"
     );
   }
-  if (!password) {
-    throw new Error(
-      "Missing HARNESS_FIXTURE_PASSWORD env. Set the harness fixture user password before running bootstrap."
-    );
-  }
   if (!/^https:\/\/[A-Za-z0-9.-]+/.test(previewUrl)) {
     throw new Error(`Invalid --preview-url: ${previewUrl}`);
   }
+
+  const password = resolvePassword(email);  // throws actionable error if not found
 
   console.log(`[harness-auth-bootstrap] starting against ${previewUrl}`);
 
@@ -103,8 +153,8 @@ async function bootstrap(): Promise<void> {
     //   <input name="email" type="email" ...>
     //   <input name="password" type="password" ...>
     //   <button type="submit">...</button>
-    console.log(`[harness-auth-bootstrap] filling credentials for ${FIXTURE_USER_EMAIL}`);
-    await page.fill('input[name="email"]', FIXTURE_USER_EMAIL);
+    console.log(`[harness-auth-bootstrap] filling credentials for ${email}`);
+    await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', password);
 
     // Step 3: submit and wait for navigation away from /login
