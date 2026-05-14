@@ -21,6 +21,7 @@ source_decisions:
   - "nwrp122 iter-2 decisions 3-7 — Rule 4 lifecycle gate codified between executor and /nightwork-qa; /nightwork-qa is single canonical enforcer; screenshots are DIAGNOSTIC-ONLY (no baseline diff); synthetic fixture seed replaces Drummond UUIDs; Rules 1-4 placement is Workflow posture (NOT Development Rules)"
   - "nwrp127 iter-3 patch — Rule 5 (files_modified intersection check before parallel dispatch) added to Workflow posture bullet block + plan-review enforcement section. Origin: Wave-D D-1 + D-2 both claimed parallel_execute_ok: true but shared 2 files (invoices/page.tsx, invoices/queue/page.tsx); pre-dispatch grep caught the overlap that plan-author logical reasoning + plan-review iter-1 + iter-2 all missed. Rule 5 codifies the mechanical guardrail; enforcement structural via plan-review iter-1 check (Task 2 extended with Rule 5 enforcement section)."
   - "nwrp130 iter-3 patch — Rule 6 (precursor hook scan before plan-execute dispatch) added to Workflow posture bullet block + plan-review enforcement section. Origin: Wave-D D-2 executor halted at Task 2 on a pre-existing `bg-white` violation in `invoices/page.tsx:822` (commit 2c5607e3, 2026-04-13 — 31 days pre-D-2); post-edit hook correctly halted but whole-file scan blocked unrelated AppShell-strip work until precursor commit e9fbbd3 cleaned it. Rule 6 codifies the guardrail at plan-review time so surprises don't surface at execute time. WARNING (not BLOCKING) per friction-tax rationale: many precursors are trivial in-task fixes; the discipline is 'no surprises at execute,' not 'no violations exist.' Enforcement structural via plan-review iter-1 mechanical scan (Task 2 extended with Rule 6 enforcement section)."
+  - "nwrp131 iter-3 patch — Rule 6 regex-precision refinement. Origin: Wave-D D-2's 2nd dispatch attempt halted on `hover:text-white` in `aging-report/page.tsx:27` after orchestrator's Rule 6 pre-flight scan used narrower pattern `bg-white|bg-gray-...` and missed the `hover:`-prefixed variant. Hook's authoritative regex `\\b(bg|text|border)-(white|black)\\b` includes word-boundary anchors that catch hover:/focus:/active:/disabled: prefix variants — load-bearing. Patch extends Rule 6 enforcement section with the COMPLETE hook forbidden-pattern set (HEX_HITS, NAMED_HITS, PURE_HITS, LEGACY_HITS, ORG_ID_HITS, ROUNDED, CB4, CB2, SHADOW, PURPLE) and adds new WARNING finding `PLAN_PRECURSOR_SCAN_REGEX_NARROWED` for plan-author / plan-reviewer use of narrower approximations. Precursor commit fd70122 cleaned aging-report:27 before D-2 re-re-dispatched."
   - "stage-f1-knowledge-graph-auth-wave-d EXPANDED-SCOPE (2026-05-13, APPROVED) — Plan D-4 scope locked"
   - "D-073 / Q2=C (CLAUDE.md verification harness deprecation path) — 3-layer harness is canonical CI signal; wave-d-smoke seeds the interactive Layer 4 framework noted in calibration-log F1+ harness extension entry"
   - "D-30 (CLAUDE.md tenant boundary by construction) — script auth uses harness-fixture@nightwork.local (org-admin in fixture-harness-org), matching the existing stage-1.5c-verification-harness auth strategy; NO platform-admin escape hatch"
@@ -480,18 +481,23 @@ Insert the 4 bullets verbatim per iter-2 §4.5:
   enforcement section.)
 - **Rule 6 — precursor hook scan before plan-execute dispatch.**
   For every plan declaring `files_modified` entries, plan-review iter-1 MUST
-  run the post-edit hook (or equivalent design-token / typecheck scan) against
-  current state of each listed file BEFORE plan-execute dispatch. Pre-existing
-  violations in target files = surface to plan-author for precursor handling
-  (either include precursor cleanup in plan scope with explicit separation in
-  the commit graph, OR author a precursor plan that ships first). Missing
-  check = WARNING (not BLOCKING since it doesn't always apply — schema-only /
+  run the post-edit hook (or equivalent design-token / typecheck scan using
+  the hook's COMPLETE forbidden-pattern set with word-boundary anchors —
+  approximations are NOT acceptable per nwrp131) against current state of
+  each listed file BEFORE plan-execute dispatch. Pre-existing violations in
+  target files = surface to plan-author for precursor handling (either
+  include precursor cleanup in plan scope with explicit separation in the
+  commit graph, OR author a precursor plan that ships first). Missing check
+  = WARNING (not BLOCKING since it doesn't always apply — schema-only /
   doc-only plans may not touch hook-scanned surfaces). (Origin: nwrp130
   Wave-D D-2 executor halted at Task 2 on a pre-existing `bg-white` violation
   in `invoices/page.tsx:822` that predated D-2 by 31 days; precursor commit
-  e9fbbd3 cleaned it before D-2 re-dispatched. Enforcement structural via
-  plan-review iter-1 mechanical scan — see Plan D-4 Task 2 Rule 6 enforcement
-  section.)
+  e9fbbd3 cleaned it. nwrp131 refinement: Rule 6 pre-flight using narrower
+  `bg-white` pattern missed `hover:text-white` on `aging-report/page.tsx:27`
+  because the word-boundary `\b` anchor in the hook's authoritative regex
+  was dropped — precursor commit fd70122 cleaned it. Enforcement structural
+  via plan-review iter-1 mechanical scan using complete hook regex set — see
+  Plan D-4 Task 2 Rule 6 enforcement section.)
 ```
 
 The full Rule 4 codification (per iter-2 §4.1 + §4.2) is the canonical reference for the lifecycle gate + enforcer + failure-mode taxonomy. The text below is the authoritative full text of Rule 4 (per iter-2 §4.1) that the bullet above abbreviates:
@@ -728,7 +734,29 @@ For each PLAN.md in the phase:
      CLAUDE_TOOL_OUTPUT='{"filePath":"'$f'"}' .claude/hooks/nightwork-post-edit.sh
    done
    ```
-   OR equivalent (typecheck + lint + design-token grep covering same surface).
+   OR equivalent grep against the hook's complete forbidden-pattern set (per nwrp131 regex-precision refinement):
+   ```bash
+   # HEX_HITS — 6-digit hex literals outside globals.css / tailwind.config / comments
+   grep -nE "#[0-9a-fA-F]{6}\b" $f | grep -vE "(globals\.css|tailwind\.config|//|/\*)"
+   # NAMED_HITS — Tailwind named colors with scales
+   grep -nE "\b(bg|text|border|ring|fill|stroke|from|to|via|placeholder|caret|accent|outline|divide)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(50|100|200|300|400|500|600|700|800|900|950)\b" $f
+   # PURE_HITS — pure white/black (catches hover:text-white, focus:bg-black, etc. — word-boundary regex)
+   grep -nE "\b(bg|text|border)-(white|black)\b" $f
+   # LEGACY_HITS — removed namespaces
+   grep -nE "\b(bg|text|border)-(cream|teal-(?!.*nw)|brass|brand|status|nightwork)-" $f
+   # ORG_ID_HITS — hardcoded ORG_ID const/let/var
+   grep -nE "(const|let|var)\s+ORG_ID\s*=" $f
+   # ROUNDED — oversized corners on non-avatar/dot
+   grep -nE "\brounded(-(t|r|b|l|tl|tr|bl|br|ts|te|bs|be|s|e))?-(lg|xl|2xl|3xl|full)\b" $f
+   # CB4 / CB2 — bouncy easing
+   grep -nE "cubic-bezier\([^)]*,[^)]*,[^)]*,\s*[1-9]\.[0-9]" $f
+   grep -nE "cubic-bezier\([^,]+,\s*[1-9]\.[0-9]" $f
+   # SHADOW — dark glow
+   grep -nE "box-shadow:\s*[^;]*\s+(2[1-9]|[3-9][0-9]|[1-9][0-9]{2,})px\s+[1-9][0-9]*px" $f
+   # PURPLE — purple/pink HSL hue
+   grep -nE "hsl\(\s*(2[7-9][0-9]|3[01][0-9]|320)\b" $f
+   ```
+   Per nwrp131: narrower approximations of these patterns (e.g. omitting the word-boundary anchors, missing the `hover:` / `focus:` prefix coverage that the `\b` anchors handle) are NOT acceptable substitutes — they produce false negatives that surface as executor halts. nwrp130 + nwrp131 origin: D-2's 2nd dispatch attempt halted on `hover:text-white` on `aging-report/page.tsx:27` after a Rule 6 pre-flight scan using the narrower pattern `bg-white|bg-gray-...` missed the `hover:`-prefixed variant.
 4. **For each HALT**, flag finding `PLAN_PRECURSOR_VIOLATION` with file path + violation type + recommended precursor handling.
 
 ### Verdict integration
@@ -738,6 +766,7 @@ For each PLAN.md in the phase:
   (b) **Author a precursor plan** that ships before this plan. Precursor plan has its own files_modified + ACs + verification.
 - All target files hook-clean → no finding.
 - Schema-only / migration-only / doc-only plans with no hook-scanned surfaces → finding N/A (vacuous PASS).
+- Plan-author / plan-reviewer uses a NARROWER regex than the hook's authoritative set (e.g. omitting word-boundary anchors, missing prefix coverage) → WARNING finding (`PLAN_PRECURSOR_SCAN_REGEX_NARROWED`); the scan must be re-run with the full hook regex set above. Per nwrp131: discovered when Rule 6 enforcement used `bg-white|bg-gray-...` pattern and missed `hover:text-white`. Word-boundary `\b` anchors are LOAD-BEARING — they catch `hover:`, `focus:`, `active:`, `disabled:` prefix variants.
 
 ### Default reviewer disposition
 
