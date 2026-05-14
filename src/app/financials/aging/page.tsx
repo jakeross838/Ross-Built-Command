@@ -13,12 +13,10 @@
 // auth happens in API routes invoked client-side.
 
 import Link from "next/link";
-import AppShell from "@/components/app-shell";
 import FinancialViewTabs from "@/components/financial-view-tabs";
 
 export default function AgingPage() {
   return (
-    <AppShell>
       <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
         <FinancialViewTabs active="aging" />
         <div className="mb-6">
@@ -43,6 +41,5 @@ export default function AgingPage() {
           </div>
         </div>
       </main>
-    </AppShell>
   );
 }

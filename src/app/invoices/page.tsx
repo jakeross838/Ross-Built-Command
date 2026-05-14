@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { formatCents, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
-import AppShell from "@/components/app-shell";
 import FinancialViewTabs from "@/components/financial-view-tabs";
 import InvoiceUploadModal from "@/components/invoice-upload-modal";
 import InvoiceImportModal from "@/components/invoice-import-modal";
@@ -394,7 +393,7 @@ export default function AllInvoicesPage() {
  };
 
  return (
- <AppShell>
+ <>
  <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
  <FinancialViewTabs active="invoices" />
  <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
@@ -846,6 +845,6 @@ export default function AllInvoicesPage() {
  if (searchParams.get("action")) router.replace("/invoices");
  router.refresh();
  }} />
- </AppShell>
+ </>
  );
 }

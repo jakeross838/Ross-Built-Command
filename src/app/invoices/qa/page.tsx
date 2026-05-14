@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { daysAgo, formatDateTime } from "@/lib/utils/format";
-import AppShell from "@/components/app-shell";
 import FinancialViewTabs from "@/components/financial-view-tabs";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
 import { SkeletonList } from "@/components/loading-skeleton";
@@ -51,7 +50,6 @@ export default function QaQueuePage() {
  }
 
  return (
- <AppShell>
  <main className="max-w-[1600px] mx-auto px-6 py-8">
  <FinancialViewTabs active="qa" />
  <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
@@ -155,6 +153,5 @@ export default function QaQueuePage() {
  </div>
  )}
  </main>
- </AppShell>
  );
 }

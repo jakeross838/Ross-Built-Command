@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { formatCents, formatDate } from "@/lib/utils/format";
-import AppShell from "@/components/app-shell";
 import FinancialViewTabs from "@/components/financial-view-tabs";
 import PaymentBatchByVendorPanel from "@/components/payment-batch-by-vendor-panel";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
@@ -188,7 +187,6 @@ export default function PaymentsPage() {
   }
 
   return (
-    <AppShell>
       <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
         <FinancialViewTabs active="payments" />
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
@@ -505,7 +503,6 @@ export default function PaymentsPage() {
           </div>
         )}
       </main>
-    </AppShell>
   );
 }
 
