@@ -64,9 +64,10 @@ affects:
   - "NO behavior change on /financials/aging/page.tsx + /financials/aging-report/page.tsx — these two files also wrap in <AppShell> directly under financials/ (so they ALSO have a double-shell concern) but are explicitly out of scope per nwrp121 Plan D-2 scope (6 files only). Flagged as Wave-D follow-up observation; see §Out-of-scope observations."
 
 sequence:
-  before: Plan D-4 (smoke test) — D-4's wave-d-smoke.ts script verifies single-NavBar/single-sidebar invariant against the post-D-2 build
-  after: nothing — independent of D-1 (FK + PostgREST hint refactor) and D-5 (D-078 decision entry). D-2 + D-1 can execute in parallel per EXPANDED-SCOPE §Execution order item 4 ("D-1 + D-2 parallel — independent code/migration").
+  before: Plan D-4 (smoke test) — D-4's wave-d-smoke.ts script verifies single-NavBar/single-sidebar invariant against the post-D-2 build; ALSO before D-1 — D-2 dispatches FIRST so D-1's PostgREST hint refactor reads post-AppShell-strip file state on invoices/page.tsx + invoices/queue/page.tsx (per nwrp127 sequencing decision).
+  after: D-5 (D-078 decision entry — already landed at c84b4a0). D-2 + D-1 must NOT execute in parallel despite EXPANDED-SCOPE §Execution order item 4's claim — files_modified overlap on 2 files (invoices/page.tsx, invoices/queue/page.tsx). Sequential D-2 → D-1 per nwrp127.
   parallel_authoring_ok: true (D-2 is independent of D-1's PostgREST + FK work)
+  parallel_execute_ok: false  # Set false per nwrp127: shares files_modified entries with D-1 (invoices/page.tsx, invoices/queue/page.tsx). Sequential D-2 → D-1 dispatch.
 
 acceptance-criteria-target: 6 falsifiable items (AC-D2-01..AC-D2-06); see §Acceptance criteria below
 

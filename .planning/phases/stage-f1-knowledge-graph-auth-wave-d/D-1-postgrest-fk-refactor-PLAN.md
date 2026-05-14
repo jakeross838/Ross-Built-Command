@@ -69,7 +69,7 @@ affects:
 sequence:
   before: D-4 (smoke harness verifies D-1 fix on all 9 sites)
   parallel_authoring_ok: true (Wave-D Plans D-1 + D-2 + D-3 + D-4 + D-5 author in parallel per nwrp121)
-  parallel_execute_ok: D-2 (Issue 2 thin-wrapper fix touches different files; no overlap)
+  parallel_execute_ok: false  # Set false per nwrp127: shares files_modified entries with D-2 (invoices/page.tsx, invoices/queue/page.tsx). Sequential D-2 → D-1 dispatch. (Earlier annotation incorrectly claimed "no overlap" — file-level overlap exists; region-level changes are non-conflicting but parallel subagents would race on git operations.)
 
 acceptance-criteria-target: 7 falsifiable items (AC-D1-01..AC-D1-07); see "Acceptance criteria" below
 
