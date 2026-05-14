@@ -270,6 +270,25 @@ process_discipline_violations: 0
 
   **Codified fix (CLAUDE.md Development Rules — landing this commit):** Secret-presence verification MUST use explicit if/else, never bash `:-` fallback. Correct form: `if [ -n "$VAR" ]; then echo "VAR: SET (len=${#VAR})"; else echo "VAR: NOT SET"; fi`. Wrong form: `echo "VAR: ${VAR:+SET}${VAR:-NOT_SET}"` — the `:-NOT_SET` branch prints `$VAR`'s value when VAR is set.
 
+- **nwrp141-143 remediation: FINDING-2 [HIGH] resolved (9 production smoke accounts deleted).** Per nwrp141 Priority 1: deleted 9 `smoke-*@nightwork.local` auth.users rows from production Supabase via Supabase MCP. Cascade chain: 9 auth.users → 9 profiles (CASCADE) + 9 org_members (CASCADE) + 9 auth.identities (CASCADE) + 10 activity_log rows SET NULL on user_id. Per nwrp142 probe: ran UNION query across 37 NO ACTION-referencing columns — 0 rows referenced any of the 9 smoke UUIDs (cleanup-safe). Per nwrp143 additive cleanup: deleted 10 dangling-pm jobs + 5 invoices + 10 null-user activity_log rows from fixture-harness-org for a clean slate (Plan E-2's revised seed will re-populate). Post-cleanup state: fixture-harness-org has 1 org_member + 1 profile + 0 jobs + 0 invoices + 0 activity_log (original harness-fixture user preserved). FK census unchanged 56/3. Audit trail at `.planning/qa-runs/wave-d/finding-2-remediation.md` (gitignored; local audit). Plan E-2 will rewrite smoke-seed.sql to never commit plaintext password — uses `crypt(gen_random_uuid()::text, gen_salt('bf'))` per-apply password instead.
+
+  **Cascade map observation captured for F-phase TD (per nwrp142 Step 4):**
+  - 56 total FK references to auth.users PK
+  - 12 CASCADE / 7 SET NULL / 37 NO ACTION
+  - The 37 NO ACTION columns (created_by, approved_by, verified_by, invited_by, etc.) mean production user deletion blocks until referencing rows are reassigned or those columns are nulled. Not a Wave-E concern — captures architectural observation for when paying-customer deletion / GDPR request / employee transfer first surfaces in production. Likely F-phase or Wave 1.1-Full TD entry. Reference cascade map in `TD-D-FK-CASCADE` (placeholder) for F-phase scope when user-lifecycle workflows are designed.
+
+  **Schema-quality finding surfaced during verification (per nwrp143 Question 3(b)):** 11 user-identity-pattern UUID columns in public.* tables have NO FK constraint:
+  - **jobs.pm_id** (primary workflow column — outlier among audit columns; surfaced via dangling-reference observation post-cascade)
+  - jobs.created_by, invoices.created_by, invoices.duplicate_dismissed_by
+  - draws.approved_by, draws.created_by
+  - change_orders.created_by, purchase_orders.created_by, lien_releases.created_by
+  - vendors.created_by
+  - parser_corrections.corrected_by
+
+  Pattern: 10 of 11 are audit/provenance columns; jobs.pm_id is the outlier — primary workflow column lacking DB enforcement. **Per nwrp143 elevated from TD-WD-07 to Wave-B prerequisite #10.** Wave-B foundational schema work must either (a) add FK constraints to all 11 columns consistently per D-078 convention, OR (b) document deliberate "no-FK for audit columns" pattern + explicitly carve out jobs.pm_id as a FK exception. Don't ship both ways.
+
+  **Question 3(a) answer (per nwrp143):** The 9 D-1 PostgREST hint sites do NOT depend on a jobs.pm_id → profiles FK. They use the org_members.user_id → profiles.id FK (added by migration 00098). PM names resolve via application-layer mapping: API returns jobs.pm_id values + separately fetches org_members → profiles list; frontend maps pm_id → orgPms[i].full_name. The absence of jobs.pm_id → profiles FK does NOT cause Wave-C-class PGRST200 in current code (no embed via jobs.pm_id is attempted). Risk: future code writing `select=*,pm:profiles(...)` against jobs would hit PGRST200. Wave-B prerequisite needs to codify the pattern.
+
 - **nwrp140 finding (11th Wave-D process gap): smoke harness selectors don't match production DOM (3 reviewers converged).** Wave-D D-4 plan-authored `scripts/wave-d-smoke.ts` selectors `header.app-shell-nav, header[data-component="nav-bar"]` + `aside.app-shell-sidebar` against intended-but-not-implemented contracts. Production `nav-bar.tsx:280` and `job-sidebar.tsx:259` carry neither class nor attribute. Result: smoke run reported 12/13 routes FAILED with `NavBar=0` across the board — false negatives caused by harness selector miss, not production breakage. Plus 3 additional bugs in wave-d-smoke.ts surfaced by ai-logic-tester:
   - `select[name='pm_id|assigned_pm|import_default_pm_id']` selectors target form `name=` attributes that don't exist on production forms (verified via grep returning 0 hits)
   - `waitUntil: "load"` doesn't wait for React hydration; NavBar is `"use client"` and selectors run before hydration completes → false-null bounding boxes
@@ -285,18 +304,19 @@ process_discipline_violations: 0
 
   **Verdict on Wave-D ship:** code-layer discipline shipped 5 plans correctly per AC. Runtime-verification layer is itself in need of corrective work. Wave-D code is on origin/main; Wave-D verification gate is BLOCKING per /nightwork-qa synthesis. The discipline Wave-D was meant to install caught its own broken harness — that's the system working, but it means Wave-B must absorb the harness fixes before its first plan dispatches.
 
-- **Wave-B authorization prerequisites (cumulative; supersedes nwrp124-139 list):**
+- **Wave-B authorization prerequisites (cumulative; supersedes nwrp124-142 list):**
   1. EXPANDED-SCOPE.md approved for Wave-B
   2. SETUP-COMPLETE.md exists for Wave-B preflight
   3. Wave-A (Plan B-3) inherits HF-A1-2 + `count` vs `updatedCount` resolution
   4. Plan-review iter-1 honors Rules 1-6 (CLAUDE.md current state)
   5. Wave-B plans use the 4 sub-checks of revised Rule 6 (hook regex / fixture collision / path reachability / files_modified intersection)
-  6. **NEW (nwrp136):** Deployment architecture decision made + CLAUDE.md updated to reflect chosen workflow (D-arch-1 / D-arch-2 / D-arch-3)
+  6. **(nwrp136):** Deployment architecture decision made + CLAUDE.md updated to reflect chosen workflow (D-arch-1 / D-arch-2 / D-arch-3) — DEFERRED to pre-dogfood per nwrp138; D-arch-3 default for now
   7. Wave-D GATE-N halt resolved with Jake authorization to advance
-  8. **NEW (nwrp140):** Smoke harness selector fixes landed — NavBar + sidebar selectors match production DOM; hydration wait fixed; primary-UX selectors target real form attributes; /financials/bills/[id] route resolution path decided
-  9. **NEW (security HIGHs):** Vendor PII embed narrowed in invoices/[id]/route.ts; 9 production smoke-* auth.users rows deleted; seed password rotated to `gen_random_uuid()`
+  8. **(nwrp140):** Smoke harness selector fixes landed — NavBar + sidebar selectors match production DOM; hydration wait fixed; primary-UX selectors target real form attributes; /financials/bills/[id] route resolution path decided (Plan E-2 + E-3 scope)
+  9. **(security HIGHs):** Vendor PII embed narrowed in invoices/[id]/route.ts (Plan E-1); 9 production smoke-* auth.users rows deleted (DONE at nwrp141-143); seed password rotated to `gen_random_uuid()` (Plan E-2 scope)
+  10. **NEW (nwrp143):** User-identity FK audit — 11 user-identity-pattern columns in public.* lack DB-level FK constraints (jobs.pm_id + 10 audit columns). Wave-B foundational schema work must either (a) add FK constraints consistently per D-078 convention, OR (b) document deliberate "no-FK for audit columns" pattern with explicit carve-out for jobs.pm_id workflow column. Don't ship both ways.
 
-  Wave-B remains REVOKED until all 9 prerequisites resolved.
+  Wave-B remains REVOKED until all 10 prerequisites resolved (item 6 deferred is acceptable for Wave-B start per nwrp138; items 8, 9, 10 are Plan E-2/E-1/E-3 + Wave-B Plan B-0 scope).
 
 - **Wave-D execute sequencing.** Per nwrp127 sequencing decision: D-5 (shipped 2026-05-13 c84b4a0) → D-2 → D-1 → D-4 → D-3 → migration apply + Vercel preview + wave-d-smoke + /nightwork-qa + GATE-N. Originally planned parallel D-1 + D-2; flipped to sequential post-files_modified-overlap finding.
 
