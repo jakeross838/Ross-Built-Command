@@ -176,3 +176,57 @@ Wave-A cumulative vision spend: ~$0 (purely text-based: plan authoring + review 
 - 4 plans / 1 wave / 4-way parallelism on plan authoring + plan-review (6 reviewers parallel) is the upper bound that worked cleanly here. Larger plan counts may need orchestration assistance.
 - Pre-existing test failures (`lien-release-waived-at.test.ts` 3/9 from A-1 bulk regression per HF-A1-2; `multi-org-session.test.ts` 1/4 from stage-1.5c-vh Plan 5 `1cc868d`) captured as known-state for Wave-B Plan B-3 inheritance.
 - iter-1 CRITICAL finding (A-4 deleted_at filter inconsistency): **no reviewer dissented**; the 5-of-6 consensus refers to 5 of 6 reviewers explicitly flagging the same issue (architect didn't flag it; the 5 who did all converged on the same resolution — use migration body's no-filter version). No pushback captured because no dissent existed.
+
+---
+
+## stage-f1-knowledge-graph-auth-wave-d (DRAFT — PENDING SHIP)
+
+```yaml
+---
+phase: stage-f1-knowledge-graph-auth-wave-d
+shipped_at: <pending>
+wave_count: 1
+parallelism_used: <pending — sequential D-2 → D-1 after nwrp127 catch>
+plan_count: 5
+plan_iter_counts:
+  "D-1": 2
+  "D-2": 2
+  "D-3": 2
+  "D-4": 3  # iter-1 + iter-2 + iter-3 (nwrp127 Rule 5 addition)
+  "D-5": 1
+harness_runs: 0
+harness_pass_rate: 0.0
+ambiguous_vision_halts: 0
+vision_cost_usd: ~1.86  # pre-Wave-D baseline; Wave-D execute will add some
+process_discipline_violations: 0
+---
+```
+
+### Process notes (draft — custodian extends at post-ship sweep)
+
+- **iter-2 patch propagation gap surfaced twice in Wave-D.** ITER-2-PATCHES.md captures iter-2 plan-review decisions as an addendum on top of PLAN.md files, but plan-authors did NOT consistently propagate iter-2 patches INTO the PLAN.md files themselves before dispatch. Two specific cases:
+  1. **D-4 needed full re-author** (per nwrp124) because 20 subsections of patches accumulated into incoherent stack; re-author produced 1575-line coherent PLAN.md.
+  2. **D-2 needed rescope re-author** (per nwrp128) because nwrp123 decision 1's 6→8 file expansion was captured in ITER-2-PATCHES.md §2 but not propagated to D-2 PLAN.md, surfacing only at pre-dispatch grep check.
+
+  **Pattern:** ITER-2-PATCHES.md is a changelog, not an executable artifact. Plans dispatched from PLAN.md files must reflect iter-2 patches IN the plan files, not just in the patch addendum. Future iter-2 protocol must include a "propagate-to-plan" step before plan-author closes iter-2 (proposed: gsd-planner's iter-2 close-out task should mechanically apply each ITER-2-PATCHES.md §X into the corresponding PLAN.md, OR the plan-author should re-emit the full PLAN.md with patches inlined as the iter-2 deliverable).
+
+- **parallel_execute_ok over-assertion surfaced at pre-dispatch.** D-1 + D-2 both claimed `parallel_execute_ok: true` based on plan-author logical reasoning ("migration vs UI is independent"), but files_modified intersection revealed 2 shared files (invoices/page.tsx, invoices/queue/page.tsx). Caught by pre-flight grep at nwrp127 (during execute-resume), not at plan-author or plan-review iter-1/iter-2 time. Resolution: nwrp127 added Rule 5 to CLAUDE.md Workflow posture + plan-review enforcement (Plan D-4 Task 2 extended with Rule 5 enforcement section). Mechanical guardrail now structural for future waves.
+
+- **nwrp129 finding: deliverable path reachability gap.** TD-WD-01 declared as Wave-D deliverable in ITER-2-PATCHES.md §2.2 + D-2 PLAN.md (18 cross-refs) but the target path `.planning/tech-debt/` was not whitelisted in `.gitignore`. Caught at pre-commit when the file was created by the gsd-planner re-author but `git status` showed `.planning/tech-debt/` as ignored. Resolved by whitelisting `.planning/tech-debt/` as canonical artifact path alongside `architecture/`, `phases/`, `expansions/`. Pattern (3rd Wave-D iter-2/3 propagation gap; see two above): iter-2 protocol must include "verify infrastructure supports declared deliverables" as a pre-commit check. Specifically — any new file path declared in plan `files_modified` or `must_haves.artifacts` must be reachable from a fresh checkout (i.e. either already tracked OR explicitly added to the canonical `.gitignore` whitelist). Plan-author cannot assume gitignore whitelist exists — must verify or add.
+
+- **Wave-D execute sequencing.** Per nwrp127 sequencing decision: D-5 (shipped 2026-05-13 c84b4a0) → D-2 → D-1 → D-4 → D-3 → migration apply + Vercel preview + wave-d-smoke + /nightwork-qa + GATE-N. Originally planned parallel D-1 + D-2; flipped to sequential post-files_modified-overlap finding.
+
+### What worked (preliminary)
+
+(pending ship — custodian fills from QA report after GATE-N)
+
+### What didn't (preliminary)
+
+- iter-2 patch propagation discipline (two cases above; addressed in calibration adjustment below)
+- parallel_execute_ok claim discipline at plan-author + plan-review time (one case; addressed via Rule 5 codification + plan-review enforcement)
+
+### Adjustment for next wave
+
+- **iter-2 close-out protocol:** future plan-author iter-2 deliverable should be the patched PLAN.md, not a separate ITER-2-PATCHES.md addendum. If addendum is preserved for traceability, plan-author must produce a traceability mini-diff confirming each addendum section landed in PLAN.md.
+- **Rule 5 plan-review check now mechanical:** plan-review iter-1 runs files_modified intersection grep on every parallel-claimed plan pair in the wave. Missing check = BLOCKING (per Plan D-4 Task 2 Rule 5 enforcement section).
+- **Deliverable path reachability check (Wave-B onward):** plan-review iter-1 includes a "deliverable path reachability" check — for every file path in plan `files_modified` or `must_haves.artifacts`, verify the path will be tracked in git from a fresh checkout (already-whitelisted parent OR new explicit whitelist entry in the same plan). Missing whitelist for a declared deliverable = BLOCKING. Origin: nwrp129 (Wave-D D-2 TD-WD-01 surfaced this gap during pre-commit, not during plan-author or plan-review).

@@ -19,6 +19,7 @@ source_decisions:
   - "nwrp120 diagnosis report — Rules 1-4 codify the process-gap closure for Wave-C's schema-only QA pass"
   - "nwrp121 Addition 2 — wave-d-smoke.ts is a Playwright script (NOT manual smoke); seeds Wave 1.1-Full Layer 4 framework"
   - "nwrp122 iter-2 decisions 3-7 — Rule 4 lifecycle gate codified between executor and /nightwork-qa; /nightwork-qa is single canonical enforcer; screenshots are DIAGNOSTIC-ONLY (no baseline diff); synthetic fixture seed replaces Drummond UUIDs; Rules 1-4 placement is Workflow posture (NOT Development Rules)"
+  - "nwrp127 iter-3 patch — Rule 5 (files_modified intersection check before parallel dispatch) added to Workflow posture bullet block + plan-review enforcement section. Origin: Wave-D D-1 + D-2 both claimed parallel_execute_ok: true but shared 2 files (invoices/page.tsx, invoices/queue/page.tsx); pre-dispatch grep caught the overlap that plan-author logical reasoning + plan-review iter-1 + iter-2 all missed. Rule 5 codifies the mechanical guardrail; enforcement structural via plan-review iter-1 check (Task 2 extended with Rule 5 enforcement section)."
   - "stage-f1-knowledge-graph-auth-wave-d EXPANDED-SCOPE (2026-05-13, APPROVED) — Plan D-4 scope locked"
   - "D-073 / Q2=C (CLAUDE.md verification harness deprecation path) — 3-layer harness is canonical CI signal; wave-d-smoke seeds the interactive Layer 4 framework noted in calibration-log F1+ harness extension entry"
   - "D-30 (CLAUDE.md tenant boundary by construction) — script auth uses harness-fixture@nightwork.local (org-admin in fixture-harness-org), matching the existing stage-1.5c-verification-harness auth strategy; NO platform-admin escape hatch"
@@ -464,6 +465,18 @@ Insert the 4 bullets verbatim per iter-2 §4.5:
   codification in Plan D-4 Task 1 — lifecycle, enforcer, failure modes.
   Summary: plans with `requires_smoke: true` MUST have a passing
   `smoke-results.json` artifact before /nightwork-qa can return PASS.)
+- **Rule 5 — files_modified intersection check before parallel dispatch.**
+  Plans declaring `parallel_execute_ok: true` MUST be verified via mechanical
+  files_modified intersection grep BEFORE dispatch. Plan-author logical
+  reasoning ("migration vs UI is independent") is necessary but NOT sufficient —
+  any non-empty intersection of files_modified between plans dispatched in
+  parallel = BLOCKING. The check is: grep files_modified entries across all
+  parallel-claimed plans in the same wave; any shared path forces sequential
+  dispatch OR worktree isolation with explicit merge protocol. (Origin: nwrp127
+  Wave-D D-1 + D-2 surfaced file-level overlap at pre-dispatch grep that the
+  plans' "parallel_execute_ok: true" annotations missed; enforcement structural
+  via plan-review iter-1 mechanical check — see Plan D-4 Task 2 Rule 5
+  enforcement section.)
 ```
 
 The full Rule 4 codification (per iter-2 §4.1 + §4.2) is the canonical reference for the lifecycle gate + enforcer + failure-mode taxonomy. The text below is the authoritative full text of Rule 4 (per iter-2 §4.1) that the bullet above abbreviates:
@@ -642,27 +655,66 @@ NOTE on previous draft: the prior version assigned `nightwork-multi-tenant-archi
 ### Friction-tax watchpoint
 
 If plan-review iter-1 finds itself flagging >30% of new PLAN files as `PLAN_MISSING_FK_CITATION`, the citation pattern is failing — either (a) the template needs better defaults (extend `.planning/templates/criteria-template.md` with an FK-citation example), or (b) the embedding-hint usage pattern is too common to require per-hint citation (escalate to D-amendment).
+
+## Rule 5 files_modified intersection enforcement (per nwrp127 + Wave-D D-1/D-2 surface)
+
+Per CLAUDE.md Workflow posture → Rule 5: every plan declaring `parallel_execute_ok: true` in front-matter must pass a mechanical files_modified intersection check against all other plans in the same wave that ALSO declare parallel-execute-ok. Plan-author logical reasoning about independence ("migration vs UI is independent") is necessary but NOT sufficient — file-level overlap forces sequential dispatch OR worktree isolation. Origin: nwrp127 Wave-D D-1 + D-2 both claimed parallel_execute_ok but shared 2 files (invoices/page.tsx, invoices/queue/page.tsx); surface caught at pre-dispatch grep, not at plan-author or plan-review time.
+
+### Check
+
+For each wave (or batch of plans dispatched in parallel):
+1. Enumerate all PLAN files declaring `parallel_execute_ok: true` in front-matter (mechanical: `rg -l 'parallel_execute_ok:\s*true' .planning/phases/<phase>/*.md`).
+2. For each pair of parallel-claimed plans (P_i, P_j), extract `files_modified:` lists via:
+   ```bash
+   awk '/^files_modified:/,/^[a-z_]+:/' PLAN-FILE.md | grep -oP '^\s+-\s+\K\S+'
+   ```
+3. Compute set intersection: `comm -12 <(sort <files_i>) <(sort <files_j>)`. Any non-empty intersection = BLOCKING.
+4. Flag finding code: `PLAN_PARALLEL_FILES_OVERLAP` with the offending plan pair + overlapping path list.
+
+### Verdict integration
+
+- Non-empty files_modified intersection between any parallel-claimed plan pair → BLOCKING finding (`PLAN_PARALLEL_FILES_OVERLAP`)
+- All parallel-claimed plans have disjoint files_modified → no finding
+- Single plan claims parallel_execute_ok with no sibling parallel claim in the wave → no finding (vacuous)
+
+### Default reviewer disposition
+
+`architect` is the **primary** reviewer for this check (cross-plan structural lens). `planner` is **co-primary** (the planner agent authored the plans and is responsible for parallel-execute claims). No secondary reviewer needed — the check is mechanical (set intersection on file paths).
+
+### Remediation paths
+
+When a `PLAN_PARALLEL_FILES_OVERLAP` finding fires, the plan-author has three options:
+1. **Flip `parallel_execute_ok: false`** on one or both plans; document the file overlap as rationale. Sequential dispatch. (Default; lowest risk.)
+2. **Split the overlapping plan into two plans** whose files_modified are disjoint (e.g. extract the shared-file portion to a precursor plan that ships first).
+3. **Worktree isolation** with explicit merge protocol; document the merge sequence in plan-author commentary. (Highest risk; reserved for waves where wall-clock matters.)
+
+### Friction-tax watchpoint
+
+If plan-review iter-1 finds itself flagging >20% of waves with `PLAN_PARALLEL_FILES_OVERLAP`, the parallel_execute_ok claim is being over-asserted by plan-authors — escalate to template-level guidance (extend `.planning/templates/plan-template.md` with a "before declaring parallel_execute_ok: true, list files_modified across all parallel candidates and confirm disjoint" pre-check) OR to D-amendment that defaults parallel_execute_ok to false unless explicitly justified.
 ```
 
 Edit-tool guidance:
 1. Read .claude/commands/nightwork-plan-review.md lines 155-170 to locate the end of the Criteria-mandate-enforcement section (look for the "Drop-in template" subsection or the file's final lines).
-2. Append the new section AFTER the criteria-mandate section, BEFORE the file's final block (preserve trailing newline).
-3. Use a single Edit call with old_string ending at a stable anchor in the criteria-mandate section (e.g. the "Drop-in template" header line) and new_string = anchor + new section.
+2. Append BOTH new sections (Rule 2 + Rule 5) AFTER the criteria-mandate section, BEFORE the file's final block (preserve trailing newline).
+3. Use a single Edit call with old_string ending at a stable anchor in the criteria-mandate section (e.g. the "Drop-in template" header line) and new_string = anchor + Rule 2 section + Rule 5 section.
 
 After the edit, run the grep mechanical checks:
 - `grep -n 'PLAN_MISSING_FK_CITATION' .claude/commands/nightwork-plan-review.md` returns >= 1 match.
+- `grep -n 'PLAN_PARALLEL_FILES_OVERLAP' .claude/commands/nightwork-plan-review.md` returns >= 1 match.
 - `grep -c 'architect\|database-reviewer' .claude/commands/nightwork-plan-review.md` (scoped to the Rule 2 enforcement block) returns >= 2.
   </action>
   <verify>
     <automated>
       grep -c 'PLAN_MISSING_FK_CITATION\|Rule 2 FK-citation enforcement' .claude/commands/nightwork-plan-review.md
       # Expected: >= 2 (section header + finding code)
+      grep -c 'PLAN_PARALLEL_FILES_OVERLAP\|Rule 5 files_modified intersection enforcement' .claude/commands/nightwork-plan-review.md
+      # Expected: >= 2 (section header + finding code)
       grep -c 'architect\|database-reviewer' .claude/commands/nightwork-plan-review.md
       # Expected: >= 2 in the Rule 2 enforcement block per iter-2 §4.18
     </automated>
   </verify>
   <done>
-    nightwork-plan-review.md contains a "Rule 2 FK-citation enforcement" section that mirrors the Criteria-mandate-enforcement precedent. The section names PLAN_MISSING_FK_CITATION as a BLOCKING finding code, includes the tightened regex (PLAN body + files_modified source files per iter-2 §4.17), references `architect` as primary + `database-reviewer` co-primary + `nightwork-multi-tenant-architect` secondary (per iter-2 §4.18 reassignment), and includes a friction-tax watchpoint at the end. No other section is modified.
+    nightwork-plan-review.md contains BOTH a "Rule 2 FK-citation enforcement" section AND a "Rule 5 files_modified intersection enforcement" section. Rule 2 section names PLAN_MISSING_FK_CITATION as a BLOCKING finding code (per iter-2 §4.17/§4.18). Rule 5 section names PLAN_PARALLEL_FILES_OVERLAP as a BLOCKING finding code (per nwrp127 origin). Both sections mirror the Criteria-mandate-enforcement precedent shape. No other section is modified.
   </done>
 </task>
 

@@ -1,0 +1,78 @@
+# D-2 rescope traceability (nwrp128)
+
+**Authored:** 2026-05-14 by gsd-planner (claude-opus-4-7[1m]) under nwrp128 authorization
+**Purpose:** Mechanical traceability between ITER-2-PATCHES.md §2.X patches and the re-authored D-2 PLAN.md (988 lines pre-rescope → 1183 lines post-rescope).
+**Scope:** Pure scope-expansion edit (6 → 8 files of the same pathology). No semantic drift; all changes are direct mechanical applications of ITER-2-PATCHES.md §2.1–§2.6. §2.7 explicitly skipped (deferred to Wave 1.1-Lite per the patch addendum itself).
+
+Each ITER-2-PATCHES.md §2.X patch → location in re-authored D-2 PLAN.md.
+
+| ITER-2-PATCHES.md ref | D-2 PLAN.md location (post-rescope) | Notes |
+|----------------------|--------------------------------------|-------|
+| §2.1 files_modified | lines 24-33 frontmatter `files_modified:` | Added 2 entries for aging + aging-report (lines 31-32) + 1 new entry for TD-WD-01.md (line 33, §2.2 cross-cut). |
+| §2.1 source_decisions | line 18 frontmatter `source_decisions:` | Added explicit reference to ITER-2-PATCHES.md §2.1 / nwrp122 decision 1 (the rescope authorization). |
+| §2.1 files_referenced | lines 46-47 frontmatter `files_referenced:` | Added 2 entries for aging + aging-report with `(DIRECT-MOUNT page under financials/layout.tsx — no thin-wrapper indirection)` qualifier; differentiates from the 6 thin-wrapper-re-exported originals. |
+| §2.1 requires | line 54 frontmatter `requires:` | Added ITER-2-PATCHES.md as a required dependency (executor must read iter-2 patches alongside the plan body). |
+| §2.1 provides (frontmatter) | lines 57-62 frontmatter `provides:` | "6 thin-wrapper-routed surfaces" → "8 /financials/* surfaces (6 thin-wrapper-routed + 2 direct-mount)"; "6 underlying" → "8 underlying"; added TD-WD-01 creation bullet. |
+| §2.1 affects | lines 64-74 frontmatter `affects:` | Added 2 bullets for /financials/aging + /financials/aging-report runtime rendering (lines 70-71). REMOVED the original line 64 ("NO behavior change on /financials/aging/page.tsx + /financials/aging-report/page.tsx — explicitly out of scope per nwrp121 Plan D-2 scope (6 files only)") — these ARE now in scope. The /invoices/[id]/page.tsx out-of-scope bullet (line 74) revised to reference TD-WD-01 instead of "tracked separately". |
+| §2.1 threat_model | lines 86-87 + line 99 + line 108 + line 110 | T-D-2-01: added "(aging files are direct-mount; no blast-radius indirection concern for those 2)" note. T-D-2-02: "6 underlying" → "8 underlying"; grep pattern updated to two-grep §2.5 form. T-D-2-03: "no Fragment needed for 7 of 8 files because each AppShell wraps a single child"; documented Task 2 invoices/page.tsx exception. T-D-2-04: aging files note added re: canonical URL routing (no redirect indirection). |
+| §2.1 must_haves.truths | lines 113-123 must_haves.truths | Updated grep enumeration to 8 files (lines 113-114); appended `/financials/aging` + `/financials/aging-report` to single-NavBar invariant bullet (line 119); added TD-WD-01 existence bullet (line 121). |
+| §2.1 must_haves.artifacts | lines 162-176 must_haves.artifacts | Added 2 artifact entries for aging files (lines 162-167 + 168-173); both use `contains: "<main"` matching the existing pattern (verified at planner-time by reading the actual files — both use `<main className="max-w-[1600px] ...">` as their top-level element under AppShell). Added 1 entry for TD-WD-01.md (lines 174-176). |
+| §2.1 must_haves.key_links | lines 214-222 must_haves.key_links | Added 2 entries for aging files (lines 214-217 + 219-222). Shape differs from the 6 originals: no `export { default } from "@/app/..."` re-export pattern; instead documents direct file-system routing via Next.js App Router. `via:` field documents "Next.js App Router file-system routing"; `pattern:` field uses the exported function name (`export default function AgingPage` / `AgingReportPage`) as the grep anchor. |
+| §2.1 body Per-file edits | lines 852-903 (Task 8) + lines 905-956 (Task 9) | Added 2 new task subsections mirroring Tasks 3-7 shape (the 5 bare-main siblings of Task 2's Fragment-wrap). Both tasks use bare `<main>` post-strip (verified at planner-time: both aging files have `<AppShell>` wrapping exactly one `<main>` child). Line numbers in §Action steps reference planner-time verified file content (aging: lines 16/21/46; aging-report: lines 4/9/34). |
+| §2.1 body AC-D2-01 | line 1020 body §Acceptance criteria | File count 6 → 8; grep pattern lists all 8 files; baseline 18 hits → 24 hits. |
+| §2.1 body AC-D2-02 | line 1021 body §Acceptance criteria | Tasks 2-7 → Tasks 2-9; 8-file grep enumeration. |
+| §2.1 Task 1 (pre-flight) | lines 491-504 body §Implementation tasks | Step A: "6 files" → "8 files"; "18 hits" → "24 hits". Step B unchanged (aging files are direct-mount; no importer to enumerate, so 6 importers remains correct). Step D: noted that /invoices/[id]/page.tsx is captured in TD-WD-01. |
+| §2.1 Step A grep block | lines 263-300 body §Pre-flight Step A | Grep command updated to enumerate 8 files; planner-time grep output expanded to show 24 hits (added aging entries lines 292-297). Updated "Result: 18 hits across 6 files" → "Result: 24 hits across 8 files". HALT conditions updated to reference 8 files / 9th file divergence. |
+| §2.1 Step B aging note | line 332 body §Pre-flight Step B | Added explicit "Aging files note" paragraph documenting that direct-mount files have no importer-based blast radius (route-based instead). |
+| §2.1 NO_SIDEBAR table | lines 432-441 body §AppShell-internal sidebar gating note | Added 2 rows for /financials/aging + /financials/aging-report (both NO match → sidebar renders). Updated subhead to "Of D-2's 8 target routes" + "each of 8 routes". |
+| §2.2 TD-WD-01 file creation | new file at `.planning/tech-debt/TD-WD-01-invoices-id-page-dead-code.md` | Created verbatim from ITER-2-PATCHES.md §2.2 (lines 222-256) — header, evidence (5 bullets), status, recommended action (4 numbered steps), estimated impact. |
+| §2.2 D-2 PLAN.md references to TD-WD-01 | lines 33, 62, 74, 121, 174-176, 370, 479, 976, 1003-1005, 1022, 1023, 1062, 1066-1068, 1124, 1128, 1178 | TD-WD-01 referenced in `files_modified:` (line 33), `provides:` (line 62), `affects:` (line 74), `must_haves.truths` (line 121), `must_haves.artifacts` (lines 174-176), Step D rationale (line 370), §Out-of-scope observations (line 479), Task 10 post-refactor verification step (lines 1003-1005), AC-D2-03 NOTE clause (line 1022), AC-D2-04 (line 1023), §Verification commands (lines 1062, 1066-1068), §Rollback strategy (lines 1124, 1128), §Status updates (line 1178). |
+| §2.3 body §Provides 3.6M math | lines 451-467 body §Provides | New body-level §Provides section added BEFORE §Out-of-scope observations. Includes "Primary motivation" framing (visible bug fix) + "Side benefit: query-reduction at scale" subsection. Math reproduced per the patch text + scaled for 8 routes: "~3.6M queries/day eliminated at 6 routes; ~4.8M/day at 8 routes (math scales linearly with route count). Per-staff realistic math: ~36M/day at 6 routes; ~48M/day at 8 routes. See ITER-2-PATCHES.md §0.3 for full evidence chain with file:line citations." Framing preserved: side benefit, not primary motivation. |
+| §2.4 Task 2 prose action fix | line 537 body §Task 2 Action step 2 | "Replace lines 397-398 (`<AppShell>` open) with `<>` Fragment open" → "Replace line 397 only (`<AppShell>` open) with `<>` Fragment open. Line 398 (`<main>` open) is NOT part of the AppShell wrap; do not touch." Diff preview updated to show only line 397 in the `- <AppShell>` / `+ <>` change (line 398's `<main>` is unchanged). |
+| §2.5 AC-D2-03 grep tightening | line 1022 body §Acceptance criteria | Replaced original `grep -rn "'app-shell'" src/app/ → expect 0 hits` with two-grep pattern:<br>`grep -rn 'from "@/components/app-shell"' src/app/{invoices,draws,financials/aging,financials/aging-report}` → expect 0 hits<br>`grep -rn '<AppShell' src/app/{invoices,draws,financials/aging,financials/aging-report}` → expect 0 hits<br>Added NOTE clause: brace-expansion excludes /invoices/[id]/page.tsx implicitly (it's nested under `src/app/invoices`); if executor's shell expands the brace differently, narrow to the exact 8 target files per AC-D2-02. |
+| §2.6 AC-D2-05/06 GATE-D framing | lines 1024-1025 body §Acceptance criteria | Both AC restated with leading sentence: "Verified at GATE-D pre-ship harness run via `wave-d-smoke.ts` (Plan D-4 deliverable), not at D-2 execute completion. D-2 executor commits without running Playwright; D-4 executor runs the full smoke after both D-1 + D-2 + D-4 land on the same branch." 8-route enumeration for AC-D2-05 (per §2.1). |
+| §2.6 Status updates | line 1180 body §Status updates | Updated "AC-D2-05..06 verified via Plan D-4 wave-d-smoke.ts against Vercel preview URL (or deferred to GATE-D halt)" → "AC-D2-05..06 verified via Plan D-4 wave-d-smoke.ts at GATE-D pre-ship harness run (NOT at D-2 execute completion)". |
+| §2.7 PATTERNS.md addition | (out of scope — deferred to Wave 1.1-Lite per ITER-2-PATCHES.md §2.7) | No edit. ITER-2-PATCHES.md §2.7 itself flags this as "Logged as follow-up; not in D-2 scope to keep this corrective wave tight." |
+
+## Cross-cutting consistency edits (non-§2.X — required to keep plan internally consistent post-rescope)
+
+These edits were applied to maintain internal consistency between §2.1's scope expansion and the rest of the plan body. They are NOT new requirements; they propagate §2.1's "6 → 8" math throughout the document:
+
+| Change | Locations | Rationale |
+|--------|-----------|-----------|
+| `authorization:` frontmatter | line 14 | Added nwrp128 authorization stamp for the rescope re-author. |
+| "Tasks 2-7" → "Tasks 2-9" | lines 99, 421-422, 968, 1021, 1022 | Old plan had 7 implementation tasks (Task 1 pre-flight + Tasks 2-7 file edits + Task 8 post-refactor verification = 8 tasks total). New plan has 9 (Task 1 pre-flight + Tasks 2-9 file edits + Task 10 post-refactor verification = 10 tasks total). |
+| "Task 8" → "Task 10" (post-refactor verification) | line 958 | Renamed from Task 8 to Task 10 to accommodate the 2 new file-edit tasks (8 + 9). Task 10's body updated to reference 8 files in grep enumeration. |
+| §Out-of-scope observations | lines 471-481 | Removed the "`/financials/aging/page.tsx` + `/financials/aging-report/page.tsx` — additional double-AppShell sites" subsection entirely (these are now IN scope). Added a tombstone line: "(Previously: `/financials/aging` + `/financials/aging-report` were out-of-scope. Per ITER-2-PATCHES.md §2.1 these are now IN scope — see Tasks 8 + 9 below.)" |
+| §Verification commands | lines 1036-1067 | Expanded grep enumeration to 8 files (lines 1042-1043, 1054-1055). Added new verification step "5. TD-WD-01 exists" (lines 1066-1068). Renumbered subsequent steps. Tightened second grep from `grep -n 'app-shell'` to `grep -n 'from "@/components/app-shell"'` per §2.5 spirit (precise import match, not stray CSS class). |
+| §Dependencies | lines 1098-1110 | Updated D-1 overlap analysis: "D-2 modifies AppShell-wrapping in 6 of those same files (4 are in both sets...)" was numerically wrong even pre-rescope (only 2 files overlap, not 4 — original plan had a stale claim). Corrected to "D-2 modifies AppShell-wrapping in 8 files (2 of which overlap with D-1's set: invoices/page.tsx, invoices/queue/page.tsx)". This is a pre-existing mathematical error corrected during rescope authoring; not a §2.X patch but a consistency fix that the new "8" count makes obvious. |
+| §Rollback strategy | line 1124 | Added bullet re: TD-WD-01 file re-creation if revert removes it. |
+| §Notes for plan-review — Re-export indirection visibility | lines 1136-1146 | Split the original "6 underlying files are NEVER directly user-reachable" claim into "6 of 8" (the originals) + "2 (aging + aging-report) ARE directly user-reachable" (the new additions). |
+| §Notes for plan-review — Why no Fragment | lines 1148-1152 | "5 of 6" → "7 of 8". |
+| §Notes for plan-review — Issue 1+2 combined | lines 1154-1160 | "4 of the 6" → "2 of the 8" (corrected per the corrected D-1 overlap math above). |
+| §Status updates | lines 1167-1181 | Added Task 8 + Task 9 checkboxes for aging files. Renamed final verification checkbox from "Task 8" to "Task 10". |
+
+## Halt conditions check
+
+- [x] Aging + aging-report files DO contain inner `<AppShell>` JSX — verified via `grep -n '<AppShell\|import AppShell' src/app/financials/aging/page.tsx src/app/financials/aging-report/page.tsx` at planner-time (matches the 6-line output documented in ITER-2-PATCHES.md §Out-of-scope observations and re-verified at rescope-time 2026-05-14). Premise of §2.1 is correct.
+- [x] No §2.1–§2.6 patch was ambiguous about where in D-2 PLAN.md it applies. Each patch had a clear target section (frontmatter field, body subsection, or specific AC).
+- [x] No semantic drift encountered. Every change above is a direct mechanical application of an ITER-2-PATCHES.md §2.X patch or a cross-cutting consistency edit required to propagate the §2.1 scope expansion through the document. No new requirements were introduced. No requirements were dropped. The scope change is purely additive (6 → 8 files of the same pathology). The Fragment-vs-bare-main decisions per file remain identical to the original plan (Task 2 Fragment, Tasks 3-7 bare-main, new Tasks 8-9 also bare-main per planner-time inspection of the actual file contents — each aging file's AppShell wraps exactly one `<main>` child).
+
+## Semantic drift check
+
+**Author confirms no semantic drift:** every change above is a direct mechanical application of an ITER-2-PATCHES.md §2.X patch, or a cross-cutting consistency edit required to keep the plan internally consistent after the §2.1 scope expansion. No new requirements introduced. No requirements dropped. Scope change is purely additive (6 → 8 files of the same pathology). The aging + aging-report files have identical Fragment-vs-bare-main treatment to the 5 of 6 originals that use bare-main return (i.e., AppShell wraps a single `<main>` child → bare `<main>` post-strip).
+
+One pre-existing mathematical inconsistency was corrected during rescope authoring (the §Dependencies "4 of the 6 D-2 files overlap with D-1's 9-site PostgREST refactor" claim was wrong — only 2 files overlap. The new "8" count made this obvious, so the corrected count is "2 of the 8". This correction is documented separately in the cross-cutting consistency edits table above, not silently propagated.)
+
+Reviewer can spot-check semantic fidelity by:
+1. Diff'ing the 6 original artifact entries vs the 2 new aging-file artifact entries (lines 115-148 originals vs 162-173 new) — same shape, same `not_contains`/`not_contains_also`/`contains` pattern.
+2. Diff'ing Tasks 3 (qa) and 8 (aging) — same 3-step Action structure (remove import, remove `<AppShell>` open, remove `</AppShell>` close), same diff-preview format.
+3. Confirming §2.7 has NO corresponding edit in D-2 PLAN.md (PATTERNS.md addition explicitly out of scope per the patch text).
+
+## File outputs
+
+- Modified: `.planning/phases/stage-f1-knowledge-graph-auth-wave-d/D-2-remove-double-appshell-PLAN.md` (988 lines → 1183 lines; net +195 lines for the 2-file scope expansion + TD-WD-01 references + side-benefit subsection + GATE-D framing tightening + traceability density).
+- Created: `.planning/tech-debt/TD-WD-01-invoices-id-page-dead-code.md` (32 lines; verbatim from ITER-2-PATCHES.md §2.2).
+- Created: this file (`.planning/phases/stage-f1-knowledge-graph-auth-wave-d/D-2-RESCOPE-TRACEABILITY.md`).
+
+No commits made. Parent orchestrator handles commit per nwrp128 dispatch instructions.
