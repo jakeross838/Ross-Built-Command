@@ -687,25 +687,53 @@ These rules are non-negotiable. Custom Nightwork agents, hooks, and orchestrator
   plans' "parallel_execute_ok: true" annotations missed; enforcement structural
   via plan-review iter-1 mechanical check — see Plan D-4 Task 2 Rule 5
   enforcement section.)
-- **Rule 6 — precursor hook scan before plan-execute dispatch.**
-  For every plan declaring `files_modified` entries, plan-review iter-1 MUST
-  run the post-edit hook (or equivalent design-token / typecheck scan using
-  the hook's COMPLETE forbidden-pattern set with word-boundary anchors —
-  approximations are NOT acceptable per nwrp131) against current state of
-  each listed file BEFORE plan-execute dispatch. Pre-existing violations in
-  target files = surface to plan-author for precursor handling (either
-  include precursor cleanup in plan scope with explicit separation in the
-  commit graph, OR author a precursor plan that ships first). Missing check
-  = WARNING (not BLOCKING since it doesn't always apply — schema-only /
-  doc-only plans may not touch hook-scanned surfaces). (Origin: nwrp130
-  Wave-D D-2 executor halted at Task 2 on a pre-existing `bg-white` violation
-  in `invoices/page.tsx:822` that predated D-2 by 31 days; precursor commit
-  e9fbbd3 cleaned it. nwrp131 refinement: Rule 6 pre-flight using narrower
-  `bg-white` pattern missed `hover:text-white` on `aging-report/page.tsx:27`
-  because the word-boundary `\b` anchor in the hook's authoritative regex
-  was dropped — precursor commit fd70122 cleaned it. Enforcement structural
-  via plan-review iter-1 mechanical scan using complete hook regex set — see
-  Plan D-4 Task 2 Rule 6 enforcement section.)
+- **Rule 6 — pre-flight collision checks before plan-execute dispatch.**
+  Plan-review iter-1 MUST run mechanical pre-flight checks against current
+  repo state for each plan's declared deliverables BEFORE plan-execute
+  dispatch. Pre-flight checks include but are not limited to:
+
+  (a) **Hook regex sweep** on all files in `files_modified` — catches
+      precursor design-token violations using the hook's COMPLETE
+      forbidden-pattern set with word-boundary anchors (HEX_HITS, NAMED_HITS,
+      PURE_HITS, LEGACY_HITS, ORG_ID_HITS, ROUNDED, CB4, CB2, SHADOW,
+      PURPLE, NwWordmark size + color). Approximations are NOT acceptable
+      (per nwrp131 — narrower regex misses `hover:`/`focus:`-prefix
+      variants caught by `\b` anchors). HEX_HITS distinguishes sub-categories
+      per nwrp132: plain hex (replace with CSS var) vs hex-in-var-fallback
+      (`var(--x, #HEX)` — REMOVE fallback if var defined globally; REPLACE
+      with var-chained fallback if a secondary token applies; FLAG to
+      design-system if var ISN'T defined globally).
+
+  (b) **Fixture infrastructure collision check** on any seed / SQL
+      deliverable — UUID, email, slug, FK collisions with existing
+      migrations (per nwrp135 — smoke-seed.sql tried to create parallel
+      `harness-fixture-org` that collided on `auth.users.email` uniqueness
+      with the existing 00092/00093 verification-harness fixture infra).
+      Pre-flight: `SELECT` against `auth.users.email` + `organizations.slug`
+      for any seeded identifier; verify zero collisions OR explicit reuse
+      of existing canonical infrastructure.
+
+  (c) **Deliverable path reachability check** — every path declared in
+      `files_modified` or `must_haves.artifacts` must be tracked by git
+      from a fresh checkout (already-whitelisted parent OR new explicit
+      whitelist entry in the same plan — per nwrp129 / TD-WD-01 surfaced
+      `.planning/tech-debt/` whitelist gap).
+
+  (d) **files_modified intersection check** for plans declaring
+      `parallel_execute_ok: true` — mechanical grep across all parallel-
+      claimed plans in the same wave; any shared path forces sequential
+      dispatch OR worktree isolation (per Rule 5 / nwrp127 — Wave-D D-1
+      + D-2 both claimed parallel but overlapped 2 files).
+
+  Each sub-check has its own enforcement mechanism (hook, SQL dry-run,
+  gitignore inspection, grep). Plan-review iter-1 must run all applicable
+  sub-checks; any HALT = surface to plan-author for either precursor
+  handling, fixture reuse, or plan scope revision. Missing pre-flight =
+  BLOCKING at plan-review iter-1. (Rule 6 was consolidated from 4 separate
+  proposals per nwrp135 to prevent Workflow-posture-rule proliferation; the
+  pre-flight collision family is the same mechanical principle — verify
+  current state matches plan assumptions — applied to different deliverable
+  classes.)
 
 ## Deployment
 

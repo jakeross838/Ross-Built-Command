@@ -222,7 +222,33 @@ process_discipline_violations: 0
 
 - **nwrp133 finding: --no-verify vs compound-form mechanism conflation.** D-1 first-commit attempt used `git commit --no-verify` explicitly, conflating it with e79e46e's compound `git add && git commit` form. The two mechanisms have different discipline costs — compound form: hook regex prefix skips by hook design (`.claude/hooks/nightwork-pre-commit.sh:28-30`); doesn't require Jake authorization. `--no-verify` flag: explicit pre-commit bypass per CLAUDE.md Dev Rules; requires Jake authorization. Slip was caught pre-push via discipline check; `git reset --soft HEAD~1` before push; re-authored at `7b26ddd` via correct compound form. Origin/main history is clean — `--no-verify` never reached the remote. Severity: NEAR-MISS, not a Wave-A-class violation. Wave-A's 4 bypasses reached origin/main; this one didn't. The push gate held. But the conflation pattern is real and worth codifying. D-4 will add a "commit mechanism transparency" clarification clause to CLAUDE.md Dev Rules under the existing `--no-verify` rule, distinguishing the two mechanisms explicitly so executor commit-body citations are unambiguous (compound form: cite "compound form per hook line 28-30 regex"; `--no-verify`: cite explicit Jake authorization OR revert before push).
 
-- **Cumulative Wave-D process gaps: 7 total.** iter-2-patch propagation (nwrp124, nwrp128, nwrp129) + precursor-violation scan (nwrp130) + precursor-scan regex precision (nwrp131) + precursor sub-category refinement (nwrp132) + commit-mechanism conflation (nwrp133 — NEAR-MISS only). Pattern recognition: corrective waves disproportionately surface pre-existing tech debt because they touch files that have accumulated debt unscoped by the original feature that authored them. Each gap discovered late = a process-tightening at the next "before-dispatch" check. Pattern is converging — nwrp131 was a regex precision fix on the nwrp130 check; nwrp132 is a sub-category refinement on the nwrp131-tightened check; nwrp133 is a discipline-mechanism distinction that didn't reach origin. None of these are new failure modes — all are precision refinements on existing checks. Wave-B should ship with all 7 gaps closed via Rules 5-6 enforcement at plan-review iter-1 + the calibration-log-codified Wave-B adjustments (deliverable path reachability + precursor hook scan with sub-category distinction + commit mechanism transparency).
+- **nwrp135 finding: smoke-seed fixture infrastructure collision (8th gap; post-D-3 sequencing).** Smoke-seed.sql apply via Supabase MCP failed on `auth.users.email` uniqueness — seed tried to create user `harness-fixture@nightwork.local` with synthetic UUID `00000000-0000-0000-0001-000000000002`, but that email already exists with UUID `5eb26edc-5989-477f-ac42-d1e9264db0e2` from migration 00092/00093 (stage-1.5c-verification-harness Layer 3 fixture infrastructure). Seed also tried to create a parallel `harness-fixture` org (UUID `11111111-1111-1111-1111-111111111111`) when the canonical `fixture-harness-org` (UUID `00000000-0000-0000-0000-fb1ce0a55e55`, name "Verification Harness Fixture Org") already exists. D-4 plan author missed the architectural reuse opportunity (D-4 files_referenced cited `auth-strategy.ts` constant `FIXTURE_USER_EMAIL = "harness-fixture@nightwork.local"` + D-30 single-auth-path constraint — both implying reuse — but seed §Task5 invented parallel synthetic infrastructure). Resolved per nwrp135 Option A: seed rewritten to merge into existing fixture-harness-org (9 new supporting users with predictable UUIDs `00000000-0000-0000-0002-00000000000N`; existing harness-fixture user added to org_members as member 1; jobs/invoices/activity_log all reference existing org UUID `fb1ce0a55e55`). Post-apply verification: 9 new auth.users + 10 org_members (1 existing + 9 new) + 10 jobs + 5 invoices + 10 activity_log in fixture-harness-org. FK census preserved at 56/3 (no migration drift). Transaction was atomic — first apply attempt rolled back cleanly on email collision; rewrite succeeded on second attempt.
+
+- **Cumulative Wave-D process gaps: 8 total.** Final tally. They cluster into 3 families:
+
+  **FAMILY 1 — Iter-2 patch propagation (3 gaps):**
+  - nwrp124: D-4 needed full re-author (20 iter-2 subsections stacked incoherently as patches)
+  - nwrp128: D-2 rescope (6→8 files) captured in ITER-2-PATCHES.md §2 didn't propagate to PLAN.md
+  - nwrp129: TD-WD-01 declared as deliverable but `.planning/tech-debt/` not whitelisted in `.gitignore`
+
+  Root cause: ITER-2-PATCHES.md is a changelog, not an executable artifact. Plans dispatched from PLAN.md files must reflect iter-2 patches IN the plan files + supporting infrastructure (gitignore, paths, etc.), not just in the patch addendum.
+
+  **FAMILY 2 — Precursor violations (3 gaps):**
+  - nwrp130: `bg-white` on `invoices/page.tsx:822` (31 days pre-D-2)
+  - nwrp131: `hover:text-white` on `aging-report/page.tsx:27` (sibling cleanup missed; regex precision gap)
+  - nwrp132: hex-in-CSS-var-fallback on `jobs/new/page.tsx:332-333` (new sub-category within HEX_HITS)
+
+  Root cause: Wave-D targeted files that accumulated design-token TD before Wave-D scoped them. The corrective wave can't proceed without first addressing precursor violations.
+
+  **FAMILY 3 — Pre-flight collision (2 gaps):**
+  - nwrp133: `--no-verify` slip caught at push gate (compound-form vs flag-bypass mechanism conflation; NEAR-MISS)
+  - nwrp135: smoke-seed collision with existing Layer 3 fixture infrastructure (parallel UUIDs vs reuse)
+
+  Root cause: Plan author didn't verify state against current repo/schema before declaring deliverables.
+
+  **Adjustment for Wave-B:** Rule 6 (revised; per nwrp135) consolidates all "pre-flight check" patterns into 4 sub-checks (hook regex sweep / fixture collision / deliverable path reachability / files_modified intersection). Plan-review iter-1 enforces. Rules 1-6 in CLAUDE.md Workflow posture section are now the canonical Wave-B+ discipline gates.
+
+  **Discipline working as designed:** Wave-C shipped 3 user-facing bugs because no pre-ship runtime verification gate existed. Wave-D caught 8 process gaps before ship because Rules 1-6 + precursor scans exist. The 8 gaps are NOT failures — they're the system detecting and surfacing issues that previously would have shipped silently. Wave-A "got lucky" per nwrp113; Wave-D is showing what "unlucky-but-caught" looks like. The 8-gap count is the cost of the new discipline finding actual TD. Wave-B's 9 plans + 2-3 weeks of foundational work will surface more. That's expected and correct.
 
 - **Wave-D execute sequencing.** Per nwrp127 sequencing decision: D-5 (shipped 2026-05-13 c84b4a0) → D-2 → D-1 → D-4 → D-3 → migration apply + Vercel preview + wave-d-smoke + /nightwork-qa + GATE-N. Originally planned parallel D-1 + D-2; flipped to sequential post-files_modified-overlap finding.
 
