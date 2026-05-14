@@ -161,3 +161,21 @@ Each plan = one atomic commit. Compound `git add ... && git commit` form per nwr
 ## Wave-B Prerequisites (cumulative post-Wave-E)
 
 Items 1-7 unchanged. Items 8 + 9 resolved by Wave-E if PASS. Item 10 (user-identity FK convention D-### entry) is Wave-E close-out scope. Wave-B remains REVOKED until Wave-E GATE-N approved.
+
+**Item 11 (NEW; iter-2 patch per security-reviewer Top concern 2):** Rotate HARNESS_FIXTURE_PASSWORD per security-reviewer FINDING-3 promotion. Originally classified MEDIUM per nwrp139 (don't-rotate decision); promoted to Wave-B prerequisite at iter-1 because the credential is org-admin in production Supabase (synthetic-org scope, but real auth) and rotation is low-cost (env var update). Three rotation surfaces: `.env.local` on all dev machines + Vercel env var (Production + Preview) + GitHub Actions workflow secret. Before Wave-B Plan B-1 dispatches.
+
+## Iter-2 patches (consolidated reference)
+
+After /nightwork-plan-review iter-1 returned 9 reviewer verdicts, iter-2 patches landed inline. Full patch list with severity + status: `.planning/phases/stage-f1-knowledge-graph-auth-wave-e/ITER-2-PATCHES.md`. Notable per-plan effects:
+
+- **Plan E-1:** New AC-E1-05 (ENTITY-INVENTORY.md line 21 update); files_modified expanded to include `.planning/architecture/ENTITY-INVENTORY.md` (compliance CRITICAL fix).
+- **Plan E-2 files_modified (canonical):**
+  - src/components/nav-bar.tsx
+  - src/components/job-sidebar.tsx
+  - src/app/jobs/[id]/page.tsx (data-pm-name attribute — was in PLAN frontmatter but missing here; iter-2 documents explicitly)
+  - scripts/wave-d-smoke.ts (selector swap for /financials/bills routes per iter-2 §2.3)
+  - scripts/fixtures/smoke-seed.sql (orchestrator-driven credentials per iter-2 §2.1 + ON CONFLICT encrypted_password per iter-2 §2.2)
+  - scripts/harness-auth-bootstrap.ts
+- **Plan E-3 files_modified:** unchanged (src/app/financials/bills/[id]/page.tsx) — but iter-2 §3.1 patches the implementation to use `vendor_name_raw` fallback null-guard instead of `notFound()` on missing vendor embed; iter-2 §3.2 adds page header comment documenting the embed-shape divergence vs API route.
+
+Rule 5 disjointness verified: E-1 has no src/ files; E-2 + E-3 disjoint at src/ level (E-2 touches nav-bar, job-sidebar, jobs/[id]/page; E-3 touches financials/bills/[id]/page).

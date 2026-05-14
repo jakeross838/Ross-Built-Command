@@ -18,7 +18,7 @@ Cross-references:
 | Entity | Description | F-N when shipped | Relationships | Retention class | PII? |
 |--------|-------------|------------------|---------------|-----------------|------|
 | Jobs | Universal parent | Wave 1 (existing) | →Vendors / Cost Codes / Pay Apps / etc. | tenant-deletion-lifecycle | yes (client_name, client_email, client_phone, address) |
-| Vendors | Subs + suppliers | Wave 1 (existing) | →Bills / Lien Releases / Performance | tenant-deletion-lifecycle | yes (email, phone, address; W-9 if stored) |
+| Vendors | Subs + suppliers | Wave 1 (existing) | →Bills / Lien Releases / Performance | tenant-deletion-lifecycle | no — B2B commercial contact info per D-079 (phone/email/address are published business data, not customer PII; sole-proprietor edge case acknowledged at D-079 trigger (iii) + finding-1-reclassification.md). W-9 TIN belongs in separate Tax Records entity row (Wave 4 vendor portal scope). |
 | Clients | Homeowners + commercial | F1 | →Jobs / Pay Apps approval | forever (audit trail) | yes (name, email, phone, address) |
 | Employees | Internal team | F2 (extends profiles + org_members) | →Roles / Time / Activity | tenant-deletion-lifecycle | yes (email, phone, comp data, SSN if stored) |
 | Products | Material catalog (Selections VIEW) | F5 | →Vendors / Cost Codes | per-record | no |

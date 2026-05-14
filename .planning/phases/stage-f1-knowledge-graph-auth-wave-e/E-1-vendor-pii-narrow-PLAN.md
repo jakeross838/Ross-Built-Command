@@ -22,9 +22,10 @@ source_decisions:
   - "New D-079 MASTER-PLAN entry: PII fence scope clarification — customer data only; vendor B2B contact info NOT in scope. Codifies the override + going-forward convention."
 
 files_modified:
-  - .planning/MASTER-PLAN.md  # D-079 entry
+  - .planning/MASTER-PLAN.md  # D-079 entry + SOC2 CC7.2/PI1.1 inheritance + sole-prop caveat (iter-2 patch per compliance reviewer)
   - .planning/expansions/stage-f1-knowledge-graph-auth-wave-e-EXPANDED-SCOPE.md  # Plan E-1 section updated to Path C
-  - .planning/qa-runs/wave-d/finding-1-reclassification.md  # NEW (gitignored audit trail)
+  - .planning/qa-runs/wave-d/finding-1-reclassification.md  # NEW (gitignored audit trail) + sole-prop edge case (iter-2 patch per compliance reviewer)
+  - .planning/architecture/ENTITY-INVENTORY.md  # line 21 Vendors PII? cell update to match D-079 (iter-2 patch per compliance CRITICAL)
 
 files_referenced:
   - src/app/api/invoices/[id]/route.ts:76 (vendor embed REMAINS UNCHANGED per Path C)
@@ -53,7 +54,7 @@ sequence:
   parallel_authoring_ok: true
   parallel_execute_ok: "E-2 + E-3 (no file overlap; E-1 modifies only docs)"
 
-acceptance-criteria-target: 4 falsifiable items (AC-E1-01..AC-E1-04)
+acceptance-criteria-target: 5 falsifiable items (AC-E1-01..AC-E1-05; iter-2 added AC-E1-05 per compliance CRITICAL)
 
 threat_model:
   trust_boundaries:
@@ -188,6 +189,22 @@ grep -nE "^\| \*\*D-079\*\*" .planning/MASTER-PLAN.md
 
 **Done:** Plan body reflects Path C (no code changes; docs only).
 
+### Task 5 — Update ENTITY-INVENTORY.md line 21 Vendors PII? cell (iter-2 patch per compliance CRITICAL)
+
+**Path:** `.planning/architecture/ENTITY-INVENTORY.md`
+
+**Action:** Update the Vendors row PII? cell at line 21. Change cell from `yes (email, phone, address; W-9 if stored)` to:
+
+```
+no — B2B commercial contact info per D-079 (phone/email/address are published business data, not customer PII; sole-proprietor edge case acknowledged at D-079 trigger (iii) + finding-1-reclassification.md). W-9 TIN belongs in separate Tax Records entity row (Wave 4 vendor portal scope).
+```
+
+**Rationale:** Compliance-reviewer iter-1 found CRITICAL inconsistency between D-079 (declares vendors PII?=No) and ENTITY-INVENTORY.md line 21 (declares Vendors PII?=yes). Contradiction breaks SOC2 C1.1 evidence-trail traceability. Patch resolves by updating ENTITY-INVENTORY.md to match D-079 (D-079 is the authoritative decision).
+
+**Verify:** `grep -nE "^\| Vendors \|" .planning/architecture/ENTITY-INVENTORY.md` returns 1 match containing "B2B commercial contact info per D-079" AND NOT containing "yes (email".
+
+**Done:** ENTITY-INVENTORY.md line 21 PII? cell matches D-079 classification.
+
 ## Acceptance criteria
 
 | ID | Criterion | Verification |
@@ -196,6 +213,7 @@ grep -nE "^\| \*\*D-079\*\*" .planning/MASTER-PLAN.md
 | AC-E1-02 | finding-1-reclassification.md exists | `ls .planning/qa-runs/wave-d/finding-1-reclassification.md` succeeds |
 | AC-E1-03 | Wave-E EXPANDED-SCOPE §Plan E-1 reflects Path C | `grep -c 'Path C' .planning/expansions/stage-f1-knowledge-graph-auth-wave-e-EXPANDED-SCOPE.md` returns ≥2 |
 | AC-E1-04 | No code changes to `src/app/api/invoices/[id]/route.ts` | `grep -nF "vendors:vendor_id (id, name, phone, email, address)" src/app/api/invoices/\[id\]/route.ts` returns 1 match (UNCHANGED) |
+| AC-E1-05 | ENTITY-INVENTORY.md line 21 Vendors PII? cell updated | `grep -nE "^\| Vendors \|" .planning/architecture/ENTITY-INVENTORY.md` returns 1 match containing "B2B commercial contact info per D-079" |
 
 ## Verification commands
 
@@ -215,6 +233,10 @@ grep -c 'Path C' .planning/expansions/stage-f1-knowledge-graph-auth-wave-e-EXPAN
 # AC-E1-04: Vendor embed unchanged
 grep -nF "vendors:vendor_id (id, name, phone, email, address)" src/app/api/invoices/\[id\]/route.ts
 # Expected: 1 match (line 76 unchanged from pre-Wave-E state)
+
+# AC-E1-05: ENTITY-INVENTORY.md line 21 Vendors PII? cell updated (iter-2 compliance CRITICAL fix)
+grep -nE "^\| Vendors \|" .planning/architecture/ENTITY-INVENTORY.md
+# Expected: 1 match containing "B2B commercial contact info per D-079" AND NOT containing "yes (email"
 ```
 
 ## Rollback strategy
