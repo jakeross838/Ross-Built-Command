@@ -24,7 +24,7 @@
  * for simpler integration with async fetch + find-or-create flow.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 export interface ClientOption {
   id: string;
@@ -60,6 +60,7 @@ export default function ClientCombobox({
   const [highlight, setHighlight] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listboxId = useId();
 
   // Async search with light debounce. Cancellation token prevents stale responses.
   useEffect(() => {
@@ -186,12 +187,16 @@ export default function ClientCombobox({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
+        role="combobox"
         aria-autocomplete="list"
         aria-expanded={open}
+        aria-controls={listboxId}
         className="w-full px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--nw-stone-blue)] focus:outline-none disabled:opacity-50"
       />
       {open && (
         <div
+          id={listboxId}
+          role="listbox"
           className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-y-auto border bg-[var(--bg-card)]"
           style={{
             borderColor: "var(--border-default)",
@@ -213,6 +218,8 @@ export default function ClientCombobox({
               <button
                 key={opt.id}
                 type="button"
+                role="option"
+                aria-selected={idx === highlight}
                 onClick={() => commitExisting(opt)}
                 onMouseEnter={() => setHighlight(idx)}
                 className={`w-full text-left px-3 py-2 text-sm transition-colors ${
@@ -227,6 +234,8 @@ export default function ClientCombobox({
           {!loading && showCreateOption && (
             <button
               type="button"
+              role="option"
+              aria-selected={options.length === highlight}
               onClick={commitNew}
               onMouseEnter={() => setHighlight(options.length)}
               className={`w-full text-left px-3 py-2 text-sm border-t transition-colors ${

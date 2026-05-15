@@ -653,7 +653,7 @@ function ChoiceCard({
       <p className="mt-2 text-sm text-[color:var(--text-muted)] flex-1">{subtitle}</p>
       <span
         style={{
-          color: "#3F5B62",
+          color: "var(--nw-gulf-blue)",
           fontWeight: 600,
           cursor: "pointer",
           textDecoration: "underline",
