@@ -297,6 +297,13 @@ Known issues, deferred deliberately. Each entry: severity, source (where it was 
 
 Updated continuously by `nightwork-custodian` after each `/gsd-ship`. Order is a soft default — Jake adjusts at strategic checkpoints.
 
+**MID-FLIGHT (paused at clean checkpoint 2026-05-15 per nwrp157 Path C):**
+- **Wave-B-Slice-1 — 2 of 4 plans shipped, 2 of 4 execute-ready.** Cost ceiling at $50 reached at ~$45-50 spend; continuation requires Jake authorization (bump to $75 OR continue under $50 with overage risk). Resume command: `/nx stage-f1-knowledge-graph-auth-wave-b` (dispatches B-1a-bis next). Full state at `.planning/expansions/stage-f1-knowledge-graph-auth-wave-b-INTERIM-STATE-2026-05-15.md`. Branch state: `main` at `4b14100`; clean working tree; recoverable.
+  - ✅ B-D080 — FK convention migration 00099 (10 auth.users + 1 profiles FK)
+  - ✅ B-1a — clients schema foundation migration 00100 (table + backfill + `app_private.user_org_role()` helper)
+  - ⏸ B-1a-bis — clients consumer refactor + DROP COLUMN migration 00101 (19 src refactor + new `/api/clients?search=` endpoint)
+  - ⏸ B-1b — KG scaffold + types pipeline + 3 validators + 3 Layer 2 standards + W.1 env-flag activation (GATE 2 HALT post-ship)
+
 **Immediate (this session, before Stage 1):**
 - ✅ Address HIGH CSP finding (resolved 2026-04-29).
 - ✅ Fix `NEXT_PUBLIC_APP_URL` (resolved 2026-04-29).
