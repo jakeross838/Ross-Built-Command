@@ -1,9 +1,28 @@
 # Manual setup checklist — stage-f1-knowledge-graph-auth-wave-b (Slice 1)
 
-**Status:** PENDING JAKE — 1 item
+**Status:** RESOLVED 2026-05-15 12:46 — Item 1 validated via re-invocation #2 (`gen types --linked` canonical check returned 5230 lines of valid TypeScript). SETUP-COMPLETE.md written. See `.planning/expansions/stage-f1-knowledge-graph-auth-wave-b-SETUP-COMPLETE.md` for full evidence.
 **Generated:** 2026-05-15 (post-nwrp153 EXPANDED-SCOPE approval)
 
 After completing each item, run `/nightwork-auto-setup stage-f1-knowledge-graph-auth-wave-b` again to validate.
+
+---
+
+## Validation attempt 1 — 2026-05-15 12:38 (FAILED)
+
+`/nightwork-auto-setup stage-f1-knowledge-graph-auth-wave-b` re-invoked. Validation results:
+
+| Check | Result | Error |
+|-------|--------|-------|
+| V1-V6 (all 6 VALIDATEs) | PASS | n/a — re-verified |
+| Item 1 hook H1.a (`npx supabase projects list`) | **FAIL** | `Access token not provided. Supply an access token by running supabase login or setting the SUPABASE_ACCESS_TOKEN environment variable.` |
+| Item 1 hook H1.b (`ls supabase/config.toml`) | **FAIL** | `No such file or directory` |
+| Item 1 hook H1.c (`npx supabase gen types typescript --linked`) | **FAIL** | `Initialising login role... Access token not provided.` |
+
+**Diagnosis:** the `supabase login` step from Item 1 has not been executed yet (no `~/.supabase/access-token` present; no `supabase/config.toml` written by `supabase link`). The auto-setup command cannot run interactive `supabase login` on Jake's behalf — it requires a browser-based OAuth redirect (or a PAT pasted into the terminal).
+
+**Action required:** Jake completes Item 1 below, then re-invokes `/nightwork-auto-setup stage-f1-knowledge-graph-auth-wave-b`.
+
+---
 
 ---
 
