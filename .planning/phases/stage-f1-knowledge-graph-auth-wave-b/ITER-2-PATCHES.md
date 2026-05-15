@@ -513,23 +513,51 @@ if (createdNewClient) {
 }
 ```
 
-3. **Add cross-reference note** in B-1a-bis frontmatter `files_modified`:
+3. **iter-3 amendment (nwrp158 diagnostic — PLAN-LEVEL ERROR resolution):** Extend `src/lib/audit/action-labels.ts:30` ENTITY_LABELS `Record<ActivityEntityType, string>` to include the `'client'` key. This is a TypeScript exhaustiveness requirement — the Record enforces a label for every enum value; without it, `npx tsc --noEmit` fails with `TS2741: Property 'client' is missing in type ... but required in type 'Record<ActivityEntityType, string>'`.
+
+The B-1a-bis partial executor at 2026-05-15 hit exactly this typecheck failure. Diagnostic per nwrp158 surfaced it as a §3.2 plan-level gap: original §3.2 listed `activity-log.ts` in files_modified but missed the sole downstream consumer of `Record<ActivityEntityType, string>`. Grep confirmed `action-labels.ts:30` is the ONLY such consumer (`grep -rn 'ActivityEntityType' src/ scripts/ --include='*.ts'` returns only this file outside the source `activity-log.ts`).
+
+Update to ENTITY_LABELS (after the existing `draw: "Pay App"` line ~44, before `user: "User"` to keep alphabetical/semantic grouping with other primary entities):
+
+```typescript
+// Per nwrp155 B5 partial pull + nwrp158 iter-3 diagnostic:
+// 'client' label added alongside ActivityEntityType enum extension.
+// Slice-2 B-4 extends lien_releases/proposals/client_portal_access; do
+// NOT re-add 'client' there.
+client: "Client",
+```
+
+Label string `"Client"` follows the existing convention (entity name capitalized; matches `Job`, `Vendor`, `Cost Code`). NOT `"Homeowner"` — clients table per ENTITY-INVENTORY.md row 22 covers BOTH homeowners + commercial clients; `"Client"` accommodates both.
+
+4. **Add cross-reference notes** in B-1a-bis frontmatter `files_modified`:
 
 ```yaml
 files_modified:
   # ... existing entries ...
-  - src/lib/activity-log.ts  # NEW: extend ActivityEntityType per nwrp155 B5 partial pull from Slice-2 B-4
+  - src/lib/activity-log.ts        # NEW: extend ActivityEntityType per nwrp155 B5 partial pull from Slice-2 B-4
+  - src/lib/audit/action-labels.ts # NEW per iter-3 nwrp158 diagnostic: add 'client' label to ENTITY_LABELS Record (required for typecheck exhaustiveness)
 ```
 
-4. **Slice-2 B-4 plan-author note:** B-4 should NOT re-add `'client'` (already done in B-1a-bis). B-4 extends `lien_releases`, `proposals`, `client_portal_access` enum values only. Document in B-4 plan-author brief once Slice-2 dispatches.
+5. **Slice-2 B-4 plan-author note:** B-4 should NOT re-add `'client'` to either the enum OR the ENTITY_LABELS Record (already done in B-1a-bis). B-4 extends `lien_releases`, `proposals`, `client_portal_access` enum values + corresponding label entries only. Document in B-4 plan-author brief once Slice-2 dispatches.
 
-**Verification (new AC-B1a-bis-17):**
+**Verification (new AC-B1a-bis-17 + AC-B1a-bis-18):**
+
+AC-B1a-bis-17 (original): activity-log.ts enum + /api/jobs helper invocation.
 ```bash
 grep -nE "^\s*\|\s*'client'\s*$" src/lib/activity-log.ts
 # Expected: 1 hit (the new enum entry)
 
 grep -nE "entity_type:\s*'client'" src/app/api/jobs/route.ts
 # Expected: ≥1 hit (the helper invocation in find-or-create branch)
+```
+
+AC-B1a-bis-18 (NEW per iter-3 nwrp158): action-labels.ts label addition.
+```bash
+grep -nE '^\s*client:\s*"Client"' src/lib/audit/action-labels.ts
+# Expected: 1 hit (the new ENTITY_LABELS entry)
+
+npx tsc --noEmit 2>&1 | grep -E 'action-labels|ActivityEntityType' || echo 'PASS'
+# Expected: 'PASS' (no typecheck failures on this file/type)
 ```
 
 ### §3.3 — C3: Add `scripts/e2e-dewberry-setup.mjs` to files_modified (architect CRITICAL-1; CRITICAL)

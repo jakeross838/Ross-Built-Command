@@ -1,8 +1,19 @@
 #!/bin/bash
 # Nightwork PostToolUse hook for Write|Edit|MultiEdit
-# Scans the just-edited file for Nightwork anti-patterns. BLOCKS on hard violations.
+# Scans the just-edited file for Nightwork anti-patterns. BLOCKS on hard violations
+# introduced by the current edit; WARNS (informational; doesn't block) on pre-existing
+# violations from prior commits.
+#
 # Hard rejections — hex colors in components, Tailwind named colors, legacy namespaces,
 # CREATE TABLE without RLS, hard DELETE / DROP TABLE in migrations.
+#
+# nwrp158 + nwrp159 iter-3 precision refinement (TD-WB-HOOK-PRECISION resolution):
+# Scope blocking to lines touched by the current edit (computed via `git diff HEAD --
+# <file>`). Pre-existing violations on untouched lines still surface as stderr warnings
+# (discipline preserved — never silently suppressed) but do NOT block the commit. This
+# closes the recurring class where pre-existing technical debt on an unrelated line in a
+# touched file would block legitimate edits + force the executor to either fix
+# unrelated debt (scope creep) or bypass with --no-verify (override).
 
 set -e
 
@@ -46,239 +57,222 @@ case "$FILE_NORM" in
 esac
 
 ISSUES_FILE=$(mktemp)
+WARNINGS_FILE=$(mktemp)
 > "$ISSUES_FILE"
+> "$WARNINGS_FILE"
+
+# Compute the set of line numbers ADDED by the current edit (working tree vs HEAD).
+# - For tracked files: parse `git diff -U0 HEAD -- <file>` hunk headers (`@@ -A,B +C,D @@`)
+#   and emit the new-file line range C..C+D-1.
+# - For untracked files: all lines are NEW (file just created by Write tool).
+# - On any error (no git repo, etc.): conservative fallback — treat all hits as NEW
+#   (preserves current blocking behavior; no false negatives).
+ADDED_LINES=""
+if git rev-parse --git-dir > /dev/null 2>&1; then
+  if git ls-files --error-unmatch "$FILE" > /dev/null 2>&1; then
+    # Tracked file: extract added-line numbers from diff hunk headers
+    ADDED_LINES=$(git diff --no-color -U0 HEAD -- "$FILE" 2>/dev/null | awk '
+      /^@@/ {
+        # @@ -A,B +C,D @@ ... or @@ -A +C @@ ...
+        if (match($0, /\+[0-9]+(,[0-9]+)?/)) {
+          hunk = substr($0, RSTART+1, RLENGTH-1)
+          n = split(hunk, parts, ",")
+          start = parts[1]
+          count = (n == 2 ? parts[2] : 1)
+          for (i = start; i < start + count; i++) print i
+        }
+      }
+    ')
+  else
+    # Untracked: file just created OR not in git yet — all lines are new
+    # Emit all line numbers 1..N
+    ADDED_LINES=$(awk 'END { for (i = 1; i <= NR; i++) print i }' "$FILE")
+  fi
+fi
+
+# Classify a multi-line grep result (line-prefixed: "N:...") into NEW vs PRE-EXISTING.
+# Writes to two files: $NEW_OUT (block-on) and $PREEXISTING_OUT (informational warn).
+classify_hits() {
+  local raw_hits="$1"
+  local new_out="$2"
+  local preexisting_out="$3"
+  > "$new_out"
+  > "$preexisting_out"
+
+  [ -z "$raw_hits" ] && return
+
+  # Conservative fallback: if ADDED_LINES couldn't be computed, treat all as NEW.
+  if [ -z "$ADDED_LINES" ]; then
+    echo "$raw_hits" >> "$new_out"
+    return
+  fi
+
+  while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    local line
+    line=$(echo "$hit" | cut -d: -f1)
+    # Match line number against ADDED_LINES (exact match on its own line in the set)
+    if echo "$ADDED_LINES" | grep -qxE "${line}"; then
+      echo "$hit" >> "$new_out"
+    else
+      echo "$hit" >> "$preexisting_out"
+    fi
+  done <<< "$raw_hits"
+}
+
+# Report a violation class with split blocking/informational tiers.
+#   $1: class label (the header line, e.g. "[design-tokens] Hardcoded hex color (...):")
+#   $2: raw grep hits (multi-line)
+# Writes:
+#   - NEW hits → $ISSUES_FILE (blocks the edit)
+#   - PRE-EXISTING hits → $WARNINGS_FILE (informational; emitted to stderr; does NOT block)
+report_hits() {
+  local class_label="$1"
+  local raw_hits="$2"
+  [ -z "$raw_hits" ] && return
+
+  local new_file
+  local preexisting_file
+  new_file=$(mktemp)
+  preexisting_file=$(mktemp)
+
+  classify_hits "$raw_hits" "$new_file" "$preexisting_file"
+
+  if [ -s "$new_file" ]; then
+    echo "$class_label" >> "$ISSUES_FILE"
+    head -3 "$new_file" >> "$ISSUES_FILE"
+    echo "" >> "$ISSUES_FILE"
+  fi
+
+  if [ -s "$preexisting_file" ]; then
+    echo "$class_label (pre-existing on untouched lines — informational; not blocking):" >> "$WARNINGS_FILE"
+    head -3 "$preexisting_file" >> "$WARNINGS_FILE"
+    echo "" >> "$WARNINGS_FILE"
+  fi
+
+  rm -f "$new_file" "$preexisting_file"
+}
 
 # 1. .tsx / .ts / .css — design token violations
 if [[ "$FILE_NORM" =~ \.(tsx|ts|css|scss)$ ]]; then
   # Hex colors used as Tailwind class arbitrary values are OK only via var(); pure hex hardcoded → BLOCK
-  # Match e.g. style={{ color: '#1A2830' }} or text-[#1A2830] but allow text-[var(--name)]
-  HEX_HITS=$(grep -nE "#[0-9a-fA-F]{6}\b" "$FILE" | grep -vE "(globals\.css|tailwind\.config|//|/\*)" | head -3 || true)
-  if [ -n "$HEX_HITS" ]; then
-    echo "[design-tokens] Hardcoded hex color (use Slate CSS vars / nw-* utilities):" >> "$ISSUES_FILE"
-    echo "$HEX_HITS" | head -3 >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  HEX_HITS=$(grep -nE "#[0-9a-fA-F]{6}\b" "$FILE" | grep -vE "(globals\.css|tailwind\.config|//|/\*)" || true)
+  report_hits "[design-tokens] Hardcoded hex color (use Slate CSS vars / nw-* utilities):" "$HEX_HITS"
 
   # Tailwind named color utilities (block list — Slate palette only)
-  NAMED_HITS=$(grep -nE "\b(bg|text|border|ring|fill|stroke|from|to|via|placeholder|caret|accent|outline|divide)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(50|100|200|300|400|500|600|700|800|900|950)\b" "$FILE" | head -3 || true)
-  if [ -n "$NAMED_HITS" ]; then
-    echo "[design-tokens] Tailwind named color (Phase E removed these — use bracket-value with --bg-card / --text-primary or nw-* utilities):" >> "$ISSUES_FILE"
-    echo "$NAMED_HITS" | head -3 >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  NAMED_HITS=$(grep -nE "\b(bg|text|border|ring|fill|stroke|from|to|via|placeholder|caret|accent|outline|divide)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(50|100|200|300|400|500|600|700|800|900|950)\b" "$FILE" || true)
+  report_hits "[design-tokens] Tailwind named color (Phase E removed these — use bracket-value with --bg-card / --text-primary or nw-* utilities):" "$NAMED_HITS"
 
   # Pure bg-white / text-black / bg-black / text-white  — Nightwork uses Slate, never pure
-  PURE_HITS=$(grep -nE "\b(bg|text|border)-(white|black)\b" "$FILE" | head -3 || true)
-  if [ -n "$PURE_HITS" ]; then
-    echo "[design-tokens] Pure white/black (Nightwork uses Slate — bg-nw-page, text-nw-slate-tile):" >> "$ISSUES_FILE"
-    echo "$PURE_HITS" | head -3 >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  PURE_HITS=$(grep -nE "\b(bg|text|border)-(white|black)\b" "$FILE" || true)
+  report_hits "[design-tokens] Pure white/black (Nightwork uses Slate — bg-nw-page, text-nw-slate-tile):" "$PURE_HITS"
 
   # Legacy namespaces removed in Phase E
-  LEGACY_HITS=$(grep -nE "\b(bg|text|border)-(cream|teal-(?!.*nw)|brass|brand|status|nightwork)-" "$FILE" 2>/dev/null | head -3 || true)
-  if [ -n "$LEGACY_HITS" ]; then
-    echo "[design-tokens] Legacy namespace (cream/teal/brass/brand/status/nightwork removed in Phase E):" >> "$ISSUES_FILE"
-    echo "$LEGACY_HITS" | head -3 >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  LEGACY_HITS=$(grep -nE "\b(bg|text|border)-(cream|teal-(?!.*nw)|brass|brand|status|nightwork)-" "$FILE" 2>/dev/null || true)
+  report_hits "[design-tokens] Legacy namespace (cream/teal/brass/brand/status/nightwork removed in Phase E):" "$LEGACY_HITS"
 fi
 
 # 2. SQL migrations — RLS, soft-delete, drops
 if [[ "$FILE_NORM" =~ supabase/migrations/.*\.sql$ ]]; then
   # CREATE TABLE without ENABLE ROW LEVEL SECURITY in the same file
+  # (this is a whole-file check, not line-based — keep the existing all-or-nothing block
+  # because adding a CREATE TABLE without RLS in any new lines is a true new violation
+  # regardless of whether other tables in the file have RLS)
   if grep -iqE "CREATE TABLE\s+(IF NOT EXISTS\s+)?[a-zA-Z_]" "$FILE" && ! grep -iq "ENABLE ROW LEVEL SECURITY" "$FILE"; then
-    echo "[rls-auditor] Migration creates a table without ENABLE ROW LEVEL SECURITY. Add ALTER TABLE … ENABLE ROW LEVEL SECURITY + at least one CREATE POLICY in the same migration." >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
+    # Only block if the CREATE TABLE was introduced in this edit
+    CREATE_TABLE_HITS=$(grep -niE "^[^-]*CREATE TABLE\s+(IF NOT EXISTS\s+)?[a-zA-Z_]" "$FILE" || true)
+    report_hits "[rls-auditor] Migration creates a table without ENABLE ROW LEVEL SECURITY. Add ALTER TABLE … ENABLE ROW LEVEL SECURITY + at least one CREATE POLICY in the same migration." "$CREATE_TABLE_HITS"
   fi
 
   # Hard DELETE FROM (allow inside comments)
-  DELETE_HITS=$(grep -niE "^[^-]*\bDELETE FROM\b" "$FILE" | head -3 || true)
-  if [ -n "$DELETE_HITS" ]; then
-    echo "[migration-safety] Hard DELETE FROM. Nightwork uses soft-delete: UPDATE … SET deleted_at = now()." >> "$ISSUES_FILE"
-    echo "$DELETE_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  DELETE_HITS=$(grep -niE "^[^-]*\bDELETE FROM\b" "$FILE" || true)
+  report_hits "[migration-safety] Hard DELETE FROM. Nightwork uses soft-delete: UPDATE … SET deleted_at = now()." "$DELETE_HITS"
 
   # DROP TABLE — block by default, allow only with explicit comment
-  DROP_HITS=$(grep -niE "^[^-]*\bDROP TABLE\b" "$FILE" | head -3 || true)
+  DROP_HITS=$(grep -niE "^[^-]*\bDROP TABLE\b" "$FILE" || true)
   if [ -n "$DROP_HITS" ] && ! grep -iq -- "-- nightwork: drop-justified" "$FILE"; then
-    echo "[migration-safety] DROP TABLE without justification. Add '-- nightwork: drop-justified — <reason>' comment if intentional." >> "$ISSUES_FILE"
-    echo "$DROP_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
+    report_hits "[migration-safety] DROP TABLE without justification. Add '-- nightwork: drop-justified — <reason>' comment if intentional." "$DROP_HITS"
   fi
 
   # TRUNCATE
-  TRUNC_HITS=$(grep -niE "^[^-]*\bTRUNCATE\b" "$FILE" | head -3 || true)
-  if [ -n "$TRUNC_HITS" ]; then
-    echo "[migration-safety] TRUNCATE — destroys data, never allowed in tenant tables." >> "$ISSUES_FILE"
-    echo "$TRUNC_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  TRUNC_HITS=$(grep -niE "^[^-]*\bTRUNCATE\b" "$FILE" || true)
+  report_hits "[migration-safety] TRUNCATE — destroys data, never allowed in tenant tables." "$TRUNC_HITS"
 fi
 
 # 3. Hardcoded ORG_ID outside the seed-template path
 if [[ "$FILE_NORM" =~ \.(ts|tsx)$ ]] && [[ ! "$FILE_NORM" =~ cost-codes/template/ ]]; then
-  ORG_ID_HITS=$(grep -nE "(const|let|var)\s+ORG_ID\s*=" "$FILE" | head -3 || true)
-  if [ -n "$ORG_ID_HITS" ]; then
-    echo "[rls-auditor] Hardcoded ORG_ID found. Only TEMPLATE_ORG_ID in cost-codes/template/route.ts is allowed. Use getCurrentMembership().org_id." >> "$ISSUES_FILE"
-    echo "$ORG_ID_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  ORG_ID_HITS=$(grep -nE "(const|let|var)\s+ORG_ID\s*=" "$FILE" || true)
+  report_hits "[rls-auditor] Hardcoded ORG_ID found. Only TEMPLATE_ORG_ID in cost-codes/template/route.ts is allowed. Use getCurrentMembership().org_id." "$ORG_ID_HITS"
 fi
 
-# Stage 1.5a — T10a (existing token enforcement covers src/components/ui/)
-# The path filters above (src/* | */src/*) already include src/components/ui/.
-# The .tsx/.ts/.css block (block 1) already applies. T10a is satisfied
-# implicitly — no separate code needed; document for clarity.
-
 # Stage 1.5a — T10b: Forbidden-list enforcement (per SPEC A2.1 / D5.1).
-# Quantified violation criteria for tokens / motion / shadow / typography
-# that are universally banned by SPEC A2.1, regardless of token wrapper.
-# Hooks reject .tsx / .ts / .css edits that introduce any of:
-#
-#   - cubic-bezier with 4th arg >= 1.0   (bouncy easing — overshoot)
-#   - cubic-bezier with 2nd arg >= 1.0   (bouncy easing — early-spring)
-#   - rounded-{lg,xl,2xl,3xl,full} on non-avatar/dot files (oversized)
-#   - box-shadow with blur > 20px AND non-zero spread (dark glow)
-#   - HSL hue ∈ [270°, 320°]              (purple/pink — Notion/Slack-adjacent)
 if [[ "$FILE_NORM" =~ \.(tsx|ts|css|scss)$ ]]; then
-  # 4th arg ≥ 1.0 in cubic-bezier — explicit bounce overshoot
-  CB4_HITS=$(grep -nE "cubic-bezier\([^)]*,[^)]*,[^)]*,\s*[1-9]\.[0-9]" "$FILE" | head -3 || true)
-  if [ -n "$CB4_HITS" ]; then
-    echo "[forbidden-A2.1] Bouncy easing — cubic-bezier 4th arg >= 1.0 (overshoot/elastic forbidden per SPEC A2.1):" >> "$ISSUES_FILE"
-    echo "$CB4_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  CB4_HITS=$(grep -nE "cubic-bezier\([^)]*,[^)]*,[^)]*,\s*[1-9]\.[0-9]" "$FILE" || true)
+  report_hits "[forbidden-A2.1] Bouncy easing — cubic-bezier 4th arg >= 1.0 (overshoot/elastic forbidden per SPEC A2.1):" "$CB4_HITS"
 
-  # 2nd arg ≥ 1.0 in cubic-bezier — early-spring overshoot
-  CB2_HITS=$(grep -nE "cubic-bezier\([^,]+,\s*[1-9]\.[0-9]" "$FILE" | head -3 || true)
-  if [ -n "$CB2_HITS" ]; then
-    echo "[forbidden-A2.1] Bouncy easing — cubic-bezier 2nd arg >= 1.0 (forbidden per SPEC A2.1):" >> "$ISSUES_FILE"
-    echo "$CB2_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  CB2_HITS=$(grep -nE "cubic-bezier\([^,]+,\s*[1-9]\.[0-9]" "$FILE" || true)
+  report_hits "[forbidden-A2.1] Bouncy easing — cubic-bezier 2nd arg >= 1.0 (forbidden per SPEC A2.1):" "$CB2_HITS"
 
   # Oversized rounded — exempt avatar/dot files (filename hints)
   case "$FILE_NORM" in
     *avatar* | *Avatar* | *status-dot* | *StatusDot* | *radius-dot* )
       ;; # avatar/dot exception per SPEC A2.1 (--radius-dot: 999px)
     *)
-      ROUNDED_HITS=$(grep -nE "\brounded(-(t|r|b|l|tl|tr|bl|br|ts|te|bs|be|s|e))?-(lg|xl|2xl|3xl|full)\b" "$FILE" | head -3 || true)
-      if [ -n "$ROUNDED_HITS" ]; then
-        echo "[forbidden-A2.1] Oversized rounded corners — rounded-{,t,r,b,l,…}-{lg,xl,2xl,3xl,full} forbidden on rectangular elements (border-radius > 4px per SPEC A2.1; avatars/dots use --radius-dot: 999px exception):" >> "$ISSUES_FILE"
-        echo "$ROUNDED_HITS" >> "$ISSUES_FILE"
-        echo "" >> "$ISSUES_FILE"
-      fi
+      ROUNDED_HITS=$(grep -nE "\brounded(-(t|r|b|l|tl|tr|bl|br|ts|te|bs|be|s|e))?-(lg|xl|2xl|3xl|full)\b" "$FILE" || true)
+      report_hits "[forbidden-A2.1] Oversized rounded corners — rounded-{,t,r,b,l,…}-{lg,xl,2xl,3xl,full} forbidden on rectangular elements (border-radius > 4px per SPEC A2.1; avatars/dots use --radius-dot: 999px exception):" "$ROUNDED_HITS"
       ;;
   esac
 
   # Dark glow — box-shadow with blur > 20px AND spread > 0
-  # Match: box-shadow: <Xoffset> <Yoffset> <blur≥21px> <spread≥1px>
-  SHADOW_HITS=$(grep -nE "box-shadow:\s*[^;]*\s+(2[1-9]|[3-9][0-9]|[1-9][0-9]{2,})px\s+[1-9][0-9]*px" "$FILE" | head -3 || true)
-  if [ -n "$SHADOW_HITS" ]; then
-    echo "[forbidden-A2.1] Dark glow — box-shadow with blur > 20px AND spread > 0 (forbidden per SPEC A2.1):" >> "$ISSUES_FILE"
-    echo "$SHADOW_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  SHADOW_HITS=$(grep -nE "box-shadow:\s*[^;]*\s+(2[1-9]|[3-9][0-9]|[1-9][0-9]{2,})px\s+[1-9][0-9]*px" "$FILE" || true)
+  report_hits "[forbidden-A2.1] Dark glow — box-shadow with blur > 20px AND spread > 0 (forbidden per SPEC A2.1):" "$SHADOW_HITS"
 
   # Purple/pink — HSL hue ∈ [270°, 320°]
-  PURPLE_HITS=$(grep -nE "hsl\(\s*(2[7-9][0-9]|3[01][0-9]|320)\b" "$FILE" | head -3 || true)
-  if [ -n "$PURPLE_HITS" ]; then
-    echo "[forbidden-A2.1] Purple/pink HSL hue (270°-320° forbidden per SPEC A2.1 — anti-Notion/anti-Slack palette posture):" >> "$ISSUES_FILE"
-    echo "$PURPLE_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  PURPLE_HITS=$(grep -nE "hsl\(\s*(2[7-9][0-9]|3[01][0-9]|320)\b" "$FILE" || true)
+  report_hits "[forbidden-A2.1] Purple/pink HSL hue (270°-320° forbidden per SPEC A2.1 — anti-Notion/anti-Slack palette posture):" "$PURPLE_HITS"
 fi
 
 # Stage 1.5a — T10c: Sample-data isolation in /design-system/ (per SPEC C6 / D9).
-# Files under src/app/design-system/ MUST NOT import from tenant-scoped
-# modules. They may import TYPES from @/lib/supabase/types/* (type-only).
-# Per CR2 / R10 mitigation — distinguish path-segment patterns.
-#
-# Note: grep -P (PCRE lookaheads) is unavailable in some Windows Git Bash
-# locales, so we do this in two passes — find all `from '@/lib/(supabase|
-# org|auth)…'` imports, then awk-filter out the allowed type-only paths.
+# This check is whole-file-import-scope (NOT touched-lines-only) because importing a
+# forbidden module poisons the entire file — a touched line that doesn't include the
+# import would still inherit the violation. Keep blocking-on-presence for this class.
 if [[ "$FILE_NORM" =~ ^(.*/)?src/app/design-system/.*\.(tsx|ts|jsx|js)$ ]]; then
-  # First pass: capture every import-from line that targets supabase/org/auth.
-  # Allowed forms (DO NOT REJECT):
-  #   from '@/lib/supabase/types'
-  #   from '@/lib/supabase/types/<anything>'
-  # Forbidden forms (REJECT):
-  #   from '@/lib/supabase'                 (bare module — per planner NEW-M3)
-  #   from '@/lib/supabase/server'
-  #   from '@/lib/supabase/<anything-else>'
-  #   from '@/lib/org/<anything>'
-  #   from '@/lib/auth/<anything>'
   ALL_IMPORTS=$(grep -nE "from\s+['\"]@/lib/(supabase|org|auth)([/'\"])" "$FILE" 2>/dev/null || true)
   if [ -n "$ALL_IMPORTS" ]; then
-    # Filter out allowed type-only paths. Lines that pass through the awk
-    # filter are forbidden imports.
     SAMPLE_HITS=$(echo "$ALL_IMPORTS" | awk '
-      # Skip if the match is `@/lib/supabase/types`-something. We allow
-      # `@/lib/supabase/types` and `@/lib/supabase/types/<rest>`.
       /from[[:space:]]+['\''"]@\/lib\/supabase\/types(['\''"]|\/)/ { next }
-      # Anything else that matched the broader regex is forbidden.
       { print }
-    ' | head -3)
+    ')
+    # For module-import-scope: block regardless of touched-lines (poison-scope concern).
     if [ -n "$SAMPLE_HITS" ]; then
       echo "[design-system-isolation] Sample data in /design-system/ MUST come from constants in src/app/design-system/_fixtures/ — never tenant-scoped modules. Type-only imports from '@/lib/supabase/types' (and subpaths) are allowed; module imports from '@/lib/supabase/server', '@/lib/supabase' (bare), '@/lib/org/*', '@/lib/auth/*' are forbidden (per SPEC C6 / D9):" >> "$ISSUES_FILE"
-      echo "$SAMPLE_HITS" >> "$ISSUES_FILE"
+      echo "$SAMPLE_HITS" | head -3 >> "$ISSUES_FILE"
       echo "" >> "$ISSUES_FILE"
     fi
   fi
 fi
 
 # Stage 1.5a — T10d: Tenant-blind primitives in src/components/ui/ (per SPEC C8 / A12.1).
-# Primitives in src/components/ui/ MUST NOT accept tenant-identifying
-# props. Tenant-aware composition lives in src/components/<domain>/ only.
-# Per H6 / A12.1.
+# Like T10c: prop-shape contract is whole-file-scope (a forbidden prop in a touched line
+# OR an untouched line of the same component contract is equally bad). Keep blocking-on-
+# presence.
 if [[ "$FILE_NORM" =~ ^(.*/)?src/components/ui/.*\.(tsx|ts|jsx|js)$ ]]; then
-  # Match prop-name appearances in TypeScript prop signatures:
-  #   org_id?: string
-  #   orgId: string
-  #   membership: Membership
-  #   vendor_id: string
-  #   membershipId?: number
-  # The shape `WORD\s*[?:]\s*` catches both required and optional props. We
-  # also catch destructured prop usage like `{ org_id, ... }` (top of function
-  # signature) by allowing comma/{ as left context.
-  TENANT_HITS=$(grep -nE "\b(org_id|membership|vendor_id|orgId|membershipId)(\?)?\s*:" "$FILE" | head -3 || true)
+  TENANT_HITS=$(grep -nE "\b(org_id|membership|vendor_id|orgId|membershipId)(\?)?\s*:" "$FILE" || true)
   if [ -n "$TENANT_HITS" ]; then
     echo "[tenant-blind-primitives] Primitives in src/components/ui/ MUST be tenant-blind — no org_id/membership/vendor_id/orgId/membershipId props. Tenant-aware composition lives in src/components/<domain>/ only (per SPEC C8 / A12.1):" >> "$ISSUES_FILE"
-    echo "$TENANT_HITS" >> "$ISSUES_FILE"
+    echo "$TENANT_HITS" | head -3 >> "$ISSUES_FILE"
     echo "" >> "$ISSUES_FILE"
   fi
 fi
 
 # nwrp19 — T-nwrp19a + T-nwrp19b: Wordmark integrity (per BRANDING.md §3, §6).
-#
-# Best-effort enforcement; false positives are avoided by being conservative.
-# Two checks:
-#   a) <NwWordmark size={N}> with N outside the documented allow-list
-#      {80, 110, 140, 180, 200, 220, 240}.
-#   b) <NwWordmark> followed within 200 chars by a hex color override
-#      (style={{color:"#..."}} / style={{fill:"#..."}} / className="text-[#...]").
-#
-# Both checks run on .tsx files only (the wordmark is a React component).
 if [[ "$FILE_NORM" =~ \.tsx$ ]]; then
-  # (a) Size attribute literal-only match. Pattern: `<NwWordmark` followed
-  # within ~80 chars by `size={N}` where N is a numeric literal. Allow-list
-  # is exhaustive — anything else rejects. We deliberately skip cases where
-  # `size` is a JS expression (e.g., `size={someVar}`) because we can't
-  # statically verify those — false negatives acceptable per nwrp19.
+  # (a) Size attribute literal-only match
   WM_SIZE_HITS=$(grep -nE "<NwWordmark[^>]*\bsize=\{[0-9]+\}" "$FILE" | \
-    grep -vE "size=\{(80|110|140|180|200|220|240)\}" | head -3 || true)
-  if [ -n "$WM_SIZE_HITS" ]; then
-    echo "[branding-nwrp19a] <NwWordmark size={N}> with N outside the documented allow-list {80, 110, 140, 180, 200, 220, 240} (per BRANDING.md §3 sizing system):" >> "$ISSUES_FILE"
-    echo "$WM_SIZE_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+    grep -vE "size=\{(80|110|140|180|200|220|240)\}" || true)
+  report_hits "[branding-nwrp19a] <NwWordmark size={N}> with N outside the documented allow-list {80, 110, 140, 180, 200, 220, 240} (per BRANDING.md §3 sizing system):" "$WM_SIZE_HITS"
 
-  # (b) Hex color override on a wordmark instance. Use awk to extract a window
-  # following each <NwWordmark line and check for hex color tokens within ~10
-  # lines. This is conservative — only flags hex inside style/className that's
-  # close to the component instance.
+  # (b) Hex color override on a wordmark instance
   WM_HEX_HITS=$(awk '
     /<NwWordmark/ {
       win=10; nr=NR
@@ -295,18 +289,20 @@ if [[ "$FILE_NORM" =~ \.tsx$ ]]; then
         buf=""
       }
     }
-  ' "$FILE" | head -3)
-  if [ -n "$WM_HEX_HITS" ]; then
-    echo "[branding-nwrp19b] Wordmark color override via hex literal forbidden — use the NwWordmark color prop ('auto' | 'inverse' | 'brand') or token-driven CSS vars (per BRANDING.md §6 Forbidden treatments):" >> "$ISSUES_FILE"
-    echo "$WM_HEX_HITS" >> "$ISSUES_FILE"
-    echo "" >> "$ISSUES_FILE"
-  fi
+  ' "$FILE")
+  report_hits "[branding-nwrp19b] Wordmark color override via hex literal forbidden — use the NwWordmark color prop ('auto' | 'inverse' | 'brand') or token-driven CSS vars (per BRANDING.md §6 Forbidden treatments):" "$WM_HEX_HITS"
 fi
 
-# Block if any issues were found
+# Emit pre-existing-violation warnings to stderr (informational; doesn't block)
+if [ -s "$WARNINGS_FILE" ]; then
+  echo "[nightwork-post-edit] PRE-EXISTING violations in $FILE (informational; flagged but not blocking edit — these were in the file at HEAD before the current edit. Track via TD entry if cleanup is desired):" >&2
+  cat "$WARNINGS_FILE" >&2
+fi
+
+# Block if any NEW issues were found (violations introduced by the current edit)
 if [ -s "$ISSUES_FILE" ]; then
   REASON=$(cat "$ISSUES_FILE")
-  rm -f "$ISSUES_FILE"
+  rm -f "$ISSUES_FILE" "$WARNINGS_FILE"
   NW_REASON="$REASON" node -e "
   const reason = process.env.NW_REASON || '';
   process.stdout.write(JSON.stringify({
@@ -317,5 +313,5 @@ if [ -s "$ISSUES_FILE" ]; then
   exit 2
 fi
 
-rm -f "$ISSUES_FILE"
+rm -f "$ISSUES_FILE" "$WARNINGS_FILE"
 exit 0
