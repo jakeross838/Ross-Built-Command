@@ -237,7 +237,89 @@ CREATE POLICY clients_org_update ON public.clients
   );
 ```
 
-**Note on `app_private.user_org_role()`:** if this helper doesn't exist, B-1a creates it as part of the migration (mirrors Wave-C 00097 pattern). If it exists, reuse. Plan-author verifies via `mcp__supabase__execute_sql` at execute time.
+**Iter-2.5 amendment (nwrp156 + database-reviewer re-verification GATE 1.5):** `app_private.user_org_role()` does NOT exist in any migration (database-reviewer exhaustive grep across 40+ migration files confirmed). The closest existing helper `app_private.user_role()` (migration 00039) is NOT org-scoped — bare `LIMIT 1` without org filter is a latent multi-tenant bug for users belonging to multiple orgs.
+
+B-1a migration 00100 MUST create the helper BEFORE the policies that reference it. The function body (database-reviewer-supplied; nwrp156 verified):
+
+```sql
+-- ============================================================================
+-- Helper: app_private.user_org_role()
+-- Returns the caller's role in their current org (resolved via user_org_id()).
+-- Required by clients_org_insert + clients_org_update policies below.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION app_private.user_org_role()
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT om.role
+  FROM public.org_members om
+  WHERE om.user_id = auth.uid()
+    AND om.org_id = (SELECT app_private.user_org_id())
+    AND om.is_active = true
+  LIMIT 1;
+$$;
+GRANT EXECUTE ON FUNCTION app_private.user_org_role() TO authenticated;
+```
+
+**Verified properties per nwrp156:**
+- ✓ `SECURITY DEFINER` — bypasses RLS for `org_members` lookup (required so non-owner roles can still resolve their own role without RLS recursion)
+- ✓ `SET search_path = public` — closes SECURITY DEFINER `search_path` injection vector per Wave-A iter-1 standards-research; required for ALL future SECURITY DEFINER functions (see future-discipline note below)
+- ✓ `STABLE` volatility — consistent results within a single transaction; planner can cache
+- ✓ `LIMIT 1` — defensive; one role per (user, org) pair anyway via existing `org_members` uniqueness, but explicit
+- ✓ `GRANT EXECUTE ... TO authenticated` — NOT to anon (internal-user helper; anon never has an org role)
+- ✓ Joins on `om.org_id = (SELECT app_private.user_org_id())` — confirms org-scoped, not user-global; closes the multi-tenant bug that bare `app_private.user_role()` carries
+- ✓ `CREATE OR REPLACE` — idempotent on re-apply; if migration runs again (e.g., post-rollback re-apply), function definition stays consistent
+
+**Migration body placement:** B-1a `00100_clients_schema_foundation.sql` creates the function BEFORE the `CREATE TABLE clients` + `CREATE POLICY` blocks. Ordering:
+
+1. `CREATE OR REPLACE FUNCTION app_private.user_org_role()` (this function)
+2. `CREATE TABLE public.clients (...)` (the table)
+3. `ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY`
+4. `CREATE POLICY clients_org_select` (uses user_org_id + is_platform_admin — already-existing helpers)
+5. `CREATE POLICY clients_org_insert` (uses user_org_id + user_org_role — the NEW helper)
+6. `CREATE POLICY clients_org_update` (uses user_org_id + user_org_role)
+7. Backfill DO block + ON CONFLICT INSERT (per §2.1)
+8. Fixture INSERT (per §2.9 precedence note)
+
+**New verification AC (AC-B1a-14 added to B-1a):**
+
+```sql
+-- Post-migration: verify helper function exists
+SELECT proname, pronamespace::regnamespace::text AS schema
+FROM pg_proc
+WHERE pronamespace = 'app_private'::regnamespace
+  AND proname = 'user_org_role';
+-- Expected: 1 row with proname='user_org_role' + schema='app_private'
+```
+
+Plus runtime sanity check (verify the function resolves correctly):
+
+```sql
+-- As an authenticated user with a known org membership:
+SELECT app_private.user_org_role();
+-- Expected: returns the user's role string (e.g., 'admin', 'pm', 'owner', 'accounting')
+-- Expected: NOT NULL for any user with an active org_members row
+```
+
+**Future-discipline note (added to CLAUDE.md or as a TD entry per nwrp156 item 4):**
+
+> **SECURITY DEFINER + search_path = public rule (new convention; codified 2026-05-15 per nwrp156):**
+>
+> Any new SECURITY DEFINER PostgreSQL function added in any plan MUST include `SET search_path = public` (or an equivalent explicit schema list) in its declaration. This closes the SECURITY DEFINER `search_path` injection vector (a CWE-426 Untrusted Search Path class issue). The function `app_private.user_org_role()` added in B-1a is the canonical reference.
+>
+> Source migrations that exemplify the rule (post-codification):
+> - `supabase/migrations/00100_clients_schema_foundation.sql` (B-1a — first explicit instance)
+>
+> Pre-codification SECURITY DEFINER functions in the codebase may or may not have this property; not a back-port priority unless surfaced via Wave-A iter-1 standards-research findings. Plan-review iter-1 enforces forward-going via grep:
+>
+> ```bash
+> # Plan-review iter-1 check (any plan that adds CREATE FUNCTION):
+> grep -A 5 'CREATE OR REPLACE FUNCTION\|CREATE FUNCTION' <migration-file> | grep -E 'SECURITY DEFINER' && \
+>   grep -A 5 'CREATE OR REPLACE FUNCTION\|CREATE FUNCTION' <migration-file> | grep -E 'SET search_path' || \
+>   echo "VIOLATION: SECURITY DEFINER without SET search_path"
+> ```
+
+This codification will be added to `CLAUDE.md` Standing Rules → Architecture posture at slice ship time (B-1b post-execute custodian sweep handles the CLAUDE.md update; aligns with the type-generation rule that B-1b §10 already adds).
 
 **Note on `accounting` removal:** per security HIGH-2 (§2.3 below), `accounting` role removed from INSERT + UPDATE policies. Diane has no documented business need to create/modify homeowner records (PM/admin function).
 
@@ -1093,7 +1175,7 @@ This addendum does NOT:
 
 Post-iter-2-commit + re-verification PASS:
 - B-D080: ready to execute (8 → 10 ACs after §1.1 + §1.3 additions)
-- B-1a: ready to execute (10 → 13 ACs after §2.1 + §2.2 + §2.3 additions)
+- B-1a: ready to execute (10 → **14** ACs after §2.1 + §2.2 + §2.3 + §2.2-iter-2.5 helper-function AC additions)
 - B-1a-bis: ready to execute (14 → 17 ACs after §3.1 + §3.2 + §3.4 additions)
 - B-1b: ready to execute (13 ACs unchanged; scope trimmed not added per D2)
 
