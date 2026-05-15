@@ -16,22 +16,37 @@
 # unrelated debt (scope creep) or bypass with --no-verify (override).
 #
 # nwrp160 defensive hardening (FAIL-CLOSED contract):
-# Hooks that fail-open are worse than hooks that don't exist. Three explicit
+# Hooks that fail-open are worse than hooks that don't exist. Two explicit
 # fail-closed paths added per nwrp160 watch B.4:
 #   (1) git diff returns non-zero exit → exit 1 with stderr error message
-#   (2) ADDED_LINES is empty BUT grep found hits → exit 1 with stderr error message
-#       (classifier-failure indicator; could be diff parse error OR no-op edit
-#        with violations — both warrant operator attention)
-#   (3) Smoke test instructions: to verify this hook works, run
-#         echo 'console.log("test")' >> src/app/api/jobs/route.ts
-#         echo '{"tool_input":{"file_path":"src/app/api/jobs/route.ts"}}' | \
-#           bash .claude/hooks/nightwork-post-edit.sh
-#       Expected: hook reports the console.log as NEW violation (blocks).
-#       Then revert and try editing a different line in same file:
-#         (modify a comment elsewhere)
-#         (run hook again)
-#       Expected: hook reports the pre-existing console.log as PRE-EXISTING
-#       informational warning on stderr (does NOT block).
+#   (2) ADDED_LINES is empty BUT grep found hits AND we ARE in a git repo
+#       → exit 1 with stderr error message (classifier-failure indicator;
+#       could be diff parse error OR no-op edit with violations — both
+#       warrant operator attention)
+#
+# Bypass posture: set NIGHTWORK_HOOKS_DISABLE=1 to skip the hook entirely
+# (early-exit at line ~38). Use ONLY for intentional bypass cases —
+# investigating hook bugs, ops-side workarounds, or pre-existing-only-
+# violation edits where Jake authorizes per nwrp133 commit-mechanism rule.
+#
+# Smoke test — verify both classification paths work correctly:
+#
+# (1) Verify NEW violation BLOCKS:
+#   echo 'console.log("test")' >> src/app/api/jobs/route.ts
+#   echo '{"tool_input":{"file_path":"src/app/api/jobs/route.ts"}}' | \
+#     bash .claude/hooks/nightwork-post-edit.sh
+#   Expected: BLOCKS with console.log flagged as NEW violation, exit 1.
+#   Revert: git checkout HEAD -- src/app/api/jobs/route.ts
+#
+# (2) Verify PRE-EXISTING violation WARNS (does not block):
+#   echo 'console.log("test")' >> src/app/api/jobs/route.ts
+#   git add src/app/api/jobs/route.ts && git commit -m "test: add console.log for smoke test"
+#   (console.log now at HEAD = pre-existing state)
+#   sed -i 's/<some existing comment text>/<modified comment text>/' src/app/api/jobs/route.ts
+#   echo '{"tool_input":{"file_path":"src/app/api/jobs/route.ts"}}' | \
+#     bash .claude/hooks/nightwork-post-edit.sh
+#   Expected: WARNS on stderr that console.log is PRE-EXISTING, does NOT block, exit 0.
+#   Revert: git reset --hard HEAD~1
 
 set -e
 
@@ -153,7 +168,12 @@ classify_hits() {
     echo "  Possible cause (c): edit happened but introduced no NEW lines (e.g., deletion-only)" >&2
     echo "  Raw hits found ($(echo "$raw_hits" | wc -l) lines):" >&2
     echo "$raw_hits" | head -3 >&2
-    echo "Blocking commit conservatively. Run with NIGHTWORK_HOOKS_DEBUG=1 to surface diff output, or set NIGHTWORK_HOOKS_DISABLE=1 to bypass intentionally." >&2
+    echo "" >&2
+    echo "If cause (c) applies (you intentionally deleted lines and remaining violations are pre-existing), verify by running:" >&2
+    echo "  git diff --stat HEAD -- $FILE" >&2
+    echo "  → if output shows deletions only (0 insertions), bypass with NIGHTWORK_HOOKS_DISABLE=1." >&2
+    echo "" >&2
+    echo "Blocking commit conservatively. Set NIGHTWORK_HOOKS_DISABLE=1 to bypass intentionally." >&2
     exit 1
   fi
 
