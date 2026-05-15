@@ -1,5 +1,25 @@
 "use client";
 
+// src/app/settings/workflow/WorkflowSettingsForm.tsx
+//
+// SHELVED / F3-DEFERRED (TD-WE-05, marked 2026-05-15 per nwrp149/150).
+//
+// This client component is NO LONGER REACHED at runtime. Parent server
+// component at src/app/settings/workflow/page.tsx is shelved because the
+// /settings/workflow route is redirected to /admin/workflow-customization
+// per the 1.5c-IA contract (D-058 + D-060). The destination is currently
+// a "Coming F3" placeholder card; this form is shelved pending F3 revival.
+//
+// FORM CONTENT IS REAL — renders 2 native <select> controls plus toggle
+// switches for status flow, confidence thresholds, payment-schedule
+// cutoffs, draw-revision policies. Server save handler is wired to
+// /api/settings/workflow. If F3 revives this code, no refactor required —
+// just remove the /settings/workflow → /admin/workflow-customization
+// redirect and update the smoke selector back to a `'select'` anchor.
+//
+// DO NOT DELETE. F3 decision required first (revive / migrate / delete).
+// See src/app/settings/workflow/page.tsx header comment for context.
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type {

@@ -167,7 +167,16 @@ const ROUTES: RouteCheck[] = [
   {
     route: "/today",
     category: "issue-1",
-    primary_ux_selector: "text=Active jobs",
+    // Selector corrected 2026-05-15 per nwrp149 + TD-WE-04 (smoke-harness
+    // selector staleness). Original "text=Active jobs" was authored at D-4
+    // (b4e4dc4) but that string never appeared on the /today page — the
+    // smoke author looked at the wrong place or expected a future product
+    // label that wasn't shipped. /today renders three sections per
+    // src/app/today/page.tsx doc-comment: "Your Day" placeholder card,
+    // "Action Items" (queue from /api/dashboard), "Activity Feed". The
+    // "Action Items" heading is the stable semantic anchor (workflow concept;
+    // unlikely to be renamed even if the H1 phrasing evolves).
+    primary_ux_selector: "text=Action Items",
   },
   {
     route: "/admin/platform/jobs-health",
@@ -175,12 +184,19 @@ const ROUTES: RouteCheck[] = [
     primary_ux_selector: null, // API consumer; HTTP 200 + zero console errors only
   },
   {
-    // Per ITER-2-PATCHES.md §2.3 + §2.5: production <select> has no name=
-    // attribute. Plan body's role=combobox approach superseded by simpler
-    // any-select selector (page has a default-PM <select> wrapped in <label>).
+    // Selector corrected 2026-05-15 per nwrp149/150 + TD-WE-05.
+    // /settings/workflow redirects to /admin/workflow-customization per
+    // 1.5c-IA contract (D-058 + D-060). The destination is currently a
+    // F3-deferred placeholder card — WorkflowSettingsForm.tsx with native
+    // <select> elements is shelved (see src/app/settings/workflow/page.tsx
+    // header comment for the deferred state). Smoke selector tests BOTH
+    // the redirect chain AND that the destination H1 renders. H1-anchored
+    // role selector survives breadcrumb / body-copy mentions of the same
+    // phrase. When F3 revives the form, restore an `'select'`-anchored
+    // selector for the form controls.
     route: "/settings/workflow",
     category: "issue-1",
-    primary_ux_selector: "select",
+    primary_ux_selector: "role=heading[name=/workflow customization/i]",
     primary_ux_min_count: 1,
   },
   // Per iter-2 §4.4.2: synthetic invoice UUID (Drummond UUID NOT used here —
