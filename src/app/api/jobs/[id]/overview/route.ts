@@ -67,8 +67,21 @@ export const GET = withApiError(async (
     budgetCountRes,
     orgProfilesRes,
   ] = await Promise.all([
+    // F1-Wave-B Slice-1 B-1a-bis: jobs.client_name/email/phone columns dropped
+    // by migration 00101. Client identity reads via PostgREST embed
+    // `client:clients(id, full_name)` per Q1 PII fence (D-078 + D-079 + nwrp153).
+    // select("*") still works post-DROP — returns remaining columns; client
+    // identity is appended via the embed. PostgREST resolves via the
+    // jobs_client_id_fkey FK auto-named at migration 00100 (Workflow posture
+    // Rule 2 — FK citation).
     timed("job-overview", "jobs.by_id", false,
-      supabase.from("jobs").select("*").eq("id", jobId).eq("org_id", orgId).is("deleted_at", null).maybeSingle()),
+      supabase
+        .from("jobs")
+        .select("*, client:clients(id, full_name)")
+        .eq("id", jobId)
+        .eq("org_id", orgId)
+        .is("deleted_at", null)
+        .maybeSingle()),
     // PM list sourced from org_members + profiles. Plan D-1 (Wave-D Issue 1
     // fix): hint syntax updated to `profile:profiles (...)` resolving via the
     // FK org_members_user_id_profiles_fkey created in 00098.
@@ -125,7 +138,15 @@ export const GET = withApiError(async (
     throw new ApiError("Job not found", 404);
   }
 
-  const job = jobRes.data as Record<string, unknown>;
+  // F1-Wave-B Slice-1 B-1a-bis: normalize embed shape. PostgREST may return
+  // `client` as either a single object or array; force single-object shape
+  // for consumer simplicity.
+  const rawJob = jobRes.data as Record<string, unknown>;
+  const rawClient = rawJob.client;
+  const job: Record<string, unknown> = {
+    ...rawJob,
+    client: Array.isArray(rawClient) ? (rawClient[0] ?? null) : (rawClient ?? null),
+  };
   const original = (job.original_contract_amount as number) ?? 0;
   const approvedCos = (job.approved_cos_total as number) ?? 0;
   const revised = (job.current_contract_amount as number) ?? original + approvedCos;

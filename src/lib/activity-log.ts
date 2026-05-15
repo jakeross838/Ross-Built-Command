@@ -32,7 +32,8 @@ export type ActivityEntityType =
   | "vendor"
   | "cost_code"
   | "draw"
-  | "user";
+  | "user"
+  | "client"; // F1-Wave-B Slice-1 B-1a-bis per nwrp155 B5 partial pull from Slice-2 B-4 — clients table writes (find-or-create in /api/jobs) need audit-log coverage during B-1a-bis -> B-4 window.
 
 export type ActivityAction =
   | "created"

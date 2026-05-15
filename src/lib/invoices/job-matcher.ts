@@ -4,7 +4,10 @@ export interface JobCandidate {
   id: string;
   name: string;
   address: string | null;
-  client_name: string | null;
+  // F1-Wave-B Slice-1 B-1a-bis: client identity via embed (Q1 PII fence per
+  // D-078 + D-079 + nwrp153). Migration 00101 drops jobs.client_*; reads via
+  // clients table. Surname signal preserved from clients.full_name via FK.
+  client: { id: string; full_name: string } | null;
   pm_id: string | null;
 }
 
@@ -31,12 +34,23 @@ export interface MatchResult {
 export async function loadJobCandidates(
   supabase: SupabaseClient
 ): Promise<JobCandidate[]> {
+  // F1-Wave-B Slice-1 B-1a-bis: PostgREST embed `client:clients(id, full_name)`
+  // per Q1 PII fence. FK jobs_client_id_fkey resolves the hint (migration 00100)
+  // — Workflow posture Rule 2 (FK citation). Migration 00101 drops jobs.client_*;
+  // surname signal preserved via JOIN to clients.full_name.
   const { data, error } = await supabase
     .from("jobs")
-    .select("id, name, address, client_name, pm_id")
+    .select("id, name, address, client:clients(id, full_name), pm_id")
     .is("deleted_at", null);
   if (error) throw new Error(`Failed to load jobs: ${error.message}`);
-  return (data ?? []) as JobCandidate[];
+  // PostgREST may return `client` as single object or array; normalize.
+  type RawJobRow = Omit<JobCandidate, "client"> & {
+    client: { id: string; full_name: string } | { id: string; full_name: string }[] | null;
+  };
+  return ((data ?? []) as RawJobRow[]).map((j) => ({
+    ...j,
+    client: Array.isArray(j.client) ? (j.client[0] ?? null) : j.client,
+  })) as JobCandidate[];
 }
 
 /** Strip placeholders/parentheticals so "Dream Island (full address TBD)" → "Dream Island". */
@@ -91,7 +105,11 @@ interface JobKeys {
 
 function buildKeys(job: JobCandidate): JobKeys {
   const jobKey = (primaryNameToken(job.name) ?? job.name).toLowerCase();
-  const surname = job.client_name ? lastWord(job.client_name) : null;
+  // F1-Wave-B Slice-1 B-1a-bis: surname signal preserved via clients.full_name
+  // JOIN. lastWord("Drummond Family Trust") -> "Trust" (matches pre-refactor
+  // lastWord("Drummond Family Trust") behavior on flat client_name string).
+  const fullName = job.client?.full_name ?? null;
+  const surname = fullName ? lastWord(fullName) : null;
   const surnameKey = surname ? surname.toLowerCase() : null;
   const streetRaw = job.address ? streetKey(job.address) : null;
   return {

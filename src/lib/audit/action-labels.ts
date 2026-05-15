@@ -42,6 +42,13 @@ const ENTITY_LABELS: Record<ActivityEntityType, string> = {
   vendor: "Vendor",
   cost_code: "Cost Code",
   draw: "Pay App", // 1.5c terminology rename per D-01
+  // F1-Wave-B Slice-1 B-1a-bis per nwrp155 B5 partial pull + nwrp158 iter-3 diagnostic:
+  // 'client' label added alongside ActivityEntityType enum extension. Required for
+  // TypeScript Record<ActivityEntityType, string> exhaustiveness — without this entry
+  // `npx tsc --noEmit` fails. Slice-2 B-4 must NOT re-add this entry.
+  // Label = "Client" (not "Homeowner") per ENTITY-INVENTORY.md row 22 (clients covers
+  // both homeowners + commercial clients).
+  client: "Client",
   user: "User",
 };
 

@@ -81,7 +81,13 @@ export default function OnboardWizard({
   const [invites, setInvites] = useState<InviteRow[]>([{ email: "", role: "pm" }]);
 
   // Step 5
-  const [job, setJob] = useState({ name: "", address: "", client_name: "", contract_amount: "" });
+  // F1-Wave-B Slice-1 B-1a-bis: per ITER-2-PATCHES §3.6 DELIBERATE REGRESSION.
+  // Wizard collects client NAME only — email/phone never present in pre-refactor
+  // wizard anyway. Migration 00101 drops jobs.client_*; wizard posts to
+  // /api/jobs with `client_name_for_create` (find-or-create per §3.12).
+  // Email/phone collection restoration ships in Slice-2 Plan B-2 via the
+  // /api/clients/[id] PATCH endpoint per TD-WB-WIZARD-CLIENT-CONTACT.
+  const [job, setJob] = useState({ name: "", address: "", client_name_for_create: "", contract_amount: "" });
 
   async function saveCompany() {
     setBusy(true);
@@ -193,13 +199,16 @@ export default function OnboardWizard({
   async function createFirstJob(): Promise<void> {
     if (!job.name.trim()) return;
     const amountCents = Math.round(parseFloat(job.contract_amount || "0") * 100);
+    // F1-Wave-B Slice-1 B-1a-bis: client_name -> client_name_for_create per
+    // /api/jobs find-or-create contract (resolveClientId in route.ts).
+    // Migration 00101 drops jobs.client_*; clients table is the source of truth.
     await fetch("/api/jobs", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: job.name.trim(),
         address: job.address || null,
-        client_name: job.client_name || null,
+        client_name_for_create: job.client_name_for_create || undefined,
         original_contract_amount: amountCents,
         contract_type: "cost_plus_aia",
       }),
@@ -435,7 +444,7 @@ export default function OnboardWizard({
           <Panel title="Create Your First Project" subtitle="Optional — you can always create jobs later from the Jobs page.">
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Job Name" value={job.name} onChange={(v) => setJob({ ...job, name: v })} placeholder="Smith Residence" />
-              <Field label="Client Name" value={job.client_name} onChange={(v) => setJob({ ...job, client_name: v })} />
+              <Field label="Client Name" value={job.client_name_for_create} onChange={(v) => setJob({ ...job, client_name_for_create: v })} />
               <div className="sm:col-span-2">
                 <Field label="Address" value={job.address} onChange={(v) => setJob({ ...job, address: v })} />
               </div>

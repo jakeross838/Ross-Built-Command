@@ -19,7 +19,11 @@ interface JobHealth {
   id: string;
   name: string;
   address: string | null;
-  client_name: string | null;
+  // F1-Wave-B Slice-1 B-1a-bis: client identity reads via PostgREST embed in
+  // /api/jobs/health (`client:clients(id, full_name)`). PII fence per Q1
+  // (D-078 + D-079 + nwrp153) — no email or phone. Migration 00101 drops
+  // jobs.client_name/email/phone columns; consumers read via clients table.
+  client: { id: string; full_name: string } | null;
   contract_type: string;
   original_contract_amount: number;
   current_contract_amount: number;
@@ -135,7 +139,7 @@ export default function JobsPage() {
         (j) =>
           j.name.toLowerCase().includes(q) ||
           (j.address ?? "").toLowerCase().includes(q) ||
-          (j.client_name ?? "").toLowerCase().includes(q)
+          (j.client?.full_name ?? "").toLowerCase().includes(q)
       );
     }
     const sorted = [...result];
@@ -320,7 +324,7 @@ export default function JobsPage() {
                         <StatusBadge status={j.status} />
                       </div>
                       <div className="mt-2 text-xs text-[var(--text-secondary)]">
-                        <span>{j.client_name ?? "—"}</span>
+                        <span>{j.client?.full_name ?? "—"}</span>
                         <span className="text-[var(--text-tertiary)]"> · PM: {j.pm_name ?? "—"}</span>
                       </div>
                       <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -386,7 +390,7 @@ export default function JobsPage() {
                         <div className="text-xs text-[var(--text-tertiary)]">{j.address ?? "—"}</div>
                       </td>
                       <td className="px-4 py-3 text-[var(--text-secondary)]">
-                        <div>{j.client_name ?? "—"}</div>
+                        <div>{j.client?.full_name ?? "—"}</div>
                         <div className="text-xs text-[var(--text-tertiary)]">PM: {j.pm_name ?? "—"}</div>
                       </td>
                       <td className="px-4 py-3 text-right text-[var(--text-primary)] tabular-nums">

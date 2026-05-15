@@ -14,8 +14,11 @@ interface SidebarJob {
   name: string;
   address: string | null;
   status: string;
-  client_name: string | null;
-  client_email: string | null;
+  // F1-Wave-B Slice-1 B-1a-bis: client identity reads from clients table via
+  // jobs.client_id FK. PostgREST embed narrowed to (id, full_name) per Q1 PII
+  // fence (D-078 + D-079 + nwrp153). client_email is REMOVED — mailto restoration
+  // deferred to F3 magic-link work per TD-B1abis-01.
+  client: { id: string; full_name: string } | null;
   pm_id: string | null;
   updated_at: string;
 }
@@ -104,7 +107,7 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
       setLoading(true);
       let query = supabase
         .from("jobs")
-        .select("id, name, address, status, client_name, client_email, pm_id, updated_at")
+        .select("id, name, address, status, client:clients(id, full_name), pm_id, updated_at")
         .is("deleted_at", null)
         .order("name");
 
@@ -113,7 +116,18 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
       }
 
       const { data: jobsData } = await query;
-      setJobs((jobsData ?? []) as SidebarJob[]);
+      // F1-Wave-B Slice-1 B-1a-bis: normalize PostgREST embed shape. Supabase
+      // typegen returns `client:clients(...)` as an array even though the FK
+      // relationship is many-to-one (jobs.client_id -> clients.id); coerce to
+      // single object for consumer consistency.
+      type RawSidebarRow = Omit<SidebarJob, "client"> & {
+        client: { id: string; full_name: string } | { id: string; full_name: string }[] | null;
+      };
+      const normalized: SidebarJob[] = ((jobsData ?? []) as unknown as RawSidebarRow[]).map((j) => ({
+        ...j,
+        client: Array.isArray(j.client) ? (j.client[0] ?? null) : j.client,
+      }));
+      setJobs(normalized);
       setLoading(false);
     }
     loadJobs();
@@ -354,22 +368,17 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
               {statusLabel(selectedJob.status)}
             </span>
           </div>
-          {selectedJob.client_name && (
-            <p className="text-[11px] text-[color:var(--text-secondary)] mt-1.5 truncate">{selectedJob.client_name}</p>
+          {selectedJob.client?.full_name && (
+            <p className="text-[11px] text-[color:var(--text-secondary)] mt-1.5 truncate">{selectedJob.client.full_name}</p>
           )}
           {selectedJob.address && (
             <p className="text-[11px] text-[color:var(--text-secondary)] mt-0.5 truncate">{selectedJob.address}</p>
           )}
           <div className="flex items-center gap-2 mt-2">
-            {selectedJob.client_email && (
-              <a
-                href={`mailto:${selectedJob.client_email}`}
-                className="text-[10px] text-nw-gulf-blue hover:underline"
-                title="Email client"
-              >
-                Email
-              </a>
-            )}
+            {/* F1-Wave-B Slice-1 B-1a-bis interim affordance per ITER-2-PATCHES §3.11
+                + TD-B1abis-01: client email + mailto link removed pending F3 magic-link
+                + Owner Portal Path A (Slice-2 Plan B-2). Email restoration ships via
+                /api/clients/[id] GET endpoint (admin-gated), NOT a PostgREST embed. */}
             {selectedJob.address && (
               <a
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedJob.address)}`}

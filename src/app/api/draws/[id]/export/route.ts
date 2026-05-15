@@ -103,9 +103,14 @@ export async function GET(
  const headerText = org?.name ? `&C${org.name}` : "";
 
  // ── Fetch draw ──
+ // F1-Wave-B Slice-1 B-1a-bis: nested embed narrows to client:clients(id, full_name)
+ // per Q1 PII fence (D-078 + D-079 + nwrp153). Net PII improvement vs pre-Wave-B:
+ // client_email is REMOVED from the embed (was dead code — line 211 only used
+ // client_name in cover-letter render). Migration 00101 drops jobs.client_*;
+ // reads via clients table. FK jobs_client_id_fkey resolves the hint (migration 00100).
  const { data: draw, error } = await supabase
  .from("draws")
- .select(`*, jobs:job_id (id, name, address, client_name, client_email, deposit_percentage, gc_fee_percentage, original_contract_amount)`)
+ .select(`*, jobs:job_id (id, name, address, client:clients(id, full_name), deposit_percentage, gc_fee_percentage, original_contract_amount)`)
  .eq("id", params.id)
  .eq("org_id", orgId)
  .is("deleted_at", null)
@@ -203,12 +208,19 @@ export async function GET(
  current_payment_due?: number;
  total_retainage?: number;
  cover_letter_text?: string | null;
- jobs?: { name?: string; address?: string; client_name?: string };
+ // F1-Wave-B Slice-1 B-1a-bis: client identity via embed shape per Q1 PII fence.
+ jobs?: { name?: string; address?: string; client?: { id: string; full_name: string } | null };
  };
+ const coverDrawJobsClient = (() => {
+ const c = (coverDraw.jobs as { client?: unknown } | null | undefined)?.client;
+ if (!c) return null;
+ if (Array.isArray(c)) return c[0] as { id: string; full_name: string } | undefined ?? null;
+ return c as { id: string; full_name: string };
+ })();
  const coverCtx: CoverLetterContext = {
  job_name: coverDraw.jobs?.name ?? jobName,
  job_address: coverDraw.jobs?.address ?? "",
- owner_name: coverDraw.jobs?.client_name ?? "",
+ owner_name: coverDrawJobsClient?.full_name ?? "",
  draw_number: drawNum,
  period_start: (draw as { period_start?: string | null }).period_start ?? null,
  period_end: (draw as { period_end?: string | null }).period_end ?? null,
@@ -308,7 +320,16 @@ export async function GET(
  // Left block: TO OWNER
  ws1.getCell(`B${r}`).value = "TO OWNER:";
  ws1.getCell(`B${r}`).font = FONT_LABEL;
- ws1.getCell(`C${r}`).value = job?.client_name ?? "";
+ // F1-Wave-B Slice-1 B-1a-bis: owner_name from clients table via embed
+ // (job.client.full_name) per Q1 PII fence. Preserves AIA legal document
+ // fidelity per T-B1a-bis-03 mitigation; pre-refactor empty-string fallback
+ // preserved.
+ ws1.getCell(`C${r}`).value = ((): string => {
+ const jc = (job as { client?: unknown } | null | undefined)?.client;
+ if (!jc) return "";
+ if (Array.isArray(jc)) return (jc[0] as { full_name?: string } | undefined)?.full_name ?? "";
+ return (jc as { full_name?: string }).full_name ?? "";
+ })();
  ws1.getCell(`C${r}`).font = FONT_VALUE;
  r++;
  ws1.getCell(`C${r}`).value = job?.address ?? "";

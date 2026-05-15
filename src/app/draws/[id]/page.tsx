@@ -57,7 +57,9 @@ interface DrawData {
     id: string;
     name: string;
     address: string | null;
-    client_name: string | null;
+    // F1-Wave-B Slice-1 B-1a-bis: client identity via embed (Q1 PII fence).
+    // Migration 00101 drops jobs.client_name/email/phone; reads via clients table.
+    client: { id: string; full_name: string } | null;
     deposit_percentage: number;
     gc_fee_percentage: number;
     retainage_percent: number;
@@ -522,7 +524,7 @@ export default function DrawDetailPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[color:var(--text-secondary)]">Owner</span>
-                    <span className="text-[color:var(--text-primary)]">{draw.jobs?.client_name ?? "—"}</span>
+                    <span className="text-[color:var(--text-primary)]">{draw.jobs?.client?.full_name ?? "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[color:var(--text-secondary)]">Invoices</span>

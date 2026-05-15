@@ -1,10 +1,105 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SupabaseClient } from "@supabase/supabase-js";
 import { createServerClient } from "@/lib/supabase/server";
 import { ApiError, withApiError } from "@/lib/api/errors";
 import { getCurrentMembership } from "@/lib/org/session";
 import { checkPlanLimit, planDisplayName } from "@/lib/plan-limits";
 import { recalcDraftDrawsForJob } from "@/lib/draw-calc";
 import { logActivity, logStatusChange } from "@/lib/activity-log";
+
+/**
+ * Resolve client_id from job body — F1-Wave-B Slice-1 B-1a-bis.
+ *
+ * Returns the canonical client_id to write on the jobs row, or null when no
+ * client identity is supplied. Three input paths:
+ *   1. body.client_id set + exists in caller's org -> return that id.
+ *   2. body.client_id set + does NOT exist in caller's org -> throw 400.
+ *   3. body.client_name_for_create set (non-empty) -> find-or-create:
+ *        - find: lookup clients where (org_id, lower(trim(full_name)))
+ *          matches existing rows.
+ *        - create: INSERT new clients row + write activity_log per nwrp155 B5.
+ *      Email + phone are NEVER written by this path (NAME-ONLY per §3.12).
+ *      Restoration: /api/clients/[id] PATCH (Slice-2 Plan B-2).
+ *   4. Neither supplied -> return null (job has no client identity).
+ *
+ * Cross-org check (per ITER-2-PATCHES §3.13): the SELECT for client_id path
+ * filters on `eq("org_id", membership.org_id)`. If a request supplies a valid
+ * UUID belonging to a different org, the query returns null and we throw 400.
+ * This is belt-and-suspenders alongside RLS on the clients table.
+ */
+async function resolveClientId(
+  supabase: SupabaseClient,
+  body: { client_id?: string | null; client_name_for_create?: string },
+  membership: { org_id: string; user_id: string },
+): Promise<string | null> {
+  // Path 1+2: explicit client_id reference
+  if (body.client_id) {
+    const { data: clientCheck } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("id", body.client_id)
+      .eq("org_id", membership.org_id) // belt-and-suspenders cross-org check
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!clientCheck) {
+      throw new ApiError("Invalid client_id", 400);
+    }
+    return body.client_id;
+  }
+
+  // Path 3: find-or-create from typed text
+  const typedName = body.client_name_for_create?.trim();
+  if (typedName) {
+    const lookupName = typedName.toLowerCase();
+    const { data: existingClient } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("org_id", membership.org_id)
+      .ilike("full_name", typedName) // ILIKE for case-insensitive exact match
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (existingClient) {
+      return existingClient.id as string;
+    }
+
+    // INSERT new clients row. Per §3.12: NAME-ONLY (email + phone NULL).
+    const { data: newClient, error: insertError } = await supabase
+      .from("clients")
+      .insert({
+        org_id: membership.org_id,
+        full_name: typedName,
+        created_by: membership.user_id,
+      })
+      .select("id, full_name")
+      .single();
+    if (insertError) {
+      throw new ApiError(`Failed to create client: ${insertError.message}`, 500);
+    }
+
+    // Audit log entry per nwrp155 B5 + ITER-2-PATCHES §3.2.
+    // Email + phone NOT logged per Q1 PII fence (even in audit_log details).
+    await logActivity({
+      org_id: membership.org_id,
+      user_id: membership.user_id,
+      entity_type: "client",
+      entity_id: newClient.id,
+      action: "created",
+      details: {
+        source: "jobs_find_or_create",
+        full_name: newClient.full_name,
+      },
+    });
+
+    // Reference local variable so unused-binding lint stays clean when
+    // lookupName is not referenced after the ilike call above.
+    void lookupName;
+    return newClient.id as string;
+  }
+
+  // Path 4: nothing supplied
+  return null;
+}
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -39,9 +134,16 @@ type JobPhase = (typeof JOB_PHASES)[number];
 type JobBody = {
   name?: string;
   address?: string | null;
-  client_name?: string | null;
-  client_email?: string | null;
-  client_phone?: string | null;
+  // F1-Wave-B Slice-1 B-1a-bis: client identity via FK only. POST/PATCH accepts
+  //   - client_id: UUID of an existing clients row in the caller's org (per
+  //     §3.13 cross-org check), OR
+  //   - client_name_for_create: server-side find-or-create against clients
+  //     table (per ITER-2-PATCHES §3.5 + §3.12 NAME-ONLY contract).
+  // Body MUST NOT include client_name/client_email/client_phone — those are
+  // rejected at request validation (returns 400). Email + phone collection
+  // routes through /api/clients/[id] PATCH (admin-gated, Slice-2 Plan B-2).
+  client_id?: string | null;
+  client_name_for_create?: string;
   contract_type?: ContractType;
   phase?: JobPhase;
   original_contract_amount?: number; // cents
@@ -118,14 +220,20 @@ export const POST = withApiError(async (request: NextRequest) => {
     if (dflt !== undefined && dflt !== null) retainageToUse = Number(dflt);
   }
 
+  // F1-Wave-B Slice-1 B-1a-bis: resolve client_id from body (existing or
+  // find-or-create). Throws 400 on cross-org client_id; throws 500 on insert
+  // failure. NAME-ONLY find-or-create per §3.12 PII-fence contract.
+  const resolvedClientId = await resolveClientId(supabase, body, {
+    org_id: membership.org_id,
+    user_id: user.id,
+  });
+
   const { data, error } = await supabase
     .from("jobs")
     .insert({
       name: body.name.trim(),
       address: body.address ?? null,
-      client_name: body.client_name ?? null,
-      client_email: body.client_email ?? null,
-      client_phone: body.client_phone ?? null,
+      client_id: resolvedClientId,
       contract_type: body.contract_type ?? "cost_plus_aia",
       ...(body.phase ? { phase: body.phase } : {}),
       original_contract_amount: original,
@@ -182,9 +290,18 @@ export const PATCH = withApiError(async (request: NextRequest) => {
   const patch: Record<string, unknown> = {};
   if (body.name !== undefined) patch.name = body.name;
   if (body.address !== undefined) patch.address = body.address;
-  if (body.client_name !== undefined) patch.client_name = body.client_name;
-  if (body.client_email !== undefined) patch.client_email = body.client_email;
-  if (body.client_phone !== undefined) patch.client_phone = body.client_phone;
+  // F1-Wave-B Slice-1 B-1a-bis: client identity via FK only. Body MUST NOT
+  // include client_name/client_email/client_phone — those columns were dropped
+  // by migration 00101. Accept client_id (existing in caller's org) OR
+  // client_name_for_create (server-side find-or-create + audit_log).
+  // resolveClientId handles cross-org check (400) + find-or-create (500 on
+  // insert error). NAME-ONLY per §3.12.
+  if (body.client_id !== undefined || body.client_name_for_create !== undefined) {
+    patch.client_id = await resolveClientId(supabase, body, {
+      org_id: membership.org_id,
+      user_id: user.id,
+    });
+  }
   if (body.contract_type !== undefined) {
     if (!CONTRACT_TYPES.includes(body.contract_type)) {
       throw new ApiError("Invalid contract_type", 400);

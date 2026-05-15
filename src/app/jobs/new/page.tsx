@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
+import ClientCombobox, { type ClientComboboxValue } from "@/components/client-combobox";
 
 interface PmUser {
   id: string;
@@ -20,9 +21,9 @@ export default function NewJobPage() {
   // Form fields
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [clientEmail, setClientEmail] = useState("");
-  const [clientPhone, setClientPhone] = useState("");
+  // F1-Wave-B Slice-1 B-1a-bis: 3 input fields (client_name + email + phone)
+  // replaced with single ClientCombobox per ITER-2-PATCHES §3.5.
+  const [clientSelection, setClientSelection] = useState<ClientComboboxValue>({ kind: "empty" });
   // Phase 2.1 expanded the value set. UI display-label map is deferred to
   // Branch 4 (GH issue #4); raw strings render as fallback until then.
   const [contractType, setContractType] = useState<
@@ -129,15 +130,21 @@ export default function NewJobPage() {
 
     setSaving(true);
     try {
+      // F1-Wave-B Slice-1 B-1a-bis: translate ClientCombobox selection to
+      // /api/jobs body per find-or-create contract (§3.12 NAME-ONLY).
+      const clientFields: Record<string, unknown> =
+        clientSelection.kind === "existing"
+          ? { client_id: clientSelection.id }
+          : clientSelection.kind === "new"
+            ? { client_name_for_create: clientSelection.full_name }
+            : {};
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
           address: address || null,
-          client_name: clientName || null,
-          client_email: clientEmail || null,
-          client_phone: clientPhone || null,
+          ...clientFields,
           contract_type: contractType,
           original_contract_amount: Math.round(amountDollars * 100), // cents
           deposit_percentage: isNaN(depositNum) ? 0.1 : depositNum,
@@ -219,28 +226,15 @@ export default function NewJobPage() {
           </Section>
 
           <Section title="Client">
-            <Field label="Client Name">
-              <input
-                type="text"
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                className="input"
-              />
-            </Field>
-            <Field label="Client Email">
-              <input
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                className="input"
-              />
-            </Field>
-            <Field label="Client Phone">
-              <input
-                type="tel"
-                value={clientPhone}
-                onChange={(e) => setClientPhone(e.target.value)}
-                className="input"
+            {/* F1-Wave-B Slice-1 B-1a-bis: 3 inputs (client_name + email + phone)
+                replaced with single ClientCombobox per ITER-2-PATCHES §3.5.
+                Email/phone collection deferred to Slice-2 Plan B-2 (per §3.6
+                DELIBERATE REGRESSION). Combobox supports existing-client
+                selection + find-or-create. */}
+            <Field label="Client" full>
+              <ClientCombobox
+                value={clientSelection}
+                onChange={setClientSelection}
               />
             </Field>
           </Section>

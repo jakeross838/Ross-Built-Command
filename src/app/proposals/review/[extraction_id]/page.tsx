@@ -48,7 +48,10 @@ export type ExtractionRow = {
 export type JobOption = {
   id: string;
   name: string;
-  client_name: string | null;
+  // F1-Wave-B Slice-1 B-1a-bis: client identity via embed (Q1 PII fence per
+  // D-078 + D-079 + nwrp153). Migration 00101 drops jobs.client_*; reads via
+  // clients table.
+  client: { id: string; full_name: string } | null;
 };
 
 export type VendorOption = {
@@ -116,9 +119,12 @@ export default async function ProposalReviewPage({ params }: PageProps) {
 
   const [jobsRes, vendorsRes, orgCodesRes, legacyCodesRes, suggestionsRes] =
     await Promise.all([
+      // F1-Wave-B Slice-1 B-1a-bis: PostgREST embed `client:clients(id, full_name)`
+      // per Q1 PII fence (D-078 + D-079 + nwrp153). FK jobs_client_id_fkey
+      // resolves (migration 00100). Migration 00101 drops jobs.client_*.
       supabase
         .from("jobs")
-        .select("id, name, client_name")
+        .select("id, name, client:clients(id, full_name)")
         .eq("org_id", membership.org_id)
         .is("deleted_at", null)
         .order("name", { ascending: true }),
@@ -148,11 +154,21 @@ export default async function ProposalReviewPage({ params }: PageProps) {
         .order("created_at", { ascending: false }),
     ]);
 
+  // F1-Wave-B Slice-1 B-1a-bis: normalize PostgREST embed shape. May return
+  // `client` as single object or array; force single-object for consumer simplicity.
+  type RawJobOption = Omit<JobOption, "client"> & {
+    client: { id: string; full_name: string } | { id: string; full_name: string }[] | null;
+  };
+  const jobs: JobOption[] = ((jobsRes.data ?? []) as RawJobOption[]).map((j) => ({
+    ...j,
+    client: Array.isArray(j.client) ? (j.client[0] ?? null) : j.client,
+  }));
+
   return (
     <ReviewManager
       extraction={row as ExtractionRow}
       pdfSignedUrl={pdfSignedUrl}
-      jobs={(jobsRes.data ?? []) as JobOption[]}
+      jobs={jobs}
       vendors={(vendorsRes.data ?? []) as VendorOption[]}
       orgCostCodes={(orgCodesRes.data ?? []) as OrgCostCodeOption[]}
       legacyCostCodes={(legacyCodesRes.data ?? []) as LegacyCostCodeOption[]}

@@ -68,11 +68,15 @@ export const GET = withApiError(async (
   const supabase = tryCreateServiceRoleClient() ?? createServerClient();
   const orgId = membership.org_id;
 
+  // F1-Wave-B Slice-1 B-1a-bis: jobs embed narrows to client:clients(id, full_name)
+  // per Q1 PII fence (D-078 + D-079 + nwrp153). PostgREST resolves via FK
+  // jobs_client_id_fkey (created in migration 00100) — Workflow posture Rule 2.
+  // Migration 00101 drops jobs.client_name/email/phone; reads via clients table.
   const { data: invoice, error } = await supabase
     .from("invoices")
     .select(`
       *,
-      jobs:job_id (id, name, address, client_name, original_contract_amount, current_contract_amount),
+      jobs:job_id (id, name, address, client:clients(id, full_name), original_contract_amount, current_contract_amount),
       vendors:vendor_id (id, name, phone, email, address),
       cost_codes:cost_code_id (id, code, description),
       assigned_pm:assigned_pm_id (id, full_name, role)

@@ -35,10 +35,14 @@ export async function GET(
       data: { user: actor },
     } = await userSb.auth.getUser();
 
+    // F1-Wave-B Slice-1 B-1a-bis: jobs embed narrows to client:clients(id, full_name)
+    // per Q1 PII fence (D-078 + D-079 + nwrp153). PostgREST resolves via FK
+    // jobs_client_id_fkey (migration 00100) — Workflow posture Rule 2 (FK citation).
+    // Migration 00101 drops jobs.client_name/email/phone; reads via clients table.
     const { data: draw, error } = await supabase
       .from("draws")
       .select(
-        `*, jobs:job_id (id, name, address, client_name, deposit_percentage, gc_fee_percentage, retainage_percent, original_contract_amount, current_contract_amount, starting_application_number, previous_co_completed_amount)`
+        `*, jobs:job_id (id, name, address, client:clients(id, full_name), deposit_percentage, gc_fee_percentage, retainage_percent, original_contract_amount, current_contract_amount, starting_application_number, previous_co_completed_amount)`
       )
       .eq("id", params.id)
       .eq("org_id", orgId)

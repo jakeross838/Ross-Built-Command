@@ -47,6 +47,13 @@ export async function POST() {
 
   const orgId = membership.org_id;
   const supabase = createServerClient();
+  // F1-Wave-B Slice-1 B-1a-bis: clients.created_by FK requires the acting
+  // user's id (per D-080 user-identity FK convention). Fetch separately;
+  // membership.org_id alone is insufficient.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { count: existingSample } = await supabase
     .from("jobs")
@@ -58,14 +65,34 @@ export async function POST() {
     return NextResponse.json({ error: "Sample data already loaded" }, { status: 409 });
   }
 
+  // F1-Wave-B Slice-1 B-1a-bis: sample-job creation routes through clients
+  // table via FK. Email DROPPED from sample data per Q1 PII fence (Slice-2
+  // Plan B-2 re-introduces email/phone via /api/clients/[id] PATCH per
+  // TD-B1abis-01). Migration 00101 drops jobs.client_*; clients table is
+  // the source of truth for owner identity.
+  const { data: sampleClient, error: clientErr } = await supabase
+    .from("clients")
+    .insert({
+      org_id: orgId,
+      full_name: "Sample Client",
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (clientErr || !sampleClient) {
+    return NextResponse.json(
+      { error: clientErr?.message ?? "Failed to create sample client" },
+      { status: 500 },
+    );
+  }
+
   const { data: job, error: jobErr } = await supabase
     .from("jobs")
     .insert({
       org_id: orgId,
       name: SAMPLE_JOB_NAME,
       address: "123 Demo St",
-      client_name: "Sample Client",
-      client_email: "sample@example.com",
+      client_id: sampleClient.id,
       contract_type: "cost_plus_aia",
       original_contract_amount: 50000000,
       current_contract_amount: 50000000,

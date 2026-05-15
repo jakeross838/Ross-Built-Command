@@ -473,7 +473,7 @@ type DrummondFieldsJson = {
   job_override?: {
     name_raw: string;
     address_raw: string;
-    client_name_raw: string;
+    client_full_name_raw: string;
     contract_amount_dollars: number;
     revised_contract_amount_dollars?: number;
     pm_id?: string;
@@ -562,11 +562,16 @@ async function main() {
       address: jobAnalog
         ? substitute(jobAnalog.address_raw, subMap)
         : "712 Pine Ave, Anna Maria, FL 34216",
-      client_name: jobAnalog
-        ? substitute(jobAnalog.client_name_raw, subMap)
+      // F1-Wave-B Slice-1 B-1a-bis: emit `client_full_name` only (NAME-ONLY
+      // per Q1 PII fence). Downstream consumer (e2e-dewberry-setup.mjs) now
+      // does find-or-create against the clients table; email + phone fields
+      // are dropped from sanitize-drummond output since they cannot be
+      // persisted post-migration 00101 anyway (jobs.client_email/phone
+      // dropped). Email + phone restoration ships in Slice-2 Plan B-2 via
+      // /api/clients/[id] PATCH per TD-B1abis-01.
+      client_full_name: jobAnalog
+        ? substitute(jobAnalog.client_full_name_raw, subMap)
         : "Mr. & Mrs. Caldwell",
-      client_email: "client@caldwellresidence.example",
-      client_phone: "(941) 555-0701",
       contract_type: "cost_plus" as const,
       original_contract_amount: jobAnalog
         ? dollarsToCents(jobAnalog.contract_amount_dollars)

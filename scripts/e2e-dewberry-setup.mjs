@@ -59,6 +59,39 @@ console.log(`G703 budget lines parsed: ${rows.length}`);
 console.log(`Sum of original estimates: $${(rows.reduce((s, r) => s + r.original_estimate, 0) / 100).toFixed(2)}`);
 console.log(`Sum of prior billing:      $${(rows.reduce((s, r) => s + r.previous_applications_baseline, 0) / 100).toFixed(2)}`);
 
+// ─── Create / find Dewberry Client ─────────────────────────
+// F1-Wave-B Slice-1 B-1a-bis: client identity moves into clients table per
+// Q1 PII fence (D-078 + D-079 + nwrp153). Migration 00101 drops jobs.client_*;
+// jobs.client_id FK is the canonical reference. Find-or-create the Dewberry
+// client row via service-role; email/phone retained NULL (not in script intent).
+const DEWBERRY_FULL_NAME = 'Kevin and Robin Dewberry';
+let { data: existingClient } = await supabase
+  .from('clients')
+  .select('id')
+  .eq('org_id', ORG_ID)
+  .ilike('full_name', DEWBERRY_FULL_NAME)
+  .is('deleted_at', null)
+  .limit(1)
+  .maybeSingle();
+let dewberryClientId;
+if (existingClient) {
+  dewberryClientId = existingClient.id;
+  console.log(`Found existing Dewberry client: ${dewberryClientId}`);
+} else {
+  const { data: newClient, error: clientErr } = await supabase
+    .from('clients')
+    .insert({
+      org_id: ORG_ID,
+      full_name: DEWBERRY_FULL_NAME,
+      created_by: JAKE_ID,
+    })
+    .select('id')
+    .single();
+  if (clientErr) throw clientErr;
+  dewberryClientId = newClient.id;
+  console.log(`Created Dewberry client: ${dewberryClientId}`);
+}
+
 // ─── Create Job ──────────────────────────────────────────
 const { data: job, error: jobErr } = await supabase
   .from('jobs')
@@ -66,7 +99,7 @@ const { data: job, error: jobErr } = await supabase
     org_id: ORG_ID,
     name: 'Dewberry Residence',
     address: '681 Key Royale Dr, Holmes Beach, FL 34217',
-    client_name: 'Kevin and Robin Dewberry',
+    client_id: dewberryClientId,
     contract_type: 'cost_plus',
     original_contract_amount: Math.round(originalContract * 100),
     current_contract_amount: Math.round(originalContract * 100),

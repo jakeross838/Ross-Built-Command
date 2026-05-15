@@ -29,7 +29,11 @@ export interface JobHealth {
   id: string;
   name: string;
   address: string | null;
-  client_name: string | null;
+  // F1-Wave-B Slice-1 B-1a-bis: client identity reads via PostgREST embed
+  // `client:clients(id, full_name)` per Q1 PII fence (D-078 + D-079 + nwrp153).
+  // jobs.client_name/email/phone columns dropped by migration 00101; consumers
+  // read client identity from clients table via jobs.client_id FK.
+  client: { id: string; full_name: string } | null;
   contract_type: string;
   original_contract_amount: number;
   current_contract_amount: number;
@@ -82,9 +86,15 @@ export const GET = withApiError(async (req: NextRequest) => {
     drawActivityRes,
     orgProfilesRes,
   ] = await Promise.all([
+    // F1-Wave-B Slice-1 B-1a-bis: client identity reads via embed `client:clients(id, full_name)`
+    // per Q1 PII fence (D-078 + D-079 + nwrp153). Server-side flattening to `client_name` (line ~241)
+    // preserves the JobHealth response-contract shape so consumers (jobs/page.tsx) don't need
+    // a full type refactor for this read endpoint. PostgREST resolves via FK jobs_client_id_fkey
+    // (created in migration 00100; auto-named by Postgres) per Workflow posture Rule 2 — FK
+    // citation. ai-logic-tester verifies HTTP 200 + populated client.full_name at runtime.
     timed("jobs-health", "jobs.by_org", false,
       supabase.from("jobs")
-        .select("id, name, address, client_name, contract_type, original_contract_amount, current_contract_amount, previous_certificates_total, contract_date, status, pm_id")
+        .select("id, name, address, client:clients(id, full_name), contract_type, original_contract_amount, current_contract_amount, previous_certificates_total, contract_date, status, pm_id")
         .eq("org_id", orgId).is("deleted_at", null).order("name")),
     timed("jobs-health", "budget_lines.by_org", false,
       supabase.from("budget_lines").select("job_id, revised_estimate, invoiced")
@@ -117,7 +127,23 @@ export const GET = withApiError(async (req: NextRequest) => {
   ]);
 
   if (jobsRes.error) throw new ApiError(jobsRes.error.message, 500);
-  const jobList = (jobsRes.data ?? []) as Array<JobHealth>;
+  // F1-Wave-B Slice-1 B-1a-bis: PostgREST embed `client:clients(id, full_name)`
+  // returns a single object or null (one-to-one FK via jobs.client_id). Normalize
+  // the embed: PostgREST may return it as either a single object OR an array (depends
+  // on the relationship metadata). Force-single-object shape for consumer simplicity.
+  type RawJobRow = Omit<JobHealth, "client" | "health" | "health_reasons" | "pct_complete" |
+    "budget_used_pct" | "open_invoices" | "oldest_invoice_days" | "last_activity_at" |
+    "budget_total" | "invoiced_total" | "pm_name"> & {
+      client: { id: string; full_name: string } | { id: string; full_name: string }[] | null;
+    };
+  const rawJobs = (jobsRes.data ?? []) as Array<RawJobRow>;
+  const jobList = rawJobs.map((j) => {
+    const client = Array.isArray(j.client) ? (j.client[0] ?? null) : j.client;
+    return {
+      ...j,
+      client,
+    } as JobHealth;
+  });
   if (jobList.length === 0) return NextResponse.json([]);
 
   if (process.env.PERF_LOG === "1") {

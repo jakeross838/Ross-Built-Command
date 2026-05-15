@@ -150,7 +150,8 @@ export default function ProposalDetailsPanel({
             {jobs.map((j) => (
               <option key={j.id} value={j.id}>
                 {j.name}
-                {j.client_name ? ` (${j.client_name})` : ""}
+                {/* F1-Wave-B Slice-1 B-1a-bis: client via embed; was client_name */}
+                {j.client?.full_name ? ` (${j.client.full_name})` : ""}
               </option>
             ))}
           </select>

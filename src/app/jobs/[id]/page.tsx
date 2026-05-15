@@ -15,6 +15,7 @@ import NwEyebrow from "@/components/nw/Eyebrow";
 import NwButton from "@/components/nw/Button";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import HomeCharacteristicsPanel from "@/components/jobs/home-characteristics-panel";
+import ClientCombobox, { type ClientComboboxValue } from "@/components/client-combobox";
 
 function jobStatusVariant(status: string): BadgeVariant {
   if (status === "active") return "success";
@@ -53,9 +54,13 @@ interface Job {
   id: string;
   name: string;
   address: string | null;
-  client_name: string | null;
-  client_email: string | null;
-  client_phone: string | null;
+  // F1-Wave-B Slice-1 B-1a-bis: client identity reads via PostgREST embed
+  // `client:clients(id, full_name)` from /api/jobs/[id]/overview. Q1 PII fence
+  // (D-078 + D-079 + nwrp153) — no email/phone display. Migration 00101 drops
+  // jobs.client_name/email/phone. Restoration of email/phone display ships in
+  // Slice-2 Plan B-2 (Owner Portal Path A) via /api/clients/[id] GET.
+  client_id: string | null;
+  client: { id: string; full_name: string } | null;
   contract_type: ContractType;
   phase: JobPhase;
   original_contract_amount: number;
@@ -106,6 +111,12 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Job>>({});
+  // F1-Wave-B Slice-1 B-1a-bis: ClientCombobox state — replaces 3 input fields
+  // (client_name/email/phone). On save, translates to /api/jobs body:
+  //   existing -> client_id: <id>
+  //   new      -> client_name_for_create: <full_name>
+  //   empty    -> client_id: null
+  const [clientSelection, setClientSelection] = useState<ClientComboboxValue>({ kind: "empty" });
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -201,6 +212,16 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       setAuthorized(true);
       setJob(data.job);
       setForm(data.job);
+      // F1-Wave-B Slice-1 B-1a-bis: hydrate ClientCombobox from embed.
+      if (data.job.client) {
+        setClientSelection({
+          kind: "existing",
+          id: data.job.client.id,
+          full_name: data.job.client.full_name,
+        });
+      } else {
+        setClientSelection({ kind: "empty" });
+      }
       setPms(data.pms);
       setBudgetCount(data.budget_count);
       setFinancialBarPreloaded(data.financial_bar);
@@ -219,15 +240,44 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
     setFormError(null);
     setSaving(true);
     try {
+      // F1-Wave-B Slice-1 B-1a-bis: translate ClientCombobox selection to
+      // /api/jobs body fields per the find-or-create contract.
+      const clientFields: Record<string, unknown> =
+        clientSelection.kind === "existing"
+          ? { client_id: clientSelection.id }
+          : clientSelection.kind === "new"
+            ? { client_name_for_create: clientSelection.full_name }
+            : { client_id: null };
+      // form.client / form.client_id / form.client_email / form.client_phone
+      // must NOT be sent to the API per the post-DROP body contract. Strip them.
+      const { client: _strippedClient, client_id: _strippedClientId, ...formForApi } = form as Partial<Job> & {
+        client?: unknown;
+      };
+      void _strippedClient;
+      void _strippedClientId;
       const res = await fetch("/api/jobs", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: job.id, ...form }),
+        body: JSON.stringify({ id: job.id, ...formForApi, ...clientFields }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      const { data: refreshed } = await supabase.from("jobs").select("*").eq("id", job.id).single();
-      if (refreshed) { setJob(refreshed as Job); setForm(refreshed as Job); }
+      // Re-fetch via overview endpoint to repopulate embed-derived `client` field.
+      const refreshedRes = await fetch(`/api/jobs/${job.id}/overview`, { cache: "no-store" });
+      if (refreshedRes.ok) {
+        const refreshedData = await refreshedRes.json();
+        setJob(refreshedData.job as Job);
+        setForm(refreshedData.job as Job);
+        if (refreshedData.job.client) {
+          setClientSelection({
+            kind: "existing",
+            id: refreshedData.job.client.id,
+            full_name: refreshedData.job.client.full_name,
+          });
+        } else {
+          setClientSelection({ kind: "empty" });
+        }
+      }
       setEditing(false);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Save failed");
@@ -331,9 +381,10 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
             <NwCard padding="lg" className="mt-4">
               <NwEyebrow tone="muted" className="mb-3">Job Details</NwEyebrow>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                <Detail label="Client Name" value={job.client_name} />
-                <Detail label="Client Email" value={job.client_email} />
-                <Detail label="Client Phone" value={job.client_phone} />
+                {/* F1-Wave-B Slice-1 B-1a-bis: Client Name reads via embed.
+                    Email/phone display deferred to Slice-2 Plan B-2 (Owner
+                    Portal Path A) via /api/clients/[id] GET per TD-B1abis-01. */}
+                <Detail label="Client" value={job.client?.full_name ?? null} />
                 <Detail label="Contract Date" value={formatDate(job.contract_date)} />
                 <Detail label="Contract Type" value={job.contract_type} />
                 <Detail label="Deposit %" value={`${job.deposit_percentage.toFixed(1)}%`} />
@@ -367,14 +418,17 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
               <EditField label="Address">
                 <input className="input" value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} />
               </EditField>
-              <EditField label="Client Name">
-                <input className="input" value={form.client_name ?? ""} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
-              </EditField>
-              <EditField label="Client Email">
-                <input type="email" className="input" value={form.client_email ?? ""} onChange={(e) => setForm({ ...form, client_email: e.target.value })} />
-              </EditField>
-              <EditField label="Client Phone">
-                <input className="input" value={form.client_phone ?? ""} onChange={(e) => setForm({ ...form, client_phone: e.target.value })} />
+              {/* F1-Wave-B Slice-1 B-1a-bis: 3 inputs (client_name + email + phone)
+                  replaced with a single ClientCombobox per ITER-2-PATCHES §3.5.
+                  Email/phone collection deferred to Slice-2 Plan B-2 (per §3.6
+                  DELIBERATE REGRESSION). Combobox supports existing-client
+                  selection AND find-or-create via /api/clients?search= + the
+                  /api/jobs PATCH client_name_for_create body field. */}
+              <EditField label="Client" full>
+                <ClientCombobox
+                  value={clientSelection}
+                  onChange={setClientSelection}
+                />
               </EditField>
               <EditField label="Contract Date">
                 <input type="date" className="input" value={form.contract_date ?? ""} onChange={(e) => setForm({ ...form, contract_date: e.target.value || null })} />
@@ -490,7 +544,21 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                 type="button"
                 variant="ghost"
                 size="md"
-                onClick={() => { setEditing(false); setForm(job); setFormError(null); }}
+                onClick={() => {
+                  setEditing(false);
+                  setForm(job);
+                  setFormError(null);
+                  // F1-Wave-B Slice-1 B-1a-bis: reset ClientCombobox to current job's client.
+                  if (job.client) {
+                    setClientSelection({
+                      kind: "existing",
+                      id: job.client.id,
+                      full_name: job.client.full_name,
+                    });
+                  } else {
+                    setClientSelection({ kind: "empty" });
+                  }
+                }}
               >
                 Cancel
               </NwButton>

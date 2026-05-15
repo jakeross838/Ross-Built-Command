@@ -195,8 +195,10 @@ async function main() {
   const jobs: JobCandidate[] = await loadJobCandidates(supabase);
   console.log(`Loaded ${jobs.length} job candidates:`);
   for (const j of jobs) {
+    // F1-Wave-B Slice-1 B-1a-bis: client identity via embed shape per Q1 PII fence.
+    // Migration 00101 drops jobs.client_*; reads via clients.full_name.
     console.log(
-      `  · ${j.name} — ${j.address ?? "(no address)"} · ${j.client_name ?? "(no client)"}`
+      `  · ${j.name} — ${j.address ?? "(no address)"} · ${j.client?.full_name ?? "(no client)"}`
     );
   }
   console.log("");

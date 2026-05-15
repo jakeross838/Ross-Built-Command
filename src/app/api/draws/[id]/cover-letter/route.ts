@@ -30,13 +30,17 @@ async function loadDraw(
   id: string,
   orgId: string
 ) {
+  // F1-Wave-B Slice-1 B-1a-bis: nested embed `client:clients(id, full_name)`
+  // per Q1 PII fence (D-078 + D-079 + nwrp153). Preserves AIA legal document
+  // fidelity per T-B1a-bis-03 mitigation. Migration 00101 drops jobs.client_*;
+  // owner_name reads from clients table via FK jobs_client_id_fkey.
   const { data: draw, error } = await supabase
     .from("draws")
     .select(
       `id, job_id, draw_number, period_start, period_end, cover_letter_text,
        original_contract_sum, contract_sum_to_date, total_completed_to_date,
        current_payment_due, total_retainage,
-       jobs:job_id (id, name, address, client_name)`
+       jobs:job_id (id, name, address, client:clients(id, full_name))`
     )
     .eq("id", id)
     .eq("org_id", orgId)
@@ -59,7 +63,7 @@ async function loadDraw(
       id: string;
       name: string | null;
       address: string | null;
-      client_name: string | null;
+      client: { id: string; full_name: string } | null;
     } | null;
   };
 }
@@ -67,10 +71,14 @@ async function loadDraw(
 function buildContext(draw: Awaited<ReturnType<typeof loadDraw>>): CoverLetterContext {
   const contract = draw?.contract_sum_to_date ?? 0;
   const completed = draw?.total_completed_to_date ?? 0;
+  // F1-Wave-B Slice-1 B-1a-bis: normalize embed shape (PostgREST may return
+  // single object or array). Preserves owner_name === clients.full_name AIA contract.
+  const rawClient = draw?.jobs?.client as { full_name?: string } | { full_name?: string }[] | null | undefined;
+  const client = Array.isArray(rawClient) ? rawClient[0] : rawClient;
   return {
     job_name: draw?.jobs?.name ?? "",
     job_address: draw?.jobs?.address ?? "",
-    owner_name: draw?.jobs?.client_name ?? "",
+    owner_name: client?.full_name ?? "",
     draw_number: draw?.draw_number ?? 0,
     period_start: draw?.period_start ?? null,
     period_end: draw?.period_end ?? null,

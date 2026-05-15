@@ -144,6 +144,13 @@ skills-lock.json
 # iter-3 finding — TD-WD-01 surfaced the missing whitelist).
 !/.planning/tech-debt/
 !/.planning/tech-debt/**
+# runbooks/ — operator-facing rollback + recovery procedures referenced by
+# down migrations + plan §11 rollback sections. Must sync across PCs because
+# down migrations cross-reference these files (see e.g. 00101_drop_jobs_client_
+# columns.down.sql + wave-b-slice-1-rollback.md). Per F1-Wave-B Slice-1
+# B-1a-bis ITER-2-PATCHES §3.10 codification.
+!/.planning/runbooks/
+!/.planning/runbooks/**
 # design/ — canonical Nightwork design system documents (PHILOSOPHY.md,
 # SYSTEM.md, COMPONENTS.md, PATTERNS.md, PROPAGATION-RULES.md,
 # CONTRAST-MATRIX.md). Produced by stage-1.5a; consumed by every later UI
