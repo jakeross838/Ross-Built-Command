@@ -303,12 +303,12 @@ Known issues, deferred deliberately. Each entry: severity, source (where it was 
 
 Updated continuously by `nightwork-custodian` after each `/gsd-ship`. Order is a soft default — Jake adjusts at strategic checkpoints.
 
-**MID-FLIGHT (paused at clean checkpoint 2026-05-15 per nwrp157 Path C):**
-- **Wave-B-Slice-1 — 2 of 4 plans shipped, 2 of 4 execute-ready.** Cost ceiling at $50 reached at ~$45-50 spend; continuation requires Jake authorization (bump to $75 OR continue under $50 with overage risk). Resume command: `/nx stage-f1-knowledge-graph-auth-wave-b` (dispatches B-1a-bis next). Full state at `.planning/expansions/stage-f1-knowledge-graph-auth-wave-b-INTERIM-STATE-2026-05-15.md`. Branch state: `main` at `4b14100`; clean working tree; recoverable.
+**MID-FLIGHT (paused at clean checkpoint 2026-05-15 NIGHT per nwrp164 path-a):**
+- **Wave-B-Slice-1 — 3 of 4 plans shipped (75% complete), B-1b deferred to fresh session.** Session-spend ~$66-68 of $75 ceiling (~91%). B-1b cost-projection $33-65 would overrun by $24-58 — beyond the $1-4 tolerance per nwrp162. Per nwrp164 explicit discipline call: no third ceiling bump; halt for clean session reset. Resume command tomorrow: `/nx stage-f1-knowledge-graph-auth-wave-b` (dispatches B-1b) after Jake authorizes fresh $50 ceiling scoped to B-1b alone. Full state at `.planning/expansions/stage-f1-knowledge-graph-auth-wave-b-INTERIM-STATE-2026-05-15-NIGHT.md`. Branch state: `main` at `e07819a`; clean working tree; smoke 11/13 baseline verified; harness storageState refreshed for tomorrow's resume.
   - ✅ B-D080 — FK convention migration 00099 (10 auth.users + 1 profiles FK)
   - ✅ B-1a — clients schema foundation migration 00100 (table + backfill + `app_private.user_org_role()` helper)
-  - ⏸ B-1a-bis — clients consumer refactor + DROP COLUMN migration 00101 (19 src refactor + new `/api/clients?search=` endpoint)
-  - ⏸ B-1b — KG scaffold + types pipeline + 3 validators + 3 Layer 2 standards + W.1 env-flag activation (GATE 2 HALT post-ship)
+  - ✅ B-1a-bis — clients consumer refactor + DROP COLUMN migration 00101 (19 src refactor + new `/api/clients?search=` endpoint). 9-reviewer QA NEEDS-WORK → bundle-fixed at `323f0be` (OnboardWizard hex + ClientCombobox F3/F4 ARIA). 3 TDs documented (TD-B1abis-01/-02/-03); MEDIUM-1 PATCH /api/jobs org_id carry-forward to Slice-2.
+  - ⏸ B-1b — KG scaffold + types pipeline + 3 validators + 4 Layer 2 standards + W.1 env-flag activation (GATE 2 HALT post-ship). Plan authored + iter-2 absorbed + execute-ready; deferred to fresh session per nwrp164 path-a.
 
 **Immediate (this session, before Stage 1):**
 - ✅ Address HIGH CSP finding (resolved 2026-04-29).
