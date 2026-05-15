@@ -17,7 +17,20 @@ const config: Config = {
       // (per SPEC A7 / Q4=B). Tailwind defaults (sm/md/lg/xl/2xl) remain
       // available; nw-* aliases map to actual user devices: PM iPhone in
       // field, iPad in office, large monitors at HQ.
+      //
+      // TD-WE-01 fix (2026-05-15): added named '360' breakpoint to replace
+      // arbitrary-syntax `min-[360px]:` in nav-bar.tsx Wordmark/Icon collapse
+      // (CLAUDE.md Q13). The arbitrary-syntax variant did not compile into
+      // the CSS bundle in Tailwind v3.4.1 with this screens config (root
+      // cause: custom complex-shape screens above interfere with arbitrary-
+      // breakpoint variant resolution; named breakpoint sidesteps it). Slots
+      // at min-width 360 in the mobile-first cascade: ascends 0 → 360 → 640
+      // (sm) → 768 (md) → 1024 (lg) → 1280 (xl) → 1536 (2xl). No existing
+      // utility uses the 360: slot — verified via grep across src/ at fix
+      // time (only nav-bar.tsx lines 297+300 reference 360, switched from
+      // arbitrary syntax in the same commit). Per nwrp147 verification.
       screens: {
+        "360": "360px",
         "nw-phone": { max: "480px" },
         "nw-tablet": { min: "481px", max: "1023px" },
         "nw-desktop": { min: "1024px" },

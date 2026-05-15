@@ -294,10 +294,10 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
               named breakpoint to tailwind.config (per BRANDING.md §3
               Mobile collapse). Nav bar sits on bg-nw-slate-deeper (dark)
               so wordmark uses color="inverse" → --nw-white-sand. */}
-          <span className="hidden min-[360px]:inline-flex">
+          <span className="hidden 360:inline-flex">
             <NwWordmark size={110} color="inverse" />
           </span>
-          <span className="inline-flex min-[360px]:hidden">
+          <span className="inline-flex 360:hidden">
             <NwIcon size={32} />
           </span>
           {logoUrl && (
