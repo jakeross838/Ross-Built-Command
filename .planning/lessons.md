@@ -41,3 +41,25 @@ Adjacent reinforcement: smoke selector failures are visible signal. Don't tolera
 The agent self-documented the violation in its plan SUMMARY which is the right behavior — the rule was not silently broken. But future briefs surface the rule explicitly so it isn't relying on the agent re-reading CLAUDE.md and remembering at the right moment.
 
 ---
+
+## 2026-05-15 — Hook precision refactor (nwrp158/159/160/161) successfully prevents false negatives
+
+**Scope:** Wave-B Slice-1 B-1a-bis execute (commit ef0c2cf). Hook fixes landed in commits 3a41ab4 + 5e371d0 + 668c7e2 + 73d69de (5/14–5/15); B-1a-bis consumed B-1a execute (aaa6cff, 2026-05-15 14:23) then B-1a-bis execute (ef0c2cf, 2026-05-15 16:14).
+
+**What happened:** Wave-B execution surfaced hook precision issues (nwrp158–161) in earlier planning cycles:
+1. **nwrp158 (iter-3):** Hook-check had false HALT due to missing ENTITY_LABELS Record entry for audit-log action labels (commits 5e371d0 / 668c7e2).
+2. **nwrp159:** Hook timeout sensitivity on large migration+refactor payloads (commit 73d69de added defensive env-var guidance).
+3. **nwrp160:** Hook fail-closed hardening to prevent partial-apply creep (commit 668c7e2).
+4. **nwrp161:** Hook documentation amendments for Wave-B onward (commit 73d69de).
+
+**Outcome:** B-1a-bis commit ef0c2cf passed hook checks cleanly. No false HALTs, no partial applies, no timeouts. Pre-existing violations correctly non-blocking per iter-3 §3.2 amendment. The refactor of 19 consumers + migration 00101 DROP applied cleanly to a live schema.
+
+**Why it matters:** These hook fixes prevent a class of false-negative execution blockers that would compound through Slice-2 / Slice-3 if unaddressed. The precision tuning is now validated against a real post-Wave-A/C/D/E codebase with complex migration + refactor payloads — a good confidence signal for the remaining slice-1 plan and downstream waves.
+
+**Reinforcement going forward:** Hook precision is load-bearing. Any future executor observing a hook halt should:
+1. Check if it's a documented pre-existing violation (compare `git diff` against `.claude/hooks/` rules).
+2. Check if it's an ENTITY_LABELS gap (extend the Record in `src/lib/audit/action-labels.ts`).
+3. Check if it's a timeout (check HOOK_TIMEOUT env or split work into smaller commits).
+4. Surface findings to Jake before considering `--no-verify` bypass.
+
+---
