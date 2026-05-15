@@ -241,7 +241,7 @@ The Nightwork wordmark is non-customizable. The tenant org logo is per-org and f
 - **Documents:**
   - `.planning/design/SYSTEM.md` §1 (tokens), §2 (brand customization), §4 (typography)
   - `.planning/design/PROPAGATION-RULES.md` §6 (brand-customization workflow), §7 (forbidden-list update)
-  - `CLAUDE.md` — UI rules (Stone blue palette + Slate type system + logo top-right)
+  - `CLAUDE.md` — UI rules (Stone blue palette + Slate type system + logo top-left; corrected from "top-right" 2026-05-15 per nwrp147 + TD-WE-02 — productivity-app convention)
 - **Hooks:**
   - `.claude/hooks/nightwork-post-edit.sh` — wordmark integrity rules (size + color enforcement per Task 8 of nwrp19)
 - **Phase artifacts:**

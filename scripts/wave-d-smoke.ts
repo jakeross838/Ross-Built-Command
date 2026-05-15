@@ -426,6 +426,16 @@ async function checkRoute(
       }
 
       // Per-route invariant — logo placement (per iter-2 §4.6 / B-D4-05).
+      //
+      // Logo expected at TOP-LEFT half of viewport per CLAUDE.md "Stone blue
+      // palette + Slate type system + logo top-left" section. Productivity-app
+      // convention (Gmail, Linear, Notion, Stripe Dashboard, Procore) places
+      // the brand mark at top-left next to primary navigation. Earlier
+      // versions of this invariant checked right-half (assuming SOW letterhead
+      // convention); corrected 2026-05-15 per nwrp147 + TD-WE-02 disposition
+      // (Wave-E ship calibration). Implementation in src/components/nav-bar.tsx:286
+      // was always correct (brand mark at LEFT inside `<Link href="/">`); the
+      // spec text and this invariant were stale together.
       const logoSelector = 'header [data-slot="org-logo"]';
       const logo = await page.$(logoSelector);
       if (!logo) {
@@ -433,9 +443,9 @@ async function checkRoute(
       } else {
         const box = await logo.boundingBox();
         const viewportWidth = page.viewportSize()?.width ?? 1280;
-        if (!box || box.x < viewportWidth * 0.5) {
+        if (!box || box.x >= viewportWidth * 0.5) {
           invariantFailures.push(
-            `Logo not in right-half of viewport on ${route} (x=${box?.x ?? "null"}, viewport=${viewportWidth})`,
+            `Logo not in left-half of viewport on ${route} (x=${box?.x ?? "null"}, viewport=${viewportWidth})`,
           );
         }
       }

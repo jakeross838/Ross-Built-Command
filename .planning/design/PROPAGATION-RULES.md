@@ -894,7 +894,7 @@ The complete index of file paths referenced in this document (and the design sys
 - `.planning/MASTER-PLAN.md` §12 NEXT PLANNED WORK — Stage 1.5a position
 
 ### CLAUDE.md global posture
-- "UI rules" section — Stone Blue palette + Slate type system + logo top-right
+- "UI rules" section — Stone Blue palette + Slate type system + logo top-left (corrected from "top-right" 2026-05-15 per nwrp147 + TD-WE-02; top-left is productivity-app convention, top-right was stale SOW-letterhead bleed)
 - "Architecture posture" — Multi-tenant RLS, every aggregation needs indexes, org-configurable not hardcoded, data portability first-class
 - "Code behavior" — Recalculate not increment, never kill running processes, financial calculations auditable
 - "Workflow posture" — Acceptance criteria required, plan-level review precedes execute, QA review precedes ship, end-to-end test precedes ship, cross-cutting changes go through `/nightwork-propagate`
