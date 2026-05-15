@@ -14,6 +14,24 @@
 # closes the recurring class where pre-existing technical debt on an unrelated line in a
 # touched file would block legitimate edits + force the executor to either fix
 # unrelated debt (scope creep) or bypass with --no-verify (override).
+#
+# nwrp160 defensive hardening (FAIL-CLOSED contract):
+# Hooks that fail-open are worse than hooks that don't exist. Three explicit
+# fail-closed paths added per nwrp160 watch B.4:
+#   (1) git diff returns non-zero exit → exit 1 with stderr error message
+#   (2) ADDED_LINES is empty BUT grep found hits → exit 1 with stderr error message
+#       (classifier-failure indicator; could be diff parse error OR no-op edit
+#        with violations — both warrant operator attention)
+#   (3) Smoke test instructions: to verify this hook works, run
+#         echo 'console.log("test")' >> src/app/api/jobs/route.ts
+#         echo '{"tool_input":{"file_path":"src/app/api/jobs/route.ts"}}' | \
+#           bash .claude/hooks/nightwork-post-edit.sh
+#       Expected: hook reports the console.log as NEW violation (blocks).
+#       Then revert and try editing a different line in same file:
+#         (modify a comment elsewhere)
+#         (run hook again)
+#       Expected: hook reports the pre-existing console.log as PRE-EXISTING
+#       informational warning on stderr (does NOT block).
 
 set -e
 
@@ -65,13 +83,27 @@ WARNINGS_FILE=$(mktemp)
 # - For tracked files: parse `git diff -U0 HEAD -- <file>` hunk headers (`@@ -A,B +C,D @@`)
 #   and emit the new-file line range C..C+D-1.
 # - For untracked files: all lines are NEW (file just created by Write tool).
-# - On any error (no git repo, etc.): conservative fallback — treat all hits as NEW
-#   (preserves current blocking behavior; no false negatives).
+# - If file is in a git repo but `git diff` exits non-zero → FAIL CLOSED per
+#   nwrp160 B.4.1 (better to block than silently misclassify).
+# - If `git rev-parse --git-dir` fails (not in a git repo): conservative fallback —
+#   set ADDED_LINES=ALL (treat all lines as NEW). This path is unreachable from the
+#   Claude-Bash tool in nightwork-platform (repo is always present) but defensive.
 ADDED_LINES=""
+IN_GIT_REPO=0
 if git rev-parse --git-dir > /dev/null 2>&1; then
+  IN_GIT_REPO=1
   if git ls-files --error-unmatch "$FILE" > /dev/null 2>&1; then
-    # Tracked file: extract added-line numbers from diff hunk headers
-    ADDED_LINES=$(git diff --no-color -U0 HEAD -- "$FILE" 2>/dev/null | awk '
+    # Tracked file: capture diff output + check exit code (B.4.1 per nwrp160)
+    DIFF_OUTPUT=$(git diff --no-color -U0 HEAD -- "$FILE" 2>&1)
+    DIFF_EXIT=$?
+    if [ "$DIFF_EXIT" -ne 0 ]; then
+      # B.4.1 FAIL CLOSED: git diff failed; cannot classify violations safely
+      echo "[nightwork-post-edit] ERROR: git diff failed for $FILE (exit $DIFF_EXIT); cannot classify violations; blocking commit conservatively. Diff output:" >&2
+      echo "$DIFF_OUTPUT" >&2
+      echo "To bypass intentionally (e.g., investigating hook itself), set NIGHTWORK_HOOKS_DISABLE=1." >&2
+      exit 1
+    fi
+    ADDED_LINES=$(echo "$DIFF_OUTPUT" | awk '
       /^@@/ {
         # @@ -A,B +C,D @@ ... or @@ -A +C @@ ...
         if (match($0, /\+[0-9]+(,[0-9]+)?/)) {
@@ -85,7 +117,6 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
     ')
   else
     # Untracked: file just created OR not in git yet — all lines are new
-    # Emit all line numbers 1..N
     ADDED_LINES=$(awk 'END { for (i = 1; i <= NR; i++) print i }' "$FILE")
   fi
 fi
@@ -101,10 +132,29 @@ classify_hits() {
 
   [ -z "$raw_hits" ] && return
 
-  # Conservative fallback: if ADDED_LINES couldn't be computed, treat all as NEW.
+  # B.4.2 per nwrp160: ADDED_LINES empty BUT raw_hits non-empty → FAIL CLOSED.
+  # This indicates classifier failure: either git diff parsed cleanly but yielded
+  # no added lines (no-op edit), OR diff parsing failed silently. In both cases
+  # we have violations but no way to tell NEW vs PRE-EXISTING — operator must
+  # intervene rather than have the hook silently mis-classify either direction.
+  # Exception: in-git-repo=false (no git context) → fallback to all-NEW (the
+  # historical conservative behavior; the only path where we cannot compute
+  # ADDED_LINES by design rather than error).
   if [ -z "$ADDED_LINES" ]; then
-    echo "$raw_hits" >> "$new_out"
-    return
+    if [ "$IN_GIT_REPO" -eq 0 ]; then
+      # Not in a git repo: legitimate fallback per defensive-defaults policy
+      echo "$raw_hits" >> "$new_out"
+      return
+    fi
+    # In a git repo but ADDED_LINES empty + hits present → fail closed
+    echo "[nightwork-post-edit] ERROR: classifier failure — ADDED_LINES empty but grep found violations in $FILE. Diagnostics:" >&2
+    echo "  Possible cause (a): git diff parsed but returned no added lines (file edit was content-identical no-op)" >&2
+    echo "  Possible cause (b): git diff output didn't match awk parse pattern (hook bug)" >&2
+    echo "  Possible cause (c): edit happened but introduced no NEW lines (e.g., deletion-only)" >&2
+    echo "  Raw hits found ($(echo "$raw_hits" | wc -l) lines):" >&2
+    echo "$raw_hits" | head -3 >&2
+    echo "Blocking commit conservatively. Run with NIGHTWORK_HOOKS_DEBUG=1 to surface diff output, or set NIGHTWORK_HOOKS_DISABLE=1 to bypass intentionally." >&2
+    exit 1
   fi
 
   while IFS= read -r hit; do
