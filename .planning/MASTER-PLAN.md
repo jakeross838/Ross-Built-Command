@@ -144,11 +144,11 @@ The build path is divided into stages. Stages are coarser than phases — a stag
 
 ## 9. CURRENT POSITION
 
-- **Current stage:** **Stage F1 Wave-B Slice-1 SHIPPED 2026-05-15 (Plan B-D080: FK convention codification — migration 00099 adds 11 constraints per D-080 decision matrix).** Wave-A/C/D/E + iter-2 patch bundles shipped per branch history. Wave-B Slice-1 ready for next-slice planning; Wave-B-Slice-2+ planning pending. Stage 1.5c iter-3 + Stage 1.5a + 1.5b + Stage 1.6 + Stage 1 all complete upstream. CP2 closed (D-037).
-- **Current branch:** `main` (B-D080 shipped via compound form on push 2026-05-15).
-- **Last commit on main:** `ccd5390` (2026-05-15) — B-D080 execute commit (migration 00099 user-identity FK convention codification). Parent chain: `77c372e` (ITER-2.5 embed app_private.user_org_role body) ← `3869815` (Slice 1 plan authoring + reviewer reports) ← `502ccc9` (SETUP-COMPLETE).
-- **Production deploy:** `https://nightwork-platform.vercel.app` — build status pending B-D080 Vercel auto-deploy (push 2026-05-15; migration 00099 schema-only, zero data-mutation). Wave-E synthetic seed remains active under fixture-harness-org. /design-system route gated to platform_admin only in production.
-- **Last QA verdict:** **PENDING** (Wave-B-Slice-1 post-ship; /nightwork-qa scheduled post-Vercel deploy verification). Plan-review iter-1 returned AUTHORITATIVE on nwrp155 (10 reviewers; 5 BLOCKING findings → iter-2 patches resolved all). B-D080-specific findings: 4 WARNINGs (iter-2 patches §1 resolved; new AC-BD080-09/10 added).
+- **Current stage:** **Stage F1 Wave-B Slice-1 SHIPPED 2026-05-15 (Plan B-1a: clients schema foundation — migration 00100 backfills 25 client records with smart deduplication).** B-D080 (FK convention codification, migration 00099) shipped 2026-05-14. Wave-B Slice-1 now 2 of 4 plans shipped (B-D080 ✅, B-1a ✅, B-1b/B-1c pending). Wave-A/C/D/E + iter-2 patch bundles complete upstream. CP2 closed (D-037).
+- **Current branch:** `main` (B-1a shipped via compound form on push 2026-05-15 post-14:23 UTC).
+- **Last commit on main:** `aaa6cff` (2026-05-15 14:23 UTC) — B-1a execute commit (migration 00100 clients schema foundation + backfill). Parent: `c1aadd0` (B-D080 QA PASS + preflight) ← `ccd5390` (B-D080 execute) ← chain continues upstream.
+- **Production deploy:** `https://nightwork-platform.vercel.app` — Vercel auto-deploy queued for commit `aaa6cff` (migration 00100 schema-only + backfill, zero type-system changes). Wave-E synthetic seed remains active under fixture-harness-org. /design-system route gated to platform_admin only in production.
+- **Last QA verdict:** **PENDING** (B-1a post-ship; custodian sweep in progress). B-D080 QA PASS as of 2026-05-15 14:18 UTC (report at `.planning/qa-runs/2026-05-15-1500-wave-b-bd080-qa-report.md`). B-1a pre-flight probe results at `.planning/phases/stage-f1-knowledge-graph-auth-wave-b/00100-PROBE-RESULTS.md` — all 4 probes PASS; safe to apply migration 00100.
 - **Stage 1 deliverables (committed):**
   - ✅ `.planning/architecture/VISION.md` — full construction OS target across all 5 waves
   - ✅ `.planning/architecture/CURRENT-STATE.md` — comprehensive diagnostic with 8 headline findings

@@ -69,7 +69,7 @@ These exist so the system scales into scheduling, daily logs, client portal, etc
 - **`job_id` is universal parent:** Every financial record ties to `job_id`. Future modules (schedule, logs, photos) will too.
 - **TypeScript strict mode.** No `any` types.
 - **All business logic in server-side API routes or Supabase functions.** Frontend is display + forms only.
-- **User-identity FK convention split (D-078):** New user-identity FKs default to `auth.users` UNLESS the column is used in PostgREST embedding hints for display, in which case `profiles`. Current state: 56 auth.users-FK columns + 3 profiles-FK columns (post-Wave-D). Convention emerged in Wave-C migration 00097 + extended in Wave-D migration 00098. Full standardization deferred (TD-D-078). See `.planning/MASTER-PLAN.md` §10 D-078 for full rationale + SOC2 mapping (CC6.1 / CC7.2 / PI1.1).
+- **User-identity FK convention split (D-078):** New user-identity FKs default to `auth.users` UNLESS the column is used in PostgREST embedding hints for display, in which case `profiles`. Current state: 67 auth.users-FK columns + 4 profiles-FK columns (post-Wave-B-Slice-1: D-080 migration 00099 adds 10 auth.users + 1 profiles; B-1a migration 00100 adds 1 auth.users for clients.created_by). Convention emerged in Wave-C migration 00097 + extended in Wave-D migration 00098. Full standardization deferred (TD-D-078). See `.planning/MASTER-PLAN.md` §10 D-078 + D-080 for full rationale + SOC2 mapping (CC6.1 / CC7.2 / PI1.1).
 
 ### Stage 1.5c information-architecture additions (D-040..D-065)
 
