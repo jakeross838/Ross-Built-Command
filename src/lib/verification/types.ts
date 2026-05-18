@@ -79,13 +79,18 @@ export interface IdempotencyKey {
   composite: string; // sha256(commit_sha + criterion_hash)
 }
 
-// Standards JSON schema (per D-02)
+// Standards JSON schema (per D-02). 'integrity' added in F1-Wave-B Plan
+// B-1b (nwrp152) for structural-invariant standards (audit conservation,
+// RLS coverage, role-permission integrity, fixture coverage); these
+// complement the 'conservation' domain (money-flow invariants) per
+// umbrella Q9 D + Q11 D.
 export type StandardsDomain =
   | "aia"
   | "accounting"
   | "lien-law"
   | "dates"
-  | "conservation";
+  | "conservation"
+  | "integrity";
 
 export interface StandardsRule {
   $schema: string;

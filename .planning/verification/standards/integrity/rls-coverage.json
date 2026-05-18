@@ -1,0 +1,17 @@
+{
+  "$schema": ".planning/verification/standards/_schema.json",
+  "id": "integrity-rls-coverage",
+  "domain": "integrity",
+  "title": "Every tenant table has direct-filter RLS on org_id",
+  "description": "RLS coverage invariant — every ORG-scoped tenant table has rowsecurity=true AND ≥1 policy filtering on org_id (per Q10b child-entity scope-axis rule). USER-scoped child tables have rowsecurity=true AND ≥1 policy filtering on parent FK. Defense-in-depth for SOC2 CC6.1 (Logical access). When introspection surface unavailable (current state on main HEAD), the rule SKIPs cleanly. Wave 1.1+ adds /api/_introspect/rls-coverage that queries pg_policies + pg_tables and reports any tenant-classified table without RLS or without the proper org_id filter pattern as FAIL.",
+  "verifyFn": "rlsCoverage",
+  "applies_to": ["rls-coverage"],
+  "severity": "blocking",
+  "source": [
+    "F1-Wave-B Plan B-1b nwrp152 + nwrp153 Q9 D",
+    "F1-Wave-A Plan A-4 Q10b — child-entity scope-axis rule",
+    "CLAUDE.md — 'Multi-tenant RLS is non-negotiable'",
+    "SOC2 CC6.1 — logical access controls"
+  ],
+  "tags": ["integrity", "rls", "tenant-isolation", "multi-tenant"]
+}

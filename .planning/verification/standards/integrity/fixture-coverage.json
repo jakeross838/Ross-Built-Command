@@ -1,0 +1,16 @@
+{
+  "$schema": ".planning/verification/standards/_schema.json",
+  "id": "integrity-fixture-coverage",
+  "domain": "integrity",
+  "title": "Every tenant entity has ≥1 fixture-harness-org row",
+  "description": "Fixture coverage invariant — every tenant-scoped entity in .planning/architecture/ENTITY-INVENTORY.md has ≥1 row in fixture-harness-org (per Q9 D fixture-maintenance contract). New tenant tables added by future migrations MUST seed at least one fixture row in the canonical harness org so verification harness Layer 1/Layer 2 checks have data to read. Defense-in-depth for SOC2 CC7.2 composite (audit-trail durability via fixture-reproducibility). When introspection surface unavailable (current state on main HEAD), the rule SKIPs cleanly. Wave 1.1+ adds /api/_introspect/fixture-coverage that reads ENTITY-INVENTORY.md entity list and queries each tenant table with WHERE org_id = FIXTURE_ORG_UUID. USER-scoped child tables (per Q10b) are not subject to per-org fixture seeding; they inherit coverage from the user-row in fixture-harness-org.",
+  "verifyFn": "fixtureCoverage",
+  "applies_to": ["fixture-coverage"],
+  "severity": "blocking",
+  "source": [
+    "F1-Wave-B Plan B-1b nwrp152 + nwrp153 Q9 D",
+    ".planning/architecture/ENTITY-INVENTORY.md — tenant entity catalog",
+    "SOC2 CC7.2 — audit-trail durability via fixture-reproducibility"
+  ],
+  "tags": ["integrity", "fixtures", "coverage", "harness"]
+}

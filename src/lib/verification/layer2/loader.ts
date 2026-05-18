@@ -25,6 +25,7 @@ const VALID_DOMAINS: StandardsDomain[] = [
   "lien-law",
   "dates",
   "conservation",
+  "integrity",
 ];
 const VALID_SEVERITIES = ["blocking", "warning"] as const;
 

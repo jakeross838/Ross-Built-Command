@@ -18,8 +18,8 @@
     },
     "domain": {
       "type": "string",
-      "enum": ["aia", "accounting", "lien-law", "dates", "conservation"],
-      "description": "Standards domain. New domains require a CONTEXT.md addition + plan-review approval."
+      "enum": ["aia", "accounting", "lien-law", "dates", "conservation", "integrity"],
+      "description": "Standards domain. New domains require a CONTEXT.md addition + plan-review approval. The 'integrity' domain was added in F1-Wave-B Plan B-1b (nwrp152) for structural-invariant standards (audit conservation, RLS coverage, role-permission integrity, fixture coverage); these complement the 'conservation' domain (money-flow invariants) per umbrella Q9 D + Q11 D."
     },
     "title": {
       "type": "string",

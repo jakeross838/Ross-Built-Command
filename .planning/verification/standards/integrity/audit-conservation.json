@@ -1,0 +1,16 @@
+{
+  "$schema": ".planning/verification/standards/_schema.json",
+  "id": "integrity-audit-conservation",
+  "domain": "integrity",
+  "title": "Every state-mutating API path writes to activity_log",
+  "description": "Cross-entity audit conservation invariant — for every tracked entity transition in a test scenario, the activity_log row count delta is ≥ 1. Defense-in-depth for SOC2 CC7.2 (audit-trail durability). When introspection surface unavailable (current state on main HEAD), the rule SKIPs cleanly. Wave 1.1+ adds /api/_introspect/activity-log/conservation that this rule walks; the walker drives state mutations via fixture-harness-org RLS-bound service-role client and asserts post-mutation activity_log delta ≥ 1 per tracked entity (invoices / jobs / change_orders / purchase_orders / draws / lien_releases / proposals / selections / draw_adjustments / job_milestones per F1-Wave-A Plan A-1 Q12 uniform versioning coverage).",
+  "verifyFn": "auditConservation",
+  "applies_to": ["activity-log/conservation"],
+  "severity": "blocking",
+  "source": [
+    "F1-Wave-B Plan B-1b nwrp152 + nwrp153 Q9 D + umbrella Q9 D",
+    "CLAUDE.md — 'Status changes always append to status_history JSONB'",
+    "SOC2 CC7.2 — audit-trail durability"
+  ],
+  "tags": ["integrity", "audit", "conservation", "activity-log"]
+}

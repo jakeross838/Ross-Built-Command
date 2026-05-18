@@ -14,12 +14,21 @@
 
 import "./standards/conservation/money-line-items-sum";
 import "./standards/conservation/self-test-always-pass"; // iter-1 WARN-2: non-vacuous self-test signal
+// Integrity domain — added in F1-Wave-B Plan B-1b (nwrp152). Structural-
+// invariant standards (audit conservation, RLS coverage, role-permission
+// integrity, fixture coverage) per umbrella Q9 D + Q11 D. All 4 SKIP
+// cleanly until their introspection surfaces ship in Wave 1.1+ / F2+.
+import "./standards/integrity/audit-conservation";
+import "./standards/integrity/rls-coverage";
+import "./standards/integrity/role-permission-integrity";
+import "./standards/integrity/fixture-coverage";
 // Future rules:
 // import "./standards/conservation/<rule>";
 // import "./standards/aia/<rule>";
 // import "./standards/accounting/<rule>";
 // import "./standards/lien-law/<rule>";
 // import "./standards/dates/<rule>";
+// import "./standards/integrity/<rule>";
 
 export { runLayer2 } from "./runner";
 export { loadStandardsRules, validateRule } from "./loader";
