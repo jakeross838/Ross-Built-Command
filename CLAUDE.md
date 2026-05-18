@@ -672,6 +672,27 @@ These rules are non-negotiable. Custom Nightwork agents, hooks, and orchestrator
   smoke script needs new fixture data, extend `smoke-seed.sql`; do NOT hardcode
   Drummond/SmartShield/real-vendor UUIDs in scripts/.
 
+### Orchestration discipline (per nwrp157 / nwrp162 / nwrp164 / nwrp166 / nwrp167)
+
+Nightwork build operates with a clear orchestrator / executor split, codified after Slice-1 close-out (nwrp152..nwrp167).
+
+- **Orchestrator (Jake)** makes architectural decisions, sets cost ceilings, authorizes ceiling bumps, resolves cross-reviewer factual disagreements, picks Path A vs B vs C when surfaced, and approves all halt-gate resolutions. Decisions ride via nwrpNNN.txt files; executor reads and follows.
+
+- **Executor (Claude Code session)** plans, authors, executes, reviews, and ships within those guardrails. When a guardrail fires (halt gate / ceiling / cross-reviewer disagreement / genuine ambiguity), the executor surfaces to the orchestrator with structured options — NOT "what should I do?" but "Recommendation + tradeoffs + cost projection + halt for your call." Then halts.
+
+Autonomy envelope varies by decision class:
+
+- **Routine choices** (file structure, variable naming, commit-body phrasing, where exact regex anchors go in a hook) — executor decides, documents inline. Do not surface routine choices.
+- **Discipline choices** (`--no-verify` bypass, ceiling bump, cross-reviewer disagreement resolution, halt-vs-continue at a checkpoint, destructive-op authorization) — executor surfaces, orchestrator decides. No exceptions.
+- **Architectural choices** (validator interface contract, schema scope decisions, design-system additions, new entity introduction, new role granularity) — executor surfaces with structured options, orchestrator picks.
+
+Modes alternate per orchestrator directive:
+
+- **Halt-and-surface-between-deliverables mode** (nwrp157/162/164/166) — executor stops after each deliverable, surfaces for review, awaits authorization before next. Used when work is high-stakes architectural OR when budget is tight OR when sequential review value > sequential execution speed.
+- **Sequential autonomous execution mode** (nwrp167) — executor proceeds across multiple deliverables without halting; surfaces only on genuine block (destructive op, ceiling approach, factual disagreement, architectural ambiguity). Used when scope is clearly defined + work is documentation/authoring (not destructive code changes).
+
+Default posture absent specific orchestrator directive: **halt-and-surface on discipline boundaries; do-and-document on routine.** The surface-when-stuck threshold is genuine ambiguity or discipline-gate, not routine choices.
+
 ### Workflow posture
 
 - **Acceptance criteria are required.** Every phase produces explicit, falsifiable acceptance criteria during `/gsd-discuss-phase`. `nightwork-spec-checker` compares implementation to these criteria at the end of `/gsd-execute-phase`. No phase ships without them.
@@ -761,6 +782,99 @@ These rules are non-negotiable. Custom Nightwork agents, hooks, and orchestrator
   pre-flight collision family is the same mechanical principle — verify
   current state matches plan assumptions — applied to different deliverable
   classes.)
+
+- **Rule 7 — Cost ceiling discipline (per Wave-B Slice-1 lessons / nwrp157 /
+  nwrp161 / nwrp162 / nwrp164 / nwrp166).** Per-slice cost ceilings are set
+  at /np dispatch authorization time. Discipline contracts:
+
+  (a) **Plan-author self-resolution of cost overrun is BANNED.** If a plan's
+      authoring or executing surfaces an overrun (scope expanded beyond
+      estimate, rework cycles, additional reviewers needed), the executor
+      MUST halt and surface to Jake — never "continue past the ceiling" or
+      "self-bump to fit the work." Continuing past ceiling without Jake's
+      authorization is OVERRIDE, not preserved discipline (Jake framing
+      correction, nwrp157).
+
+  (b) **Ceiling bump authorization is Jake-only.** Plan-author + executor +
+      reviewers cannot bump a ceiling autonomously. Bump = explicit Jake
+      message authorizing the new ceiling with reasoning + scope.
+
+  (c) **Maximum one ceiling bump per slice.** Slice-1 used the one allowed
+      bump ($50 → $75 per nwrp161). nwrp162 explicit prohibition of a second
+      bump prevented discipline-erosion; nwrp164 chose halt-for-fresh-session
+      over a third bump that would have eroded the gate's function. Future
+      slices: max one bump, OR halt-for-fresh-session if more headroom needed.
+
+  (d) **Per-plan halt gate (per nwrp166 §17).** If any individual plan within
+      a slice projects >$50 mid-authoring, halt for Jake re-scope. Do NOT
+      plan-author through it. Slice-1's B-1a-bis blew the $40 line without
+      this gate; codified for Slice-2-onward. Trigger conditions enumerated
+      in the host slice's EXPANDED-SCOPE.md (e.g., trigger application
+      surfaces >5 tenant tables needing per-table opt-in; RLS posture summary
+      table surfaces >30 tables vs estimate).
+
+  (e) **Scope-engineering to dodge budget gates is BANNED.** Splitting a plan
+      to "fit" the remaining budget is the same anti-pattern as bumping the
+      ceiling — both circumvent the gate's purpose. If work doesn't fit,
+      halt for re-scope authorization OR fresh session per nwrp164 precedent.
+
+- **Rule 8 — Hook fail-closed contract (per nwrp158 / nwrp159 / nwrp160 /
+  nwrp161 / nwrp163).** Hooks (`.claude/hooks/*` + `.githooks/*`) implement
+  non-negotiable discipline gates. Discipline contracts:
+
+  (a) **Hook halts are not opportunities for `--no-verify` bypass.** When a
+      hook blocks a commit, the response is: (1) understand why the hook
+      fired, (2) satisfy the gate honestly. Bypass via `--no-verify` requires
+      explicit per-incident Jake authorization with documented rationale in
+      commit body. The Drummond gate (`.githooks/pre-commit` Drummond grep)
+      is NEVER bypassed under any circumstance per Dev Rules above.
+
+  (b) **"Hook caught a process gap" = system working as designed.** nwrp163
+      origin: nightwork-qa skill step 6 (write report to disk) was missed
+      during inline synthesis; pre-commit hook flagged stale qa-runs
+      timestamp (114 min > 60 min threshold). Resolution: write the missed
+      report from in-context synthesis (path-(a)). Wrong responses:
+      re-run /nightwork-qa to refresh timestamp (option b — burns $ to
+      re-validate); `--no-verify` bypass (option c — authorizes-around-
+      working-discipline-gate). Hook calibration is correct; missed step is
+      executor-behavior gap; satisfy the gate honestly.
+
+  (c) **Hook fail-closed posture validated against real workload.** Per
+      nwrp158-161 chain (touched-lines-only classification + ENTITY_LABELS
+      Record gap detection + fail-closed hardening on git diff failure /
+      empty ADDED_LINES with hits). Slice-1 B-1a-bis execute (commit
+      `ef0c2cf`) passed cleanly post-fix; no false HALTs, no partial
+      applies, no timeouts. Discipline pattern: a hook that fails-OPEN is
+      worse than a hook that doesn't exist.
+
+  (d) **Disk-evidence > conversation-context.** Hooks check disk evidence
+      timestamps (qa-runs file mtime, smoke-results.json mtime, etc.) — not
+      inline synthesis. The pattern is auditable: anyone reviewing a commit
+      can verify the on-disk evidence was current at commit time. Inline
+      synthesis is acceptable intermediate state; persistence to canonical
+      `.planning/qa-runs/*.md` is the record.
+
+- **Rule 9 — Cross-reviewer factual disagreement HALT (per nwrp118
+  Wave-C origin; codified across slices).** Any plan-review iter-1 or QA
+  cycle with **cross-reviewer factual disagreement** (two or more reviewers
+  make CONTRADICTORY CLAIMS about canonical state — RLS policies, migration
+  history, schema shape, FK constraint shapes, file contents, type-system
+  enum values, etc.) HALTS for Jake authorization on resolution, even within
+  autonomous CATEGORY F envelope. Resolution requires verifying against
+  source (migration files, `pg_policies`, `information_schema`, current
+  code), not majority-rule consensus. Caught by Wave-C: security-reviewer
+  claimed `profiles` RLS wide-open; architect verified RESTRICTIVE backstop
+  via migration line numbers (00016:163 + 00049:285-288). "4-of-5
+  consensus" could have resolved future disagreements incorrectly without
+  this gate.
+
+  Cross-reviewer **agreement** on a non-canonical claim is also surface-
+  worthy (e.g., Slice-1's B-1a-bis MEDIUM-1 finding — rls-auditor + security-
+  reviewer both flagged PATCH /api/jobs missing `.eq("org_id", ...)` filter;
+  both framed as pre-existing-non-Slice-1-regression, so Jake's call routed
+  it to Slice-2 carry-forward rather than block). The pattern is: any 2+
+  reviewer alignment on something that wasn't in the plan-author's surface
+  gets explicit orchestrator disposition.
 
 ## Deployment
 
