@@ -151,3 +151,39 @@ These patterns now propagate to Slice-2 EXPANDED-SCOPE and beyond via:
 - "Hook catching missing step is system working as designed" (per nwrp163) — discipline reinforced; no future bypass instinct.
 
 ---
+
+## 2026-05-18 — Commit `2cdeea4` `--no-verify` bypass framing clarification (nwrp170 audit follow-up)
+
+**Scope:** Weekend deliverables commit `2cdeea4` (Monday 2026-05-18) used `--no-verify` per nwrp169 explicit Jake authorization. nwrp170 audit identified three weaknesses in the original commit body's framing of that bypass; this entry clarifies the framing on the audit trail without force-pushing to main (Path B per nwrp171 authorization).
+
+**What the original commit body said (literal text from `2cdeea4`):**
+
+> Per nwrp167 weekend authoring protocol; per nwrp169 Jake authorization for --no-verify bypass:
+> - 100% documentation changes; zero code touched
+> - Hook QA timestamp intent: verify recent code coverage — not relevant for doc-only commits
+> - Hook calibration gap surfaced (see TD-NW-HOOK-DOC-ONLY-DETECT — landing in follow-up commit per nwrp169 Step 4)
+> - All discipline gates documented in CLAUDE.md Rules 7-9 (codified this commit)
+
+**Three weaknesses identified by nwrp170 audit:**
+
+1. **Rule 8(a) per-incident authorization citation MISSING.** CLAUDE.md Rule 8(a) (codified in `2cdeea4` itself) states: *"Hook halts are not opportunities for `--no-verify` bypass. When a hook blocks a commit, the response is: (1) understand why the hook fired, (2) satisfy the gate honestly. Bypass via `--no-verify` requires explicit per-incident Jake authorization with documented rationale in commit body."* The `2cdeea4` body cited "nwrp169 Jake authorization" but did not handle-cite Rule 8(a) explicitly. The reference is implicit; future auditors reading the commit body alone (without nwrp169 in hand) would not see the Rule 8(a) handle.
+
+2. **One-time framing AMBIGUOUS.** The phrase "Per nwrp169 Jake authorization for --no-verify bypass" is consistent with one-time authorization but does not explicitly state "this is a one-shot authorization for this specific commit, NOT a standing precedent for all doc-only commits." Generic rationale points listed in the body (100% docs, hook intent gap) read as if they could be a template for future doc-only commits — that is NOT the framing Rule 8(a) requires.
+
+3. **TD-NW-HOOK-DOC-ONLY-DETECT termination condition IMPLICIT.** The body names the TD but does not state that the `--no-verify` authorization terminates when the TD ships. Bypass-end-condition was implicit at best; the audit trail should make it explicit.
+
+**Clarification (the framing that should be read alongside `2cdeea4`):**
+
+- **Rule 8(a) per-incident citation:** the `--no-verify` on `2cdeea4` is the per-incident bypass authorized by Rule 8(a). Jake's nwrp169 §57-66 is the documented rationale required by Rule 8(a). No other bypass is authorized by this incident.
+
+- **One-time authorization, NOT standing precedent:** nwrp169's `--no-verify` authorization applies to commit `2cdeea4` ONLY. Future doc-only commits (including this clarification commit + any follow-ups) must satisfy the hook honestly OR obtain fresh per-incident Jake authorization. The "100% docs / hook intent gap" rationale is descriptive of WHY `2cdeea4` qualified for one-shot authorization; it is NOT a self-service template for future bypasses.
+
+- **TD-bound termination condition:** the `--no-verify` authorization pattern terminates when TD-NW-HOOK-DOC-ONLY-DETECT ships. After the TD lands (adding the file-extension filter to `.claude/hooks/nightwork-pre-commit.sh`), doc-only commits will satisfy the hook cleanly without bypass; any future `--no-verify` on a doc-only commit would indicate either (a) the TD fix is broken, OR (b) the bypass intent is not actually doc-only. Either case demands halt + Jake review.
+
+**Why it matters:** Rule 8(a) is load-bearing for the entire hook-discipline contract. Slice-1's nwrp163 lesson established that bypassing a working hook to "make a problem go away" erodes the gate's discipline value over time. The Wave-A iter-1 four `--no-verify` incidents (referenced in CLAUDE.md Dev Rules) are the prior anti-pattern this rule prevents. Original `2cdeea4` framing — while substantively correct (Jake-authorized + documented) — left enough ambiguity that a future executor reading it could mistake the rationale points for a standing precedent. Clarification eliminates that risk.
+
+**Reinforcement going forward:** future `--no-verify` commit bodies MUST contain three explicit elements per Rule 8(a) audit-trail requirement: (1) the Rule citation (e.g., "Per Rule 8(a) per-incident authorization"), (2) the specific Jake authorization message reference (e.g., "Per nwrp###"), (3) the bypass termination condition (e.g., "Bypass ends when TD-XXX ships"). This commit-body discipline closes the ambiguity gap surfaced by nwrp170.
+
+This clarification entry is itself a doc-only commit but does NOT use `--no-verify` (per nwrp171 §23 explicit direction). If the hook fires on stale qa-runs timestamp (likely — last qa-runs file is 2026-05-15 17:30 EDT, ~64hrs stale at Monday commit time), halt + surface per nwrp171 §23. The clarification commit asserting tighter bypass framing must itself not bypass the gate.
+
+---
