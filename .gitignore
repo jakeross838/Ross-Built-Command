@@ -151,6 +151,17 @@ skills-lock.json
 # B-1a-bis ITER-2-PATCHES §3.10 codification.
 !/.planning/runbooks/
 !/.planning/runbooks/**
+# decisions-pending/ + decisions-resolved/ — investigative decision briefs
+# (e.g. user-identity-fk-convention BRIEF surfaced D-078; F1+-1 production
+# domain BRIEF + F1+-2 SSO posture BRIEF). Must sync across PCs because Jake
+# reviews on multiple PCs + briefs are the canonical SOURCE for D-### entries
+# in MASTER-PLAN.md. Content sensitivity scan (nwrp168 ITEM 4) confirmed clean
+# — architectural decision text only; no PII / customer data / credentials.
+# Per nwrp169 Q-W9 disposition (Option a — whitelist both directories).
+!/.planning/decisions-pending/
+!/.planning/decisions-pending/**
+!/.planning/decisions-resolved/
+!/.planning/decisions-resolved/**
 # design/ — canonical Nightwork design system documents (PHILOSOPHY.md,
 # SYSTEM.md, COMPONENTS.md, PATTERNS.md, PROPAGATION-RULES.md,
 # CONTRAST-MATRIX.md). Produced by stage-1.5a; consumed by every later UI
