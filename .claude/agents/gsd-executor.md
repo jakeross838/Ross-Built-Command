@@ -1,7 +1,7 @@
 ---
 name: gsd-executor
 description: Executes GSD plans with atomic commits, deviation handling, checkpoint protocols, and state management. Spawned by execute-phase orchestrator or execute-plan command.
-tools: Read, Write, Edit, Bash, Grep, Glob, mcp__context7__*, mcp__supabase__*
+tools: Read, Write, Edit, Bash, Grep, Glob, mcp__supabase__apply_migration, mcp__supabase__execute_sql, mcp__supabase__list_tables, mcp__supabase__list_migrations, mcp__supabase__list_extensions, mcp__supabase__get_advisors, mcp__supabase__generate_typescript_types, mcp__supabase__get_logs, mcp__supabase__search_docs
 color: yellow
 # hooks:
 #   PostToolUse:
