@@ -534,6 +534,16 @@ See `docs/platform-admin-runbook.md` for common scenarios.
   `bg-[var(--bg-card)]`, `text-[color:var(--text-primary)]`,
   `border-[var(--border-default)]`, or the raw `nw-*` utilities
   (`text-nw-slate-tile`, `bg-nw-stone-blue`, etc.).
+- **SECURITY DEFINER functions MUST set explicit `search_path`.** Per Supabase
+  advisor 0011 (`function_search_path_mutable`) + migration 00034 canonical
+  pattern + migration 00102 sweep cleanup (MED-WA-1 closure). Default:
+  `SET search_path = public, pg_temp`. If function reads from `app_private`
+  schema, use `SET search_path = public, app_private, pg_temp`. NEVER use a
+  mutable search_path (security vulnerability — see Postgres docs on
+  search_path attack). The same rule applies by extension to non-SECURITY-
+  DEFINER functions flagged by advisor 0011; migration 00102 hardened both
+  classes. New trigger-internal SECURITY DEFINER functions (e.g., Slice-2 B-3)
+  inherit this convention.
 - Never store computed values — compute budget math on read.
   **Exception:** trigger-maintained caches are permitted when read-time
   recompute would be prohibitively expensive. Every such column must have an

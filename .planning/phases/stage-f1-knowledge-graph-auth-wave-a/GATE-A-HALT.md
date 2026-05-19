@@ -119,7 +119,7 @@ All pushed to `origin/main`. Working tree clean.
 3. **HF-A4-2**: pre-flight orphan check at TOP of migration (fail-fast)
 4. **HF-A4-5**: regression test SKIP deferred to Wave-B Plan B-6 fixture seeding
 5. **HF-A1-2**: bulk endpoint atomicity regression accepted for Wave-A; documented in SUMMARY; routed to Wave-B Plan B-3
-6. **MED-WA-1**: umbrella scope drift (function search_path sweep + REVOKE EXECUTE + extension move) deferred to Wave-B/Wave-C
+6. **MED-WA-1**: umbrella scope drift (function search_path sweep + REVOKE EXECUTE + extension move) deferred to Wave-B/Wave-C → **RESOLVED 2026-05-19** via standalone phase `stage-f1-wave-a-iter1-cleanup` migration 00102. 8 functions hardened, 7 REVOKE EXECUTE applied, pg_trgm + vector moved to `extensions` schema. Post-apply advisor confirms zero `function_search_path_mutable`/`extension_in_public` lints + zero SECURITY DEFINER lints for the 7 target functions. See `.planning/phases/stage-f1-wave-a-iter1-cleanup/WA-iter1-cleanup-SUMMARY.md`.
 
 ---
 
@@ -221,7 +221,7 @@ Per nwrp113: "DO NOT dispatch Wave-B until Jake explicitly authorizes after EXPA
 
 Plus consolidating Wave-A regression fixes:
 - **B-3 candidate:** lien-releases bulk atomicity restore (HF-A1-2) + activity_log count fix (NEW from ai-logic-tester)
-- **B-7 candidate:** function search_path sweep + REVOKE EXECUTE + pg_trgm/vector extension move (MED-WA-1)
+- **B-7 candidate:** function search_path sweep + REVOKE EXECUTE + pg_trgm/vector extension move (MED-WA-1) → **CLOSED** 2026-05-19 via standalone phase `stage-f1-wave-a-iter1-cleanup` migration 00102 (separate from Wave-B/Wave-C per nwrp174 dispatch).
 
 ---
 
