@@ -206,3 +206,27 @@ This clarification entry is itself a doc-only commit but does NOT use `--no-veri
 - **Track per-plan compression signals.** If B-2 also compresses 45min actual vs 20h estimate, pattern holds. If B-2 takes 18h, that's a different signal (unknown surfaced mid-plan; buffer was justified). Run the comparison before B-3 authoring.
 
 ---
+
+## 2026-05-19 — Deferred security cleanup via standalone phase (Wave-A iter-1)
+
+**Scope:** stage-f1-wave-a-iter1-cleanup — a security hygiene cleanup (search_path hardening + REVOKE EXECUTE + extension schema move) originally deferred from Wave-A iter-1 as MED-WA-1 scope drift.
+
+**Pattern:** When plan-review iter-1 surfaces scope drift (e.g., 8 functions identified post-authoring as needing security hardening), the default is to defer to Wave-B/Wave-C as part of larger plans. However, if the drift is (a) pure-database cleanup, (b) atomic + isolated, (c) doesn't block immediate next-phase, AND (d) reduces signal-to-noise for the immediate next-phase's plan-review iter-1, a **standalone deferred-cleanup phase** can ship between slices as a focus-preserving alternative to either bundling-and-bloating or deferring-indefinitely.
+
+**This phase's characteristics:**
+- (a) Pure database: 3 migration sections, no code changes, no new entities, no async/webhook/UI surfaces touched
+- (b) Atomic: single migration file, 3 internal DO blocks verify each section, all-or-nothing transaction, paired `.down.sql`
+- (c) No immediate-next-phase blocker: Wave-B Slice-1 B-1b is code-only, doesn't require search_path / extension schema posture; deferred-cleanup doesn't gate Slice-2 dispatch
+- (d) Reduces iter-1 noise: 24 advisor lints (8 search_path + 2 extension + 14 SECURITY DEFINER) cleared before Slice-2 iter-1 plan-review runs (Slice-2 plans will include trigger functions, so inheriting a clean search_path + REVOKE baseline simplifies review)
+
+**Execution posture:** Standalone deferred-cleanup phases work well when orchestrator (Jake) explicitly approves the sequencing (per nwrp165 weekend Option A scope + nwrp167 sequential autonomous execution). The `halt_after: true` contract ensures the phase doesn't auto-proceed to QA; separate QA session per orchestrator discretion. No plan-review iter cycles needed (plan was authored pre-phase with full detail). Self-verifying via inline DO blocks (no external QA reviewer required).
+
+**Extension-move-with-operator-class pattern (mechanical learning):** When moving an extension to a new schema (here: pg_trgm + vector → extensions schema), the post-migration step that ensures operator classes resolve correctly is: (1) CREATE SCHEMA + GRANT, (2) ALTER EXTENSION SET SCHEMA, (3) ALTER DATABASE SET search_path to include new schema. This three-step pattern is load-bearing; missing step 3 breaks existing indexes on operator classes from the moved extension. The pattern was correctly applied in migration 00102; no regressions surfaced. Future extensions moved to dedicated schemas can reuse this pattern verbatim.
+
+**Type-regen alongside extension move:** The pg_trgm extension exposed two RPC-style helper functions (show_limit, show_trgm) that PostgREST auto-exposed in database.types.ts. Once the extension moved schemas, those helpers no longer appeared in the Functions enum. The pre-commit type-regen hook (`npx supabase gen types`) auto-detected the change and regenerated types.ts with the 2-line removal. This was NOT a manual change — it's an artifact of the schema transformation. The hook enforcing regen + the automatic removal of unused-after-move identifiers worked cleanly. **Pattern to note:** when moving extensions, expect type-system changes to be automatic (not user-authored) and commit them inline with the migration per CLAUDE.md schema-changes-regen-types rule.
+
+**Codification:** When surfacing deferred scope drift at plan-review iter-1, distinguish between: (a) bundled-into-next-plan (costs the next plan scope), (b) deferred-to-future-phase (risk of indefinite deferral + signal-to-noise accumulation), and (c) standalone-cleanup-phase (appropriate when isolated + atomic + reduces immediate-next-phase-noise). Add explicit orchestrator question during iter-1 debrief: "Is this worth a standalone cleanup phase, or should it bundle/defer?"
+
+**Reinforcement for Wave-B onward:** Don't silently defer scope drift. Surface it explicitly at plan-review iter-1 with option (c) as a choice when criteria are met. Slice-2 plans will include new trigger functions with SECURITY DEFINER context — inheriting a clean search_path baseline + REVOKE pattern makes the code-authoring more focused. This cleanup phase as a standalone move enabled that clarity without bloating Slice-2's immediate scope.
+
+---
