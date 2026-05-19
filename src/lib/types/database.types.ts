@@ -5137,8 +5137,6 @@ export type Database = {
         Returns: undefined
       }
       recompute_po_invoiced: { Args: { p_po_id: string }; Returns: undefined }
-      show_limit: { Args: never; Returns: number }
-      show_trgm: { Args: { "": string }; Returns: string[] }
       submit_client_portal_message: {
         Args: { p_message: string; p_token: string }
         Returns: {
