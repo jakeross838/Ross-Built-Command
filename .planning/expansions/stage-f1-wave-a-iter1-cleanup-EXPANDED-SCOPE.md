@@ -1,6 +1,6 @@
 # Expanded scope — stage-f1-wave-a-iter1-cleanup
 
-**Status:** APPROVED 2026-05-19 (per nwrp174 — cleanup dispatch authorized; per nwrp175 — artifact lifted from PLAN body to satisfy preflight Check 1).
+**Status:** APPROVED 2026-05-19 (per nwrp176 Jake review of nwrp175 path-(a) authored artifact; dispatch authorized per nwrp174).
 **Generated:** 2026-05-19 (post-hoc artifact authoring per nwrp175 path-a)
 **Phase scope:** Single-plan cleanup wave (Wave-A iter-1 deferred items per MED-WA-1 + Supabase advisor lints).
 **Plan file:** `.planning/phases/stage-f1-wave-a-iter1-cleanup/WA-iter1-cleanup-PLAN.md` (authored 2026-05-15 NIGHT as weekend Deliverable #5 per nwrp165 §37-42).
@@ -140,7 +140,6 @@ No outstanding questions blocking dispatch.
 | Extension move breaks existing indexes using `gin_trgm_ops` or `vector_*_ops` | `ALTER DATABASE postgres SET search_path TO "$user", public, extensions;` keeps existing references resolving. Pre-apply sweep (PLAN §C "Critical sweep") enumerates affected indexes; post-apply EXPLAIN ANALYZE verification. |
 | Down migration partial-revert | Single transaction wrapping; all-or-nothing apply/revert. PLAN §7 rollback plan documents per-section reverse. |
 | Smoke harness regression post-apply | `requires_smoke: false` per PLAN; if Jake authorizes smoke run anyway, baseline 11/13 expected (TD-WE-03 set unchanged). |
-| Hook fires on stale qa-runs timestamp at commit | Latest qa-runs is `2026-05-18-1230-wave-b-b1b-qa-report.md` (2026-05-18 ~12:30 EDT; ~20 hrs stale at 2026-05-19 dispatch time). Hook may fire; surface + write post-cleanup qa-runs report honestly per nwrp173 trim-as-you-go pattern. |
 
 **Assumptions:**
 
