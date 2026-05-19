@@ -187,3 +187,22 @@ These patterns now propagate to Slice-2 EXPANDED-SCOPE and beyond via:
 This clarification entry is itself a doc-only commit but does NOT use `--no-verify` (per nwrp171 §23 explicit direction). If the hook fires on stale qa-runs timestamp (likely — last qa-runs file is 2026-05-15 17:30 EDT, ~64hrs stale at Monday commit time), halt + surface per nwrp171 §23. The clarification commit asserting tighter bypass framing must itself not bypass the gate.
 
 ---
+
+## 2026-05-18 — B-1b execute compression signal + Rule 1 test-driven bug detection (system working as designed)
+
+**Scope:** Stage F1 Wave-B Slice-1 Plan B-1b execute via fresh session (nwrp171 dispatch; 45-min actual spend vs 22h plan-author estimate).
+
+**What happened:** B-1b executed in 45 minutes. Plan-author estimate was 22h (includes buffer). Cost ceiling for the fresh session was $50; actual spend ~$5–8. KG scaffold + 3 validators + types pipeline + 4 Layer 2 standards + W.1 listener wiring all shipped cleanly in a single block of work.
+
+**Key finding — Plan-author 22h included legitimate buffer, not underestimate.** The estimate was NOT too high. The 22h pre-buffered for unknowns (validator scaffolding complexity, Layer 2 standards infrastructure shape, types-pipeline CLI behavior on the linked project). Actual execute found no unknowns — the pre-planning by gsd-planner + nwrp153 amendments locked the shape cleanly enough that the buffer burned zero. This is a confidence signal, NOT a forecasting miss.
+
+**Rule 1 (test-driven bug detection):** Unit test 7 in client-pii-not-embedded (`"dedupe: aliased wildcard matched by both patterns counted once"`) surfaced a bug in the wildcard dedupe key. Initial code used `${code}:${hit.index}` as the dedup key; both WILDCARD_PATTERN and ALIAS_WILDCARD fire on the same embed (`client:clients(*)`) but at different start positions, so the dedupe set kept both. Test assertion "should have exactly 1 violation" caught the bug before commit. **System worked as designed:** a well-written falsifiable test caught a logic error in early development, before the validator shipped to production. Fix was inline (change key to END offset, where both patterns converge), commit 208c7d6. No post-execute regression; no production blast.
+
+**Why it matters:** Plan-author 22h estimate was conservative-but-not-overestimated. Future sessions observing similar ±50% variance (estimate vs actual) should distinguish: (a) legitimate buffer burning zero because unknowns didn't manifest (good pre-planning, happens more as stage matures), vs (b) actual underestimate (rare when pre-planning is solid). B-1b is case (a). The pattern to reinforce: don't reflexively cut future estimates in half because this one compressed; instead, track whether the compression is "buffer burned" (good) or "underestimate corrected" (concerning).
+
+**Reinforcement going forward:**
+- **Quality test suites are load-bearing.** Don't defer unit tests on the assumption that "we'll smoke-test instead." The smoke harness tests end-to-end flows; unit tests test logic boundaries. Both are necessary. B-1b's 23 unit test cases (23/23 PASS) caught a dedupe logic error in ~6 seconds of test execution; that error would have appeared as a bug report within 1 week of production if the test didn't exist.
+- **Buffer comprehension:** distinguish "estimate includes unknowns" (good pre-planning) from "estimate is wrong" (concerning). B-1b-authored estimate + high-detail pre-planning = buffer. When buffer compresses to zero because unknowns don't manifest, that's validation that the pre-planning was solid, not a signal to cut estimates for the next similar plan.
+- **Track per-plan compression signals.** If B-2 also compresses 45min actual vs 20h estimate, pattern holds. If B-2 takes 18h, that's a different signal (unknown surfaced mid-plan; buffer was justified). Run the comparison before B-3 authoring.
+
+---
