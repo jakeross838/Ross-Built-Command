@@ -54,13 +54,16 @@ next-env.d.ts
 !.claude/skills/nightwork-*/**
 
 # Agents: only nightwork-* agents are tracked + project-specific GSD
-# extensions added by stage-1.5c-verification-harness Plan 7 (per D-10).
+# extensions added by stage-1.5c-verification-harness Plan 7 (per D-10) +
+# Nightwork-customized gsd-executor (per nwrp179: mcp__supabase__* tools added
+# for DB-touching plan execution).
 # Other gsd-* agents come from the GSD upstream/plugin (not tracked here).
 !.claude/agents/
 .claude/agents/*
 !.claude/agents/nightwork-*.md
 !.claude/agents/gsd-research-standards.md
 !.claude/agents/gsd-fix-executor.md
+!.claude/agents/gsd-executor.md
 
 # Commands: nightwork-* + the np / nx / ns wrappers
 !.claude/commands/
