@@ -3,6 +3,43 @@
 # Block git commit unless a fresh /nightwork-qa report exists with non-BLOCKING verdict.
 # --no-verify bypasses (per Claude Code Bash hook conventions, surfaces user intent).
 # Set NIGHTWORK_PRECOMMIT_DISABLE=1 to disable entirely.
+#
+# ---
+# Doc-only-skip contract (per stage-f1-hook-doc-only-detect, nwrp190 Q1=C / Q2=B / Q3=A;
+# nwrp192 Option B Amendment 1 correction — `.sh`-enforces wins):
+#
+# If every file in `git diff --cached --name-only` matches either an allowed
+# doc extension OR an allowed doc-bearing path, skip the qa-runs timestamp
+# check + verdict check below. ANY file matching neither list → fall through
+# to the existing gate (Drummond grep gate + qa-timestamp both fire
+# normally for non-doc-only diffs; doc-only-skip exits cleanly
+# BEFORE Drummond is reached — see LOW-severity rationale #5 in HDOD-PLAN.md §6).
+#
+# Allowed extensions: .md, .txt, .gitignore, LICENSE, CHANGELOG, README,
+# .editorconfig (with or without dotted suffix variants).
+# Allowed paths (BROAD — match all files under prefix):
+#   .planning/, docs/, .claude/agents/, .claude/commands/
+# Allowed paths (RESTRICTED to .md/.txt only — per nwrp192 Option B):
+#   .claude/hooks/  — contains .sh executables; `.sh` falls through to gate
+#   .claude/skills/ — contains .sh/.py/.js/.json/.css/.html/.jsx; only docs skip
+#
+# .claude/commands/ stays broad-skip on the assumption it's .md-only at HEAD.
+# If commands gain executable content (.sh/.js/.py), apply the same *.(md|txt)$
+# restriction as hooks/ and skills/. Prevents future command-with-script silently
+# slipping the QA gate. (nwrp193 §17-18 inline addendum — orchestrator sweep
+# 2026-05-20 confirmed .claude/commands/ is .md-only at HEAD.)
+#
+# Origin: TD-NW-HOOK-DOC-ONLY-DETECT (MASTER-PLAN §11 row 314); three-
+# occurrence pattern nwrp163/166/169 + F1-Wave-A bypass events.
+# Discipline contract: Workflow posture Rule 8 fail-closed (CLAUDE.md).
+# Hook-edit discipline (per nwrp192 Option B / Amendment 1 correction):
+#   `.sh` edits under .claude/hooks/ ENFORCE the QA timestamp gate; they
+#   are executable discipline infrastructure and modifying the gate that
+#   enforces everything else must carry QA evidence. Sign-off-cycle
+#   discipline (Rule 8 + nwrp160/161 three-cycle precedent) operates
+#   independently via surface-for-Jake-review, so `.sh`-enforces does
+#   NOT weaken hook-change discipline.
+# ---
 
 set -e
 
@@ -48,6 +85,25 @@ if [ -n "$STAGED" ]; then
     exit 0
   fi
 fi
+
+# Doc-only-skip union branch — extension allowlist + path allowlist
+# (per HDOD-PLAN §4 / nwrp190 Q1=C; nwrp192 Option B regex restriction).
+# See header comment block above for the full doc-only-skip contract.
+# Union with the path-allowlist above per nwrp190 Q1=C.
+# .claude/hooks/ and .claude/skills/ are RESTRICTED to .(md|txt) per
+# nwrp192 Option B resolution — `.sh`-enforces wins.
+if [ -n "$STAGED" ]; then
+  NON_DOC=$(echo "$STAGED" | grep -vE \
+    '(\.md$|\.txt$|\.gitignore$|/LICENSE$|^LICENSE$|/CHANGELOG(\.[a-zA-Z]+)?$|^CHANGELOG(\.[a-zA-Z]+)?$|/README(\.[a-zA-Z]+)?$|^README(\.[a-zA-Z]+)?$|\.editorconfig$|^\.editorconfig$|^\.claude/agents/|^\.claude/commands/|^\.claude/hooks/.*\.(md|txt)$|^\.claude/skills/.*\.(md|txt)$)' \
+    || true)
+  if [ -z "$NON_DOC" ]; then
+    exit 0
+  fi
+fi
+# Fall through to Drummond grep gate + qa-timestamp + verdict checks
+# for any commit touching non-allowlist files (per Q3=A strict-mixed) —
+# including `.sh` / `.py` / `.js` / `.json` / `.css` / `.html` / `.jsx`
+# under `.claude/hooks/` or `.claude/skills/` (per nwrp192 Option B).
 
 # Drummond grep gate (per nwrp31 #2 — pre-commit defense for sanitized fixtures).
 # Mirrors .github/workflows/drummond-grep-check.yml. Blocks commits whose
