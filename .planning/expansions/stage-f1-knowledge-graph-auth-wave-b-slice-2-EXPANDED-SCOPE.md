@@ -1,8 +1,8 @@
 # Stage F1 Wave-B Slice-2 — EXPANDED-SCOPE
 
-**Status:** DRAFT — pending Jake re-review post-nwrp166 amendments
+**Status:** APPROVED 2026-05-20 (per nwrp196 Jake review; Q1-Q12 + nwrp166 amendments reviewed at nwrp168, confirmed no drift via git log check 2026-05-20 — last touch `4144dc7` on 2026-05-19 matches nwrp168 review timeline)
 **Authored:** 2026-05-15 NIGHT
-**Revision:** 2026-05-15 NIGHT (nwrp166 amendments applied — see "Amendment history" below)
+**Revision:** 2026-05-15 NIGHT (nwrp166 amendments applied — see "Amendment history" below); APPROVED 2026-05-20 per nwrp196
 **Authorization:** nwrp165 Option A weekend scope (write-up only, no execute)
 **Author:** Claude Code (this session)
 **Phase:** stage-f1-knowledge-graph-auth-wave-b-slice-2
