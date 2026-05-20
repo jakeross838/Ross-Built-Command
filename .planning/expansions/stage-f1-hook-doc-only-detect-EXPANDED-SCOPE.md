@@ -1,6 +1,7 @@
 # Expanded scope — stage-f1-hook-doc-only-detect
 
 **Status:** APPROVED 2026-05-19 (per nwrp190 Jake review — 2 amendments applied: Q2 reasoning addition + Q5 custodian-task expansion; AC-HDOD-13 ambiguity flagged for plan-author resolution per nwrp190 §17-22)
+**Amendment 1 correction:** 2026-05-20 per nwrp192 — Q2 Amendment 1 reasoning corrected after plan-review iter-1 BLOCKING-1 surfaced mechanical contradiction. See Q2 Amendment 1 section below for corrected language.
 **Generated:** 2026-05-19
 **Phase classification:** CHORE (hook discipline calibration; NOT a product-feature phase)
 **Plan scope:** Single plan, single hook file edit (~30 lines bash) at `.claude/hooks/nightwork-pre-commit.sh`
@@ -157,6 +158,49 @@ Each question has bounded options + a recommended answer with rationale. Strong 
 **Amendment 1 (per nwrp190 §11-12) — hook-edit discipline reasoning:**
 
 `.claude/hooks/` paths are in the doc-only allowlist for documentation files inside that directory (e.g., a README or comment block file). The `.claude/hooks/*.sh` executable files themselves are NOT in the allowlist (per the explicit-NO `.sh` clause above). Hook edits (the `.sh` files) are governed by **sign-off-cycle discipline** (Rule 8 hook fail-closed contract, evidenced by nwrp160/161 three-cycle sign-off on the touched-lines classification fix), NOT by the QA timestamp gate. Doc-only-skip for hook-doc edits is appropriate because the discipline for hook changes is the surface-for-Jake-review cycle, not the QA timestamp check. This makes the decision deliberate, not accidental — the qa-timestamp-skip is granted to hook DOCUMENTATION, while hook EXECUTABLES continue to fall through to the gate AND to the existing manual-review-cycle posture that produced nwrp160/161's three-cycle calibration.
+
+**Amendment 1 correction (per nwrp192 — supersedes Amendment 1 above):**
+
+Plan-review iter-1 BLOCKING-1 (security-reviewer 2026-05-20) surfaced that Amendment 1 as authored was mechanically unimplementable under Q1=C union semantics: a broad `^\.claude/hooks/` path regex matches ALL files under that path, including `.sh` executables. Amendment 1's "explicit-NO `.sh` clause" intent was carried in prose but not in the implementation contract; the spec-checker interpreted this as deliberate trade-off, the security-reviewer as internally inconsistent. Rule 9 cross-reviewer factual disagreement triggered HALT for Jake authorization.
+
+Per nwrp192 §3-12 Jake-authored resolution: **.sh-enforces wins.** Three reasons:
+
+1. **Hook files are executable discipline infrastructure.** A change to `nightwork-pre-commit.sh` modifies the gate enforcing everything else. The one place "skip" is most dangerous is exactly the gate that does the enforcing. `.sh`-enforces is the safer default.
+
+2. **Sign-off-cycle discipline operates INDEPENDENTLY of the QA timestamp gate.** The nwrp160/161 three-cycle sign-off happened via surface-for-Jake-review per Rule 8 — that works regardless of whether the QA timestamp gate fires. We don't need hooks doc-only-skippable for sign-off discipline to function. Amendment 1 conflated two independent things.
+
+3. **Option B preserves the clean mental model:** executable code (`.sh`) enforces; prose (`.md`/`.txt`/config) skips. Option A (broad-path skip) muddies it ("hooks skip despite being executable").
+
+**Corrected boundary (per nwrp192 §17 verbatim):**
+
+> "Hook DOCUMENTATION (`.claude/hooks/*.md`, `*.txt`) is doc-only-skippable. Hook EXECUTABLES (`.claude/hooks/*.sh`) enforce the QA timestamp gate — they're executable discipline infrastructure, and modifying the gate that enforces everything else should carry QA evidence. Sign-off-cycle discipline for hook changes (Rule 8, evidenced nwrp160/161) operates independently of the QA timestamp gate via surface-for-Jake-review, so `.sh`-enforces does NOT weaken hook-change discipline."
+
+**Mechanical implementation (PLAN must reflect):**
+
+The path-allowlist regex for `.claude/hooks/` is restricted from broad `^\.claude/hooks/` to `^\.claude/hooks/.*\.(md|txt)$`. Only documentation files in the hooks directory skip; `.sh` hook files fall through to the QA timestamp gate.
+
+**Sweep extension (per nwrp192 §15 mandate — verify other `.claude/*` paths for executable file leak risk):**
+
+Orchestrator pre-flight sweep 2026-05-20 confirmed:
+- `.claude/commands/` → ONLY `.md` files at HEAD. Safe to skip broadly via `^\.claude/commands/`. (Convention codified by Anthropic Claude Code; deviations would be uncommon.)
+- `.claude/agents/` → ONLY `.md` files at HEAD. Safe to skip broadly via `^\.claude/agents/`. (Same convention.)
+- `.claude/hooks/` → MIXED (`.sh` + future `.md` docs). MUST restrict to `.(md|txt)$` per BLOCKING-1 fix.
+- `.claude/skills/` → MIXED (contains `.sh` executables under `continuous-learning-v2/agents/`, `continuous-learning-v2/hooks/`, `continuous-learning-v2/scripts/`; `.py` scripts; `.js` browser scripts; `.json` configs; `.css`/`.html`/`.jsx` skill content). **MUST also restrict to `.(md|txt)$`** to prevent the same `.sh`-skip leak.
+
+**Final path-allowlist contract (PLAN must implement):**
+
+| Path | Restriction | Rationale |
+|---|---|---|
+| `^\.planning/` | broad (no extension restriction) | Planning artifacts are documentation by convention; current contents are `.md`/`.txt` only |
+| `^docs/` | broad | Project docs directory; documentation by convention |
+| `^\.claude/agents/` | broad | At HEAD, contains ONLY `.md` agent definitions; future executable additions would be uncommon per Claude Code convention |
+| `^\.claude/commands/` | broad | At HEAD, contains ONLY `.md` slash command definitions; same convention as agents |
+| `^\.claude/hooks/.*\.(md\|txt)$` | RESTRICTED | Mixed: contains `.sh` executables. Only docs (`.md`/`.txt`) under this path skip. |
+| `^\.claude/skills/.*\.(md\|txt)$` | RESTRICTED | Mixed: contains `.sh`/`.py`/`.js`/`.json`/`.css`/`.html`/`.jsx` (per `continuous-learning-v2/` + `impeccable/scripts/`). Only docs skip. |
+
+**AC-HDOD-13a wording stands as originally framed** (per nwrp190 §17-22 + nwrp192 §19): the `.sh`-containing ship commit enforces the QA timestamp gate and passes via fresh QA timestamp (because this chore plan's own `/nightwork-qa` cycle writes a fresh report before the ship commit lands). AC-HDOD-13b throwaway doc-only test remains meaningful (proves `.md` skip path works mechanically).
+
+**spec-checker W-1 from iter-1 is resolved by this correction** — the `.sh`-under-`.claude/hooks/` skip behavior is corrected; no longer a trade-off to flag.
 
 ### Q3 — Mixed-commit posture: doc files + code files?
 
