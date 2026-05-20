@@ -875,6 +875,49 @@ Default posture absent specific orchestrator directive: **halt-and-surface on di
       synthesis is acceptable intermediate state; persistence to canonical
       `.planning/qa-runs/*.md` is the record.
 
+  (e) **Doc-only-skip carve-out is a calibrated exception, not a posture
+      change (per stage-f1-hook-doc-only-detect ship 2026-05-20, commit
+      `c20e5d9`, nwrp192 Option B).** The qa-timestamp + verdict gates
+      in `.claude/hooks/nightwork-pre-commit.sh` skip when EVERY staged
+      file matches the explicit doc-only allowlist (extensions `.md` /
+      `.txt` / `.gitignore` / `LICENSE` / `CHANGELOG` / `README` /
+      `.editorconfig`; broad-skip paths `.planning/` / `docs/` /
+      `.claude/agents/` / `.claude/commands/`; restricted-skip paths
+      `.claude/hooks/.*\.(md|txt)$` + `.claude/skills/.*\.(md|txt)$`).
+      Three contracts preserve fail-closed posture:
+
+        - **`.sh` / `.py` / `.js` / `.json` / `.css` / `.html` / `.jsx`
+          executable / config-as-code files enforce.** Under `.claude/hooks/`
+          and `.claude/skills/` the path-allowlist is restricted to `.md`/`.txt`
+          so executable discipline infrastructure (the hooks themselves and
+          the skill-side scripts under `continuous-learning-v2/`,
+          `impeccable/scripts/`) cannot skip the QA gate. Modifying the gate
+          that enforces everything else MUST carry QA evidence. Sign-off-
+          cycle discipline (nwrp160/161 three-cycle precedent on hook
+          changes) operates INDEPENDENTLY of the qa-timestamp gate via
+          surface-for-Jake-review and is NOT weakened by `.sh`-enforces.
+
+        - **Q3=A strict-mixed enforcement.** Any single non-allowlist file
+          in a commit → full fall-through. There is no continuous threshold
+          ("mostly doc files"); the gate is binary. Per Rule 7e (scope-
+          engineering ban), the strict posture prevents discipline-erosion
+          via bundle-padding.
+
+        - **Drummond grep gate precedence.** The Drummond grep gate fires
+          BEFORE the doc-only-skip path is evaluated; doc-only-skip exits 0
+          AFTER Drummond has run cleanly on any diff that touches
+          `src/app/design-system/_fixtures/drummond/`. Doc-only-skip CANNOT
+          bypass the Drummond gate. (Lines 65-92 of the hook remain byte-
+          identical to pre-edit state per AC-HDOD-11 security-reviewer
+          mechanical verification.)
+
+      First production use: 2026-05-20 custodian commit closing
+      TD-NW-HOOK-DOC-ONLY-DETECT (Rule 8(e) sub-clause append +
+      MASTER-PLAN §11 row update). Future doc-only commits ride this
+      branch without `--no-verify`; hook bypass count target holds at 4
+      (no further accumulation expected absent process gaps that justify
+      explicit per-incident Jake authorization per Rule 8(a)).
+
 - **Rule 9 — Cross-reviewer factual disagreement HALT (per nwrp118
   Wave-C origin; codified across slices).** Any plan-review iter-1 or QA
   cycle with **cross-reviewer factual disagreement** (two or more reviewers
