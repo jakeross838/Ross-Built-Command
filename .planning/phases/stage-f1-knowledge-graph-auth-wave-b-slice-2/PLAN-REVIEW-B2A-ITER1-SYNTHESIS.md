@@ -214,8 +214,86 @@ Jake authorizes one-time bump of $50 per-plan halt gate to (say) $75. Iter-2 pro
 
 ---
 
-## Halt per nwrp202 §17 + /np Step 4
+## Iter-2 revision checklist (fresh-session-ready per nwrp203 §11)
+
+**Tomorrow's iter-2 applies this checklist directly. Each item has a specific fix location + approach so the executor doesn't need to re-read 7 reviewer reports.**
+
+### BLOCKING fixes — 6 items (all in `B-2a-PLAN.md`)
+
+| # | Item | Location | Fix approach | Est lines |
+|---|---|---|---|---|
+| **BLK-1** | Add `<criteria>` yaml block (D-17/D-18 mandate) | Insert near frontmatter (after `qa_reviewers` block) | Add 5 categories: mechanical (SQL queries verifying FK shape, RPC bodies, indexes), dom (admin revocation UI verification), visual (`N/A` with nwrp202 §15 rationale — no homeowner UI), behavioral (revocation flow end-to-end), semantic (token-resolution path reasoning) | ~25 |
+| **BLK-2** | AC-B2a-06 Query 2 arg-count fix | PLAN:1845 (AC text) | Change "5 arguments" → "6 arguments". Verification SQL at PLAN:1992-1999 already correct (6 args) — only AC text needs fix | 1 |
+| **BLK-3** | DROP + recreate `idx_client_portal_access_token_hash` non-partial | Task 1 migration body §1 (add new sub-step `§1j` or similar) | `DROP INDEX IF EXISTS public.idx_client_portal_access_token_hash; CREATE UNIQUE INDEX idx_client_portal_access_token_hash ON public.client_portal_access (access_token_hash);` Plus matching DROP+restore in down-migration §3 | ~6 (forward + down) |
+| **BLK-4** | Add REVOKE/GRANT pairs for 3 re-defined SECURITY DEFINER RPCs (00103 precedent) | Task 1 migration body §3 (after each `CREATE OR REPLACE`) | For each of `create_client_portal_invite`, `submit_client_portal_message`, `mark_client_portal_message_read`: `REVOKE EXECUTE ON FUNCTION <name>(<args>) FROM PUBLIC; GRANT EXECUTE ON FUNCTION <name>(<args>) TO authenticated, anon;` (verify role list against 00074 original GRANTs first) | ~12 (3 RPCs × 4 lines) |
+| **BLK-5** | Fix §4 resolution table B-9 row + acknowledge Option A semantics in AC-B2a-08 | §4 resolution table (B-9 row) + AC-B2a-08 | Change §4 B-9 row from describing Option C predicate (`WHERE revoked_at IS NULL AND client_id IS NOT NULL AND expires_at > now()`) to Option A (`WHERE client_id IS NOT NULL` + `revoked_seq` in tuple — matches actual migration at §5:1089-1091). Add explicit note: "Under Option A, admin must revoke expired tokens before re-inviting; semantic captured in AC-B2a-08" | ~6 |
+| **BLK-6** | Add Rule 2 FK citation verification query | §9 verification commands | Add: `SELECT conname FROM pg_constraint WHERE conrelid IN ('public.client_portal_access'::regclass, 'public.draws'::regclass) AND contype = 'f';` + expected output table listing the FK constraint names referenced in PLAN | ~8 |
+
+### HIGH fixes — 2 items
+
+| # | Item | Location | Fix approach | Est lines |
+|---|---|---|---|---|
+| **H-1** | Pin AC-B2a-05 timing-oracle probe methodology | AC-B2a-05 verification block | Replace defer-to-execute language with concrete query: `SET enable_seqscan = off; EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM client_portal_access WHERE access_token_hash = <hash>;` + expected behavior assertion ("Index Scan using `idx_client_portal_access_token_hash` — confirms non-partial index serves query without `revoked_at IS NULL` predicate") | ~6 |
+| **H-2** | Add CSRF protection to admin revoke POST | Task 7 (admin revocation route) + §6.d threat model | Add Origin header validation (`request.headers.get('origin')` matches `process.env.NEXT_PUBLIC_APP_URL`) OR CSRF token (preferred: same-origin check via Origin header — simpler, no token storage). Document in §6.d threat model | ~10 |
+
+### WARNING fixes — 2 items
+
+| # | Item | Location | Fix approach | Est lines |
+|---|---|---|---|---|
+| **W-1** | Clarify PUBLIC_PATHS comment | §6.g + middleware code sample inline comment | Replace combined comment with split form: `/api/owner-portal/acknowledge` (anon-via-token, B-2b consumer; route reaches handler) AND `/api/owner-portal/admin/*` (authenticated admin, B-2a consumer; handler enforces via `getCurrentMembership()`) | ~3 |
+| **W-2** | Disposition admin revocation rate-limit IP-only | §6.d threat model + Jake checklist | EITHER (a) explicitly accept as design choice ("admin sessions are authenticated + optimistic-lock-bound; per-membership.user_id rate-limit deferred to Wave 1.1-Lite if observation surfaces abuse") OR (b) add `recordOwnerPortalRequest('user_id', membership.user_id)` to Task 7 step 3 | ~5 (acceptance text) or ~3 (code add) |
+
+### NOTE cleanups — 5 items (all cosmetic; <10 lines total)
+
+| # | Item | Location | Fix |
+|---|---|---|---|
+| **N-1** | `internal_billings` → `internal_billing_types` citation | PLAN lines 67, 372 (search "internal_billings") | One-word fix in 2 places |
+| **N-2** | Drummond canary vacuously true today (0 cpa rows) | AC-B2a-13 sub-item 9 | Add note: "If `client_portal_access` is empty at backfill time (current state per ai-logic Q6), canary passes vacuously. Active probe via AC-B2a-06 sub-item 2 RPC invocation against Drummond covers the canary intent." |
+| **N-3** | `draws.job_id` prose imprecision | PLAN lines 111, 199, 966 | Change "does not exist" → "no unfiltered single-column index on `draws.job_id` exists; existing partial composites (`idx_draws_job_number`, `idx_draws_job_status`) are partial-on-deleted_at and cannot serve B-2a helper queries that don't filter `deleted_at IS NULL`" |
+| **N-4** | `as any` cast in §6.d contradicts Task 7 step 4 | §6.d line 582 | Change `revoked_at: 'now()' as any` → `revoked_at: new Date().toISOString()` (matches Task 7 step 4 authoritative form) |
+| **N-5** | B-2b plan-review awareness note (multi-tenant MINOR-NOTE) | Add to §12 Jake checklist OR a new "B-2b dispatch preconditions" section | Add: "B-2b plan-review iter-1 must include grep-based gate blocking direct `createServiceRoleClient()` / `createServerSupabaseClient()` invocations in `src/app/api/owner-portal/**` files — the `scopedFrom` wrapper is scope-floor enforcer, not complete query gate" |
+
+### Latitude dispositions (record cross-reviewer-approved choices; remove "ITER-1 DISPOSITION REQUIRED" markers)
+
+| # | Latitude | Disposition | Reviewers approving |
+|---|---|---|---|
+| **L-3** | revoked_seq Option A (column + revocation versioning) | APPROVED Option A | security + multi-tenant |
+| **L-4** | Sliding-window UPDATE 90→1-year in `submit_client_portal_message` + `mark_client_portal_message_read` | APPROVED IN-SCOPE (NECESSARY CONSEQUENCE of nwrp200 1-year lock; scope-completeness CONFIRMED via ai-logic Q8 query) | security + multi-tenant + ai-logic |
+
+**PLAN body update:** §2 should drop the "ITER-1 DISPOSITION REQUIRED" markers + record the APPROVED dispositions with cross-reviewer attribution.
+
+### Re-review scope for iter-2 (subset; cost-bounded)
+
+After iter-2 revision, re-spawn ONLY the affected reviewers (others passed or are unaffected):
+
+| Reviewer | Re-review needed? | Reason |
+|---|---|---|
+| spec-checker | YES | Verifies BLK-1 `<criteria>` block + BLK-2 AC fix + N-2 Drummond canary note + Latitude dispositions recorded |
+| custodian | NO | Passed iter-1; tree state unchanged by revisions |
+| security-reviewer | YES | Verifies BLK-3 timing-oracle fix + BLK-4 REVOKE/GRANT pairs + H-2 CSRF fix |
+| multi-tenant-architect | NO | Passed iter-1; revisions don't touch BY-CONSTRUCTION boundary |
+| rls-auditor | OPTIONAL | Verifies W-1 + W-2 if Jake wants explicit confirmation; can defer to spec-checker absorbing |
+| database-reviewer | YES | Verifies BLK-5 §4 fix + BLK-6 FK citation query + N-1 cosmetic + N-3 prose |
+| ai-logic-tester | YES | Runs final Rule 3 representative queries against the revised PLAN; verifies BLK-3 fix at runtime (EXPLAIN against new non-partial index) |
+
+**Re-review cost projection:** 4-5 reviewers (spec-checker + security + database + ai-logic + optional rls-auditor) — estimate $8-14.
+
+### Iter-2 total budget (per nwrp203 fresh $50 ceiling)
+
+- Revision (apply 6 BLK + 2 H + 2 W + 5 N + Latitude recording): ~$8-12
+- Re-review (4-5 reviewers): ~$8-14
+- Re-synthesis: ~$2
+- **Subtotal: ~$18-28** — within fresh $50 ceiling
+- Buffer for execute + GATE: ~$22-32 within fresh $50
+
+If iter-2 surfaces a new BLOCKING finding (e.g., a reviewer flags something on the timing-oracle fix), halt-and-surface per Rule 7d before further work.
+
+---
+
+## Halt per nwrp202 §17 + /np Step 4 + nwrp203 Option B
 
 `halt_after: true` on B-2a frontmatter → GATE B-2a substantive Jake review required before B-2b dispatches. **This synthesis is the first GATE B-2a artifact.**
 
-**Awaiting Jake disposition.** No /nx, no commits beyond the synthesis bundle, no autonomous next action.
+**Per nwrp203: Option B (halt-for-fresh-session) — Jake authorized 2026-05-21.** Today's session terminates after committing this synthesis + INTERIM-STATE. B-2a resumes tomorrow with fresh $50 per-plan ceiling scoped to iter-2 revision + re-review + execute + GATE.
+
+**Awaiting tomorrow's resume sequence per nwrp203 §25-30.** No /nx tonight. No further action this session beyond commit + push + STOP.
