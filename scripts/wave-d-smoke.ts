@@ -48,7 +48,7 @@
 //   Screenshots are for Jake's eyeball review at GATE-N halt, NOT for pixel-
 //   diff regression detection.
 //
-// ROUTE COUNT (13 unique)
+// ROUTE COUNT (14 unique)
 //   Issue-1 unique:    /today, /admin/platform/jobs-health, /settings/workflow,
 //                      /financials/bills/<synthetic-invoice-id>,
 //                      /jobs/<synthetic-job-id>, /jobs/new                = 6
@@ -57,7 +57,8 @@
 //   Issue-2 unique:    /financials/bills/qa, /financials/lien-releases,
 //                      /financials/payments, /financials/pay-apps         = 4
 //   Redirect sentinel: /invoices  (asserts HTTP 308 → /financials/bills)  = 1
-//   TOTAL: 13 unique routes
+//   Admin (F1-Wave-B Slice-2 B-2a):  /admin/owner-portal-tokens          = 1
+//   TOTAL: 14 unique routes
 //
 // OUTPUT
 //   JSON at .planning/qa-runs/wave-d/smoke-results.json (per iter-2 §4.1)
@@ -111,7 +112,8 @@ const SMOKE_RESULTS_PATH = path.join(SMOKE_OUTPUT_DIR, "smoke-results.json");
 
 // Per-route timeout (ms) — 30s navigate + 5s settle ≈ 35s budget.
 const PER_ROUTE_TIMEOUT_MS = 30_000;
-// Outer walltime cap (ms) — 13 routes * ~35s ≈ 7.5min; cap at 10min.
+// Outer walltime cap (ms) — 14 routes * ~35s ≈ 8.2min; cap at 10min.
+// (Route count +1 in F1-Wave-B Slice-2 B-2a per CONTEXT D-09.)
 const OUTER_TIMEOUT_MS = 600_000;
 // Warmup ping timeout (ms) — cold-lambda absorption.
 const WARMUP_TIMEOUT_MS = 30_000;
@@ -122,10 +124,16 @@ const WARMUP_TIMEOUT_MS = 30_000;
 
 interface RouteCheck {
   route: string;
-  category: "issue-1" | "issue-2" | "both";
+  // F1-Wave-B Slice-2 B-2a extension (per CONTEXT D-09 + plan §5 Task 9):
+  // 'admin' category added for /admin/owner-portal-tokens route. The
+  // harness fixture user (harness-fixture@nightwork.local in fixture-
+  // harness-org) holds org-admin role per scripts/harness-auth-bootstrap.ts
+  // — sufficient to access /admin/* surfaces; the role gate at
+  // src/app/admin/owner-portal-tokens/page.tsx accepts ('owner'|'admin').
+  category: "issue-1" | "issue-2" | "both" | "admin";
   primary_ux_selector: string | null;
   primary_ux_min_count?: number;
-  pattern?: "document-review";
+  pattern?: "document-review" | "admin-list";
   expected_http_status?: number; // default 200
 }
 
@@ -272,6 +280,19 @@ const ROUTES: RouteCheck[] = [
     category: "issue-2",
     primary_ux_selector: null,
     expected_http_status: 308,
+  },
+  // F1-Wave-B Slice-2 B-2a per CONTEXT D-09 + plan §5 Task 9:
+  // admin owner-portal token revocation surface. Harness fixture
+  // user holds org-admin role (sufficient for /admin/*). Selector
+  // is the page heading h1 — stable semantic anchor (workflow concept
+  // unlikely to be renamed even if the H1 phrasing evolves; mirrors
+  // the /settings/workflow selector posture).
+  {
+    route: "/admin/owner-portal-tokens",
+    category: "admin",
+    primary_ux_selector: "role=heading[name=/owner portal tokens/i]",
+    primary_ux_min_count: 1,
+    pattern: "admin-list",
   },
 ];
 

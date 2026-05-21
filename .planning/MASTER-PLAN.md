@@ -324,6 +324,12 @@ Updated continuously by `nightwork-custodian` after each `/gsd-ship`. Order is a
   - ✅ B-1a-bis — clients consumer refactor + DROP COLUMN migration 00101 (19 src refactor + new `/api/clients?search=` endpoint). 9-reviewer QA NEEDS-WORK → bundle-fixed at `323f0be` (OnboardWizard hex + ClientCombobox F3/F4 ARIA). Shipped 2026-05-15 16:14. 3 TDs documented (TD-B1abis-01/-02/-03); MEDIUM-1 PATCH /api/jobs org_id carry-forward to Slice-2.
   - ✅ B-1b — KG scaffold + types pipeline + 3 exemplar validators (wi-001, wi-013, client-pii-not-embedded) + 4 Layer 2 integrity standards (audit-conservation, rls-coverage, role-permission-integrity, fixture-coverage) + W.1 `onAuthStateChange` listener env-flag activation. All 13 ACs satisfied. Custodian review PASS. Shipped 2026-05-18 15:16. 1 new TD (TD-WB-LISTENER-UNFLAG — observation window Slice-2 follow-up).
 
+**WAVE-B SLICE-2 IN PROGRESS (2026-05-21):**
+- **🚧 Wave-B-Slice-2 — 1 of 7 plans shipped. Slice-2 dispatched per nwrp200 re-split + nwrp202 RE-APPROVE + nwrp204 iter-2 + nwrp207 execute.** B-2 (umbrella scope) split into B-2a (security foundation) + B-2b (UI read-only) per iter-1 SYNTHESIS B-4 NULL-leak finding.
+  - ✅ B-2a — token-issuance security model (composite FK invariant + create_client_portal_invite RPC NULL-leak fix + 1-year token lifecycle + MANDATORY admin revocation + non-partial token-hash index + DB-backed rate-limit + activity_log.actor_token_id + getScopedOwnerPortalClient/assertDrawBelongsToToken helpers). Migration 00104 + 6 supporting commits (fc19a2e, a70ea03, 4abe5a0, fdd653b, 144c108, 6f65a9e, 69eb20b). Shipped 2026-05-21 — **GATE B-2a HALT pending Jake substantive review per nwrp202 §17 + EXPANDED-SCOPE §9 (9 verification items)**. 1 TD documented (TD-B2a-ACL-hardening — Supabase default-ACL anon+authenticated auto-grants on SECURITY DEFINER funcs; pre-existing systemic; Wave 1.1-Lite consideration).
+  - 🔒 B-2b — owner portal read-only UI (gated on B-2a GATE approval).
+  - ⏳ B-3..B-7 — sequenced after B-2b ship per EXPANDED-SCOPE §8.
+
 **NEXT PHASE GATE:**
 - **Pending GATE 2 HALT (Jake review).** Per nwrp152/nwrp171, validator interface shape + Layer 2 standards architecture + W.1 env-flag posture require substantive review before Slice-2 dispatch. Jake call per:
   - How satisfied with the locked validator interface contract (async uniform Promise<ValidatorResult>) for F2-F5 inheritance?
