@@ -4,7 +4,40 @@ import { updateSession } from "@/lib/supabase/middleware";
 // Anything a signed-out visitor can reach (marketing + auth pages).
 // "/" is the marketing landing; the root page redirects authed users
 // to /dashboard itself, so we leave that branching to the page.
-const PUBLIC_PATHS = ["/", "/login", "/signup", "/pricing", "/forgot-password"];
+//
+// F1-Wave-B Slice-2 B-2a extension (per CONTEXT D-12 + iter-1 SYNTHESIS
+// B-5 + W-1 disposition split form): owner-portal paths added with
+// per-entry auth-model comments. PUBLIC_PATHS bypasses the auth-redirect
+// in the !user branch below; route handlers and pages MUST do their own
+// auth checks (token resolution via `resolveOwnerToken` for anon; or
+// `getCurrentMembership()` + role assertion for authenticated admin).
+// PUBLIC_PATHS extension is NOT an auth-check skip — only an auth-
+// redirect skip. (See Sweep 4 in B-2a-PLAN.md §5.)
+const PUBLIC_PATHS = [
+  "/",
+  "/login",
+  "/signup",
+  "/pricing",
+  "/forgot-password",
+  // F1-Wave-B Slice-2 B-2a per D-12: anon homeowner UI (B-2b). Matches
+  // /owner/{token} via the startsWith(`${p}/`) matcher below. Route
+  // handler does token resolution via `resolveOwnerToken` from
+  // src/lib/owner-portal/token.ts; invalid/expired/revoked tokens
+  // return 404 in B-2b.
+  "/owner",
+  // F1-Wave-B Slice-2 B-2a per D-12 + B-5: anon homeowner pay-app
+  // acknowledge endpoint (B-2b). Reaches route handler as anon (NOT
+  // 401 by middleware). Route handler does token resolution +
+  // `assertDrawBelongsToToken` from src/lib/owner-portal/token.ts.
+  "/api/owner-portal/acknowledge",
+  // F1-Wave-B Slice-2 B-2a per D-12: authenticated admin revocation
+  // endpoint. Reaches route handler as authenticated (PUBLIC_PATHS
+  // entry is for auth-redirect skip; route handler enforces auth via
+  // `getCurrentMembership()` + asserts role IN ('owner', 'admin')).
+  // CSRF protection at route handler via Origin header validation
+  // (H-2 iter-1 SYNTHESIS).
+  "/api/owner-portal/admin",
+];
 
 // Pages that remain reachable even when the billing gate is "expired".
 // Users need to be able to open the billing page to resubscribe, hit the
