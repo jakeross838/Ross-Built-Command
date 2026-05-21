@@ -13,6 +13,18 @@
  *     RESTRICTIVE RLS policies.
  *   - `details` is JSONB; callers should include `from` / `to` for status
  *     changes, and a `reason` string where the user supplied a note.
+ *
+ * F1-Wave-B Slice-2 B-2a (per CONTEXT D-23 + Sweep 4 WARNING #1 resolution
+ * path (a) — type-extension throughout): `actor_token_id` column added on
+ * activity_log via migration 00104; `LogActivityArgs.actor_token_id` field
+ * is the type contract. Mutual-exclusion semantics (NULL XOR populated)
+ * enforced at the application layer (callers pass either `user_id` OR
+ * `actor_token_id`, never both for a single row). NOT enforced via DB
+ * CHECK — legacy rows + future trigger rows may have both NULL
+ * (bootstrap migrations, B-3 soft-delete triggers). B-2a admin revoke
+ * route writes `user_id` (revoker is an authenticated admin, NOT a
+ * homeowner-via-token); B-2b acknowledge endpoint is the first runtime
+ * writer of `actor_token_id`-bearing rows.
  */
 
 import { tryCreateServiceRoleClient } from "@/lib/supabase/service";
@@ -33,7 +45,8 @@ export type ActivityEntityType =
   | "cost_code"
   | "draw"
   | "user"
-  | "client"; // F1-Wave-B Slice-1 B-1a-bis per nwrp155 B5 partial pull from Slice-2 B-4 — clients table writes (find-or-create in /api/jobs) need audit-log coverage during B-1a-bis -> B-4 window.
+  | "client" // F1-Wave-B Slice-1 B-1a-bis per nwrp155 B5 partial pull from Slice-2 B-4 — clients table writes (find-or-create in /api/jobs) need audit-log coverage during B-1a-bis -> B-4 window.
+  | "client_portal_access"; // F1-Wave-B Slice-2 B-2a per CONTEXT D-10 + Sweep 4 WARNING #1 resolution path (a). Admin revocation of owner-portal tokens writes audit-log rows with this entity_type + action='revoked'. Must mirror ENTITY_LABELS Record entry in src/lib/audit/action-labels.ts per B-1a-bis precedent (line 17 explicit comment).
 
 export type ActivityAction =
   | "created"
@@ -51,11 +64,28 @@ export type ActivityAction =
   // Bulk import batch actions
   | "bulk_assigned_job"
   | "sent_to_queue"
-  | "deleted_errors";
+  | "deleted_errors"
+  // F1-Wave-B Slice-2 B-2a per CONTEXT D-10. Admin revocation of owner-portal
+  // tokens uses entity_type='client_portal_access' + action='revoked'. Must
+  // mirror ACTION_LABELS Record entry in src/lib/audit/action-labels.ts per
+  // B-1a-bis precedent (Record exhaustiveness — TypeScript fails compile if
+  // a union member lacks a Record entry).
+  | "revoked";
 
 interface LogActivityArgs {
   org_id: string;
   user_id?: string | null;
+  /**
+   * F1-Wave-B Slice-2 B-2a per CONTEXT D-23. Present when audit row
+   * originated from owner-portal token-context action (B-2b acknowledge
+   * endpoint writes the rows). Mutually exclusive with `user_id` at the
+   * application layer (callers pass one OR the other, never both).
+   *
+   * B-2a admin revoke endpoint writes `user_id` (revoker is authenticated
+   * admin), NOT `actor_token_id`. B-2b acknowledge endpoint is the first
+   * runtime writer of `actor_token_id`-bearing rows.
+   */
+  actor_token_id?: string | null;
   entity_type: ActivityEntityType;
   entity_id?: string | null;
   action: ActivityAction;
@@ -74,6 +104,7 @@ export async function logActivity(args: LogActivityArgs): Promise<void> {
     const { error } = await supabase.from("activity_log").insert({
       org_id: args.org_id,
       user_id: args.user_id ?? null,
+      actor_token_id: args.actor_token_id ?? null, // F1-Wave-B Slice-2 B-2a per CONTEXT D-23. Defaults to NULL; B-2b acknowledge endpoint populates this on homeowner-initiated writes.
       entity_type: args.entity_type,
       entity_id: args.entity_id ?? null,
       action: args.action,

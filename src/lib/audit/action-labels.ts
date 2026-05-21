@@ -49,6 +49,13 @@ const ENTITY_LABELS: Record<ActivityEntityType, string> = {
   // Label = "Client" (not "Homeowner") per ENTITY-INVENTORY.md row 22 (clients covers
   // both homeowners + commercial clients).
   client: "Client",
+  // F1-Wave-B Slice-2 B-2a per CONTEXT D-10 + Sweep 4 WARNING #1 resolution path (a).
+  // Admin revocation of owner-portal tokens writes audit-log rows with
+  // entity_type='client_portal_access' + action='revoked'. Record exhaustiveness
+  // requirement per B-1a-bis precedent (TypeScript fails compile without entry).
+  // Label = "Owner Portal Token" per ENTITY-INVENTORY.md naming convention
+  // (entity-level noun for audit-log display).
+  client_portal_access: "Owner Portal Token",
   user: "User",
 };
 
@@ -68,6 +75,11 @@ const ACTION_LABELS: Record<ActivityAction, string> = {
   bulk_assigned_job: "bulk assigned to job",
   sent_to_queue: "sent to queue",
   deleted_errors: "errors deleted",
+  // F1-Wave-B Slice-2 B-2a per CONTEXT D-10. Admin revocation of owner-portal
+  // tokens uses action='revoked'. Placed near 'voided' (semantically adjacent —
+  // both are explicit lifecycle reversals). Record exhaustiveness requirement
+  // per B-1a-bis precedent.
+  revoked: "revoked",
 };
 
 /**
