@@ -42,6 +42,7 @@ export type Database = {
       activity_log: {
         Row: {
           action: string
+          actor_token_id: string | null
           created_at: string
           details: Json | null
           entity_id: string | null
@@ -52,6 +53,7 @@ export type Database = {
         }
         Insert: {
           action: string
+          actor_token_id?: string | null
           created_at?: string
           details?: Json | null
           entity_id?: string | null
@@ -62,6 +64,7 @@ export type Database = {
         }
         Update: {
           action?: string
+          actor_token_id?: string | null
           created_at?: string
           details?: Json | null
           entity_id?: string | null
@@ -71,6 +74,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "activity_log_actor_token_id_fkey"
+            columns: ["actor_token_id"]
+            isOneToOne: false
+            referencedRelation: "client_portal_access"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "activity_log_org_id_fkey"
             columns: ["org_id"]
@@ -515,6 +525,7 @@ export type Database = {
       client_portal_access: {
         Row: {
           access_token_hash: string
+          client_id: string | null
           created_at: string
           created_by: string | null
           email: string
@@ -526,11 +537,13 @@ export type Database = {
           name: string | null
           org_id: string
           revoked_at: string | null
+          revoked_seq: number
           updated_at: string
           visibility_config: Json
         }
         Insert: {
           access_token_hash: string
+          client_id?: string | null
           created_at?: string
           created_by?: string | null
           email: string
@@ -542,11 +555,13 @@ export type Database = {
           name?: string | null
           org_id: string
           revoked_at?: string | null
+          revoked_seq?: number
           updated_at?: string
           visibility_config?: Json
         }
         Update: {
           access_token_hash?: string
+          client_id?: string | null
           created_at?: string
           created_by?: string | null
           email?: string
@@ -558,16 +573,31 @@ export type Database = {
           name?: string | null
           org_id?: string
           revoked_at?: string | null
+          revoked_seq?: number
           updated_at?: string
           visibility_config?: Json
         }
         Relationships: [
+          {
+            foreignKeyName: "client_portal_access_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "client_portal_access_job_id_fkey"
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_portal_access_org_id_client_id_fkey"
+            columns: ["org_id", "client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "client_portal_access_org_id_fkey"
@@ -3523,6 +3553,30 @@ export type Database = {
         }
         Relationships: []
       }
+      owner_portal_rate_limit: {
+        Row: {
+          id: number
+          key_type: string
+          key_value: string
+          request_count: number
+          window_start: string
+        }
+        Insert: {
+          id?: number
+          key_type: string
+          key_value: string
+          request_count?: number
+          window_start: string
+        }
+        Update: {
+          id?: number
+          key_type?: string
+          key_value?: string
+          request_count?: number
+          window_start?: string
+        }
+        Relationships: []
+      }
       parser_corrections: {
         Row: {
           corrected_at: string
@@ -5056,6 +5110,7 @@ export type Database = {
         Returns: string
       }
       autoconfirm_signup: { Args: { p_email: string }; Returns: undefined }
+      cleanup_owner_portal_rate_limit: { Args: never; Returns: undefined }
       create_client_portal_invite: {
         Args: {
           p_email: string
@@ -5137,6 +5192,14 @@ export type Database = {
         Returns: undefined
       }
       recompute_po_invoiced: { Args: { p_po_id: string }; Returns: undefined }
+      record_owner_portal_request: {
+        Args: {
+          p_key_type: string
+          p_key_value: string
+          p_window_start: string
+        }
+        Returns: number
+      }
       submit_client_portal_message: {
         Args: { p_message: string; p_token: string }
         Returns: {
