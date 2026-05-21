@@ -1,8 +1,8 @@
 # Stage F1 Wave-B Slice-2 — EXPANDED-SCOPE
 
-**Status:** APPROVED 2026-05-20 (per nwrp196 Jake review; Q1-Q12 + nwrp166 amendments reviewed at nwrp168, confirmed no drift via git log check 2026-05-20 — last touch `4144dc7` on 2026-05-19 matches nwrp168 review timeline)
+**Status:** RE-APPROVED 2026-05-21 per nwrp202 (Jake review of nwrp200 amendment + nwrp201 rate-limit decision + B-4 AC strengthening; "Both confirmed. Proceed."). Re-approval scope: B-2 → B-2a + B-2b re-split + 1-year token expiration LOCKED + mandatory revocation scope-in + DB-backed rate-limit infra LOCKED + 3-query B-4 leak-fix AC. Prior status chain (superseded): AMENDED 2026-05-21 (nwrp200 → nwrp201 in-flight) ← APPROVED 2026-05-20 per nwrp196.
 **Authored:** 2026-05-15 NIGHT
-**Revision:** 2026-05-15 NIGHT (nwrp166 amendments applied — see "Amendment history" below); APPROVED 2026-05-20 per nwrp196
+**Revision:** 2026-05-21 (nwrp200 B-2 re-split + 1-year token expiration LOCKED + mandatory revocation scope-in + rate-limit infra replacement scope-in); 2026-05-15 NIGHT (nwrp166 amendments applied — see "Amendment history" below); APPROVED 2026-05-20 per nwrp196 (superseded by 2026-05-21 amendment)
 **Authorization:** nwrp165 Option A weekend scope (write-up only, no execute)
 **Author:** Claude Code (this session)
 **Phase:** stage-f1-knowledge-graph-auth-wave-b-slice-2
@@ -17,6 +17,16 @@
 > are NOT authored as part of this weekend; only this scope expansion is.
 
 ### Amendment history
+
+- **2026-05-21 — nwrp200 B-2 re-split amendment (pending Jake re-review):**
+  - **B-2 → B-2a + B-2b split.** Decision-driver: iter-1 SYNTHESIS B-4 finding (existing `create_client_portal_invite` RPC produces `client_id=NULL` → intra-org cross-homeowner leak). B-4 is a discovered pre-existing security gap that B-2 scope assumed away — making this a RE-SCOPE not an iter-2 revise. Plan-author's proposed B-2a/B-2b split was REJECTED in favor of Jake's nwrp200 re-split because plan-author's split discovered B-4 but didn't scope its fix. nwrp200's split puts ALL security-critical work into B-2a (HIGH threat) and isolates UI into B-2b (medium threat, builds on B-2a verified foundation).
+  - **B-2a — Token-issuance security model (HIGH threat, was medium for B-2):** create_client_portal_invite RPC NULL leak fix (iter-1 SYNTHESIS B-4); same-org invariant on `client_portal_access.client_id` FK (iter-1 SYNTHESIS B-2); 1-year default expiration LOCKED (supersedes 00074 90-day; per nwrp200 token expiration decision) + MANDATORY admin revocation capability; `/api/owner-portal/*` added to PUBLIC_PATHS (iter-1 SYNTHESIS B-5); partial-index timing-oracle fix (iter-1 SYNTHESIS B-7); expired-token gap fix (iter-1 SYNTHESIS B-9); `(org_id, client_id)` index revisited for 1-client-N-jobs (iter-1 SYNTHESIS B-10); acknowledge SQL pinned via `assertDrawBelongsToToken` helper signature (iter-1 SYNTHESIS B-3); PostgREST FK citation per CLAUDE.md Workflow Rule 2 (iter-1 SYNTHESIS B-8); rate-limit infrastructure replacement (Vercel KV / Upstash / DB-backed; in-process Map non-functional on Vercel per iter-1 SYNTHESIS B-6); `getScopedOwnerPortalClient(resolvedToken)` helper construction per iter-1 SYNTHESIS B-1 (eliminates application-layer-scoping convention anti-pattern); draws + change_orders `job_id` index verification per iter-1 SYNTHESIS B-11 (pg_indexes query; add to migration if missing). Full HIGH-threat reviewer scope.
+  - **B-2b — Read-only portal UI + audit (medium threat, depends on B-2a GATE):** `/owner/{token}` route + standalone layout; mobile-first UI (iPhone 13/14/15 Pro Max + Pixel 7); progress + payment status + document downloads (doc downloads CONFIRMED in scope per nwrp200; resolves iter-1 spec-checker W-1); `actor_token_id` audit integration (iter-1 SYNTHESIS B-13 fix — append-only audit_log, NOT expected_updated_at optimistic-lock); TOCTOU race on acknowledge idempotency (iter-1 SYNTHESIS B-12 — DB unique constraint + INSERT...ON CONFLICT); soft-delete + status filters on portal queries (iter-1 SYNTHESIS B-14); ClientCombobox token polish carry-forward (TD-B1abis-03, moved from B-2 to B-2b); `--shadow-popover` non-existent token fix (iter-1 SYNTHESIS B-15 — use `shadow-[var(--shadow-panel)]`); NwButton 56px TD-20 exemption (iter-1 SYNTHESIS B-16). B-2b dispatch authorization GATED on B-2a GATE confirmation that token scoping is airtight.
+  - **iter-1 SYNTHESIS B-17 RESOLVED:** no new PATTERNS.md "Owner Status View" entry needed; existing §4h.3 (owner portal dashboard) + §2j.3 (draw approval detail) already cover. Drop proposed new pattern + B-2 PLAN's TD-B2-01 entry.
+  - **Token expiration LOCKED to 1-year** (supersedes existing 00074 90-day; supersedes Q5 prior "deferred to Wave 1.1-Lite" recommendation). Rationale per nwrp200: custom homes run 12-24 months; homeowner keeps portal access through the build without re-invite friction; read-only portal (no write, no PII beyond homeowner's own project) means leak severity is low. MANDATORY admin revocation capability is the real security control; 1-year backstops it.
+  - **Slice-2 plan count: 6 → 7** (B-2a, B-2b, B-3, B-4, B-5, B-6, B-7). All "6 plans" references updated.
+  - **§7 acceptance criteria, §8 dependency map, §10 cost projection, §11 risks updated.** §1 Mapped entities updated with new rows for the create_client_portal_invite RPC fix + actor_token_id activity_log column.
+  - **Rate-limit ballooning halt-and-surface escape valve:** if rate-limit infra replacement (Vercel KV provisioning + integration + tests) expands B-2a past $50 per-plan halt gate, plan-author halts + surfaces; possible micro-plan split (B-2a = security model, B-2a-rate-limit = isolated rate-limit infra). NOT pre-decided here; surface-then-decide pattern preserved per Rule 7d.
 
 - **2026-05-15 NIGHT — nwrp166 amendments (this revision):**
   - **Q11 rewrite (distribute, NOT bundle):** dropped proposed B-8 polish bundle plan; distributed 4 Slice-1 carry-forwards across existing plans (TD-B1abis-01 → B-4, TD-B1abis-02 → B-4, TD-B1abis-03 → B-2, W.1 listener unflag → B-3 or B-4 conditional). Slice-2 stays at 6 plans. Cascaded edits in §1 Mapped entities, §7 Recommended scope expansion, §8 dependency map, §10 cost projection, §11 acceptance criteria. (per nwrp166 §7-13)
@@ -66,7 +76,10 @@ From F1 umbrella EXPANDED-SCOPE §9 Plan decomposition (canonical 6-plan Slice-2
 
 | Entity | Plan | Change |
 |---|---|---|
-| `client_portal_access` | B-2 | Add `client_id UUID NOT NULL REFERENCES clients(id) ON DELETE SET NULL` FK (currently scoped only to single job; this widens scope to client identity) |
+| `client_portal_access` | **B-2a** (re-split per nwrp200) | Add `client_id UUID REFERENCES clients(id) ON DELETE SET NULL` FK with **same-org invariant** (composite FK `(org_id, client_id) REFERENCES clients(org_id, id)` after composite UNIQUE on `clients(org_id, id)` OR explicit CHECK trigger — plan-author chooses per iter-1 SYNTHESIS B-2). Backfill from existing `client_portal_access.job_id → jobs.client_id`. Partial unique index `(org_id, client_id, job_id) WHERE revoked_at IS NULL AND client_id IS NOT NULL AND expires_at > now()` per iter-1 SYNTHESIS B-9 + B-10 (1-client-N-jobs allowed; expired-token gap closed). Token expiration LOCKED to 1-year (supersedes 00074 90-day) per nwrp200. |
+| `client_portal_access` — **revocation column** | **B-2a** (per nwrp200 MANDATORY revocation requirement) | If existing `revoked_at` column does NOT already support admin-initiated revocation flow, B-2a adds the column + revocation API path + admin UI surface. Plan-author verifies at /np time and includes in B-2a scope. |
+| `create_client_portal_invite` RPC | **B-2a** (per nwrp200 + iter-1 SYNTHESIS B-4 leak fix) | EXISTING RPC currently inserts `client_portal_access` rows WITHOUT setting new `client_id` column → intra-org cross-homeowner leak (resolve route then queries `.eq('client_id', null)` → PostgREST `.is('client_id', null)` matches ALL rows where `client_id IS NULL`). **Pre-existing security gap** B-2 scope assumed away; B-2a fixes via one of: (a) BEFORE INSERT trigger auto-populating `client_id` from `jobs.client_id`, (b) `CREATE OR REPLACE` the RPC to derive `client_id`, (c) resolve route guards against `row.client_id IS NULL`. Plan-author picks; security-reviewer iter-1 mandatory. |
+| `activity_log.actor_token_id` | **B-2b** (re-split per nwrp200; was B-2) | Add `actor_token_id UUID REFERENCES public.client_portal_access(id) ON DELETE SET NULL`; mutual-exclusion CHECK for new rows (`user_id IS NULL XOR actor_token_id IS NULL` with legacy-row reconciliation). Append-only insert path (NO `expected_updated_at` optimistic-lock per iter-1 SYNTHESIS B-13). TOCTOU race on acknowledge idempotency closed via DB unique constraint `activity_log (entity_id, actor_token_id, action) WHERE action='acknowledged'` + INSERT...ON CONFLICT DO NOTHING per iter-1 SYNTHESIS B-12. |
 | All tenant tables (~25 tables per ENTITY-INVENTORY.md) | B-3 | Per-table trigger declaration for soft-delete audit safety net |
 | `org_members` | B-3 | DEF-WC-1: ADD RESTRICTIVE "org isolation" policy (mirrors 00049 canonical pattern with `(SELECT ...)` session-cache wrapping) |
 | `activity_log.entity_type` TS union | B-4 | + `lien_releases`, `proposals`, `clients`, `client_portal_access`; — `budget` (removed in Q10c) |
@@ -75,7 +88,7 @@ From F1 umbrella EXPANDED-SCOPE §9 Plan decomposition (canonical 6-plan Slice-2
 | `organizations` (RB org row) | B-7 | Update RB seed: `subscription_status='active'`, no Stripe customer ID, `trial_ends_at=NULL` (per Q10 A) |
 | `src/app/api/jobs/route.ts` PATCH (MEDIUM-1 carry-forward) | **B-4** (per nwrp166 §10 + distribute pattern) | Add `.eq("org_id", membership.org_id)` to `PATCH /api/jobs` lines 373-377 (B-1a-bis QA cross-reviewer agreement; pre-existing surface, defense-in-depth fix). |
 | `src/app/api/jobs/route.ts` `resolveClientId` (TD-B1abis-01 carry-forward) | **B-4** (per nwrp166 §11 + distribute pattern) | Catch unique-violation `23505` + re-run find branch (~5 lines, same file as MEDIUM-1). |
-| `src/components/client-combobox.tsx` token polish (TD-B1abis-03 carry-forward) | **B-2** (per nwrp166 §11 + distribute pattern) | Replace inline `boxShadow` + inline `style={fontFamily, color}` with shadow-elevation token + utility classes mirroring cost-code-combobox.tsx idiom (~10 lines). |
+| `src/components/client-combobox.tsx` token polish (TD-B1abis-03 carry-forward) | **B-2b** (re-split per nwrp200; was B-2 per nwrp166 §11) | Replace inline `boxShadow` + inline `style={fontFamily, color}` with shadow-elevation token + utility classes mirroring cost-code-combobox.tsx idiom (~10 lines). Use `shadow-[var(--shadow-panel)]` (closest existing token; `--shadow-popover` does NOT exist per iter-1 SYNTHESIS B-15). |
 | `clients` GIN trigram migration (TD-B1abis-02 carry-forward) | **B-4** (per nwrp166 §11 + distribute pattern; plan-author may opt to defer to B-6) | `CREATE INDEX idx_clients_full_name_trgm ON public.clients USING gin (full_name gin_trgm_ops) WHERE deleted_at IS NULL;` (~1 line SQL). |
 | `useCurrentRole` W.1 listener unflag (B-1b carry-forward) | **B-3 OR B-4 (conditional on observation window)** (per nwrp166 §11 + distribute pattern) | `NEXT_PUBLIC_AUTH_STATE_LISTENER=true` env-var addition in Vercel Production + Preview. Standalone single-commit; lands in whichever of B-3/B-4 ships first AFTER 1-2 weeks observation window + Sentry green + smoke clean. NOT a code change. |
 
@@ -83,7 +96,8 @@ From F1 umbrella EXPANDED-SCOPE §9 Plan decomposition (canonical 6-plan Slice-2
 
 | Workflow | Plan | Surface |
 |---|---|---|
-| Owner Portal Path A login + read-only progress + payment status + document downloads | B-2 | NEW — first user-facing UI in F1 (mobile-friendly mandatory per CLAUDE.md). Minimum-viable surface; not full feature set per Q4b. |
+| Token-issuance security model — same-org FK invariant + 1-year + revocation + rate-limit + RPC leak fix + scope helper | **B-2a** (re-split per nwrp200) | Security core: closes pre-existing cross-homeowner leak (iter-1 SYNTHESIS B-4); locks token lifecycle (1-year + MANDATORY revocation); introduces real rate-limit infrastructure (Vercel KV / Upstash / DB-backed, NOT in-process Map per iter-1 SYNTHESIS B-6); introduces `getScopedOwnerPortalClient(resolvedToken)` helper that returns pre-scoped Supabase wrapper eliminating "every author must remember `.eq()`" anti-pattern (iter-1 SYNTHESIS B-1). HIGH threat model. |
+| Owner Portal Path A read-only progress + payment status + document downloads | **B-2b** (re-split per nwrp200; was B-2) | First user-facing UI in F1 (mobile-friendly mandatory per CLAUDE.md). Minimum-viable surface; not full feature set per Q4b. Document downloads CONFIRMED in scope per nwrp200 (resolves iter-1 spec-checker W-1). Depends on B-2a GATE. |
 | Soft-delete safety net | B-3 | TRIGGER-LAYER — guarantees audit row on every soft-delete transition regardless of code path. Threads `current_setting('app.current_user_id', true)` from middleware. |
 | Email receiving (Resend webhook) | B-5 | NEW — receives delivery/bounce/complaint events + storage-only intake of inbound emails. No parsing, no routing to invoice pipeline. |
 | Magic-link delivery + token primitive | B-5 | NEW — email-delivery infra + token-generation helper for F4 reuse (Architect/Inspector RFI, Sub Portal). Does NOT replace internal password login (Q5 A). |
@@ -100,8 +114,8 @@ What MUST exist before this slice can ship.
 | # | Gap | Source | Blocking? |
 |---|---|---|---|
 | 1 | Slice-1 fully shipped (B-D080 + B-1a + B-1a-bis + B-1b) | `e07819a` + post-B-1b commit | **PENDING B-1b ship** (Slice-1 75% complete; B-1b deferred per nwrp164). Slice-2 cannot dispatch until B-1b ships. |
-| 2 | `clients` table exists (per B-1a / migration 00100) | RESOLVED | Required for B-2 FK + B-4 entity_type extension. |
-| 3 | `jobs.client_id` FK exists (per B-1a-bis / migration 00101) | RESOLVED | Required as pattern reference for B-2 FK shape. |
+| 2 | `clients` table exists (per B-1a / migration 00100) | RESOLVED | Required for B-2a FK (per nwrp200 re-split) + B-4 entity_type extension. |
+| 3 | `jobs.client_id` FK exists (per B-1a-bis / migration 00101) | RESOLVED | Required as pattern reference for B-2a FK shape (per nwrp200 re-split). |
 | 4 | KG scaffold + types pipeline (per B-1b) | PENDING B-1b ship | Required for B-3 trigger function + B-5 token helpers + B-7 RB seed to consume `database.types.ts`. |
 | 5 | 4 foundational Layer 2 standards (per B-1b) | PENDING B-1b ship | Required for B-6 fixture-coverage Amendment 3 to plug into existing harness; B-7 multi-viewport extends the same harness. |
 | 6 | W.1 listener env-flag wiring (per B-1b) | PENDING B-1b ship | Slice-2 carries the optional unflag once observation window closes. |
@@ -126,7 +140,7 @@ What's likely needed shortly after — design for it now.
 
 | # | Gap | Likely next slice / wave | Design implication |
 |---|---|---|---|
-| 1 | Full Owner Portal feature set (notifications, comments, signature workflows, ongoing engagement) | Wave 1.1-Lite | Plan B-2 minimum-viable UI must NOT block future feature additions. Token model from 00074 already supports the extension; design page surface to additively layer new features. |
+| 1 | Full Owner Portal feature set (notifications, comments, signature workflows, ongoing engagement) | Wave 1.1-Lite | Plan B-2b minimum-viable UI (per nwrp200 re-split) must NOT block future feature additions. Token model from 00074 (extended in B-2a per nwrp200) already supports the extension; design page surface to additively layer new features. |
 | 2 | AI parsing of inbound email into specific entities (invoice / proposal / lien-release extraction) | Wave 3 (intelligence layer) | Plan B-5's `documents.raw_payload` JSONB must preserve everything Wave 3 will need for extraction (headers, attachments, MIME parts). |
 | 3 | accounting@rossbuilt.com inbox setup + MX record routing | Wave 3 | Plan B-5 ships only the webhook receiver + storage; MX routing is a Resend-side configuration. Document in B-5 README. |
 | 4 | Multi-modal extraction per WI-038 punchlist (email + photo + audio) | Wave 3 | Plan B-5 establishes the `documents` row-as-intake pattern; Wave 3 reuses for non-email modalities. |
@@ -143,27 +157,27 @@ What's likely needed shortly after — design for it now.
 
 | Concern | Status | Rationale |
 |---|---|---|
-| Audit logging | APPLIES (HEAVY) | B-3 trigger guarantees every soft-delete writes activity_log. B-4 extends `entity_type` to F1 entities + adds write-site coverage. B-2 adds `actor_token_id` audit integration on owner-initiated actions (pay-app acknowledgment). B-7 RB seed migration must NOT write activity_log (seed bypass per existing 00092/00093 precedent). |
-| Permissions | APPLIES (HEAVY) | B-2 Owner Portal Path A adds token-based access surface (NOT a new role; OrgMemberRole stays at 4 values per Q4 + Q4b). B-3 DEF-WC-1 closes `org_members` RESTRICTIVE backstop gap. RLS posture summary table (DEF-WC-3 partial) codifies all tenant tables' RLS shape in ARCHITECTURE.md. |
-| Optimistic locking | APPLIES | B-2 introduces first user-facing mutations in F1 (Owner Portal acknowledgments). Apply `expected_updated_at` per R.10 + `updateWithLock()` from `src/lib/api/optimistic-lock.ts`. Required even for simple "I acknowledge" actions. |
+| Audit logging | APPLIES (HEAVY) | B-3 trigger guarantees every soft-delete writes activity_log. B-4 extends `entity_type` to F1 entities + adds write-site coverage. **B-2b** adds `actor_token_id` audit integration on owner-initiated actions (pay-app acknowledgment) — per nwrp200 re-split + iter-1 SYNTHESIS B-13 fix (append-only, no `expected_updated_at` on audit-log writes). **B-2a** admin revocation writes `activity_log` row with authenticated `user_id` (not `actor_token_id`). B-7 RB seed migration must NOT write activity_log (seed bypass per existing 00092/00093 precedent). |
+| Permissions | APPLIES (HEAVY) | **B-2a + B-2b** (per nwrp200 re-split) Owner Portal Path A adds token-based access surface (NOT a new role; OrgMemberRole stays at 4 values per Q4 + Q4b). B-2a introduces same-org FK invariant + revocation API (admin-role-gated) + rate-limit infrastructure. B-3 DEF-WC-1 closes `org_members` RESTRICTIVE backstop gap. RLS posture summary table (DEF-WC-3 partial) codifies all tenant tables' RLS shape in ARCHITECTURE.md. |
+| Optimistic locking | APPLIES (NUANCED per nwrp200 + iter-1 SYNTHESIS B-13) | **B-2b** acknowledge action writes to `activity_log` only (append-only) — `expected_updated_at` does NOT apply per iter-1 SYNTHESIS B-13. The acknowledge button does not mutate the draw row or any other existing row; it appends an audit entry. **B-2a** admin revocation mutates `client_portal_access.revoked_at` — `expected_updated_at` per R.10 + `updateWithLock()` applies here. Plan-authors must distinguish: append-only audit writes have NO optimistic-lock contract; revocation row mutations DO. The earlier blanket "Apply `expected_updated_at` ... required even for simple acknowledge" was incorrect per iter-1 finding. |
 | Soft-delete + status_history | APPLIES | B-3 trigger is THE deliverable. Plan must verify trigger fires on all tenant tables; verify trigger handles `UPDATE ... SET deleted_at = NOW()` pattern (not raw DELETE which is forbidden per CLAUDE.md). |
 | Recalculate, don't increment | APPLIES (VERIFICATION) | B-7 EXPLAIN ANALYZE on 4 candidate aggregations is the Q2 verification step — confirms read-time recompute holds at scale. Any aggregation >100ms gets a trigger cache decision BEFORE Wave 1.1-Lite. |
-| Multi-tenant RLS | APPLIES (HEAVY) | B-2 `client_portal_access.client_id` FK shape: `ON DELETE SET NULL` (preserves token row if client soft-deleted). B-3 trigger function uses `SECURITY DEFINER` — must NOT bypass org_id scoping; trigger writes `activity_log.org_id` from the row's org_id, not a constant. B-3 DEF-WC-1 RESTRICTIVE backstop pattern explicitly tested for cross-org leak prevention. B-6 cost-code reseed preserves org-scoped vs template separation. |
+| Multi-tenant RLS | APPLIES (HEAVY) | **B-2a** (per nwrp200 re-split) `client_portal_access.client_id` FK shape: `ON DELETE SET NULL` (preserves token row if client soft-deleted) + same-org invariant via composite FK or CHECK trigger per iter-1 SYNTHESIS B-2. **B-2a** introduces `getScopedOwnerPortalClient` + `assertDrawBelongsToToken` helpers (per iter-1 SYNTHESIS B-1 + B-3) converting application-layer scoping from convention to BY-CONSTRUCTION. **B-2a** `create_client_portal_invite` RPC NULL-leak fix per iter-1 SYNTHESIS B-4 (intra-org cross-homeowner leak surface closed). B-3 trigger function uses `SECURITY DEFINER` — must NOT bypass org_id scoping; trigger writes `activity_log.org_id` from the row's org_id, not a constant. B-3 DEF-WC-1 RESTRICTIVE backstop pattern explicitly tested for cross-org leak prevention. B-6 cost-code reseed preserves org-scoped vs template separation. |
 | Idempotency | APPLIES | B-5 Resend webhook MUST be idempotent (Resend may deliver same event twice on retry). Use Resend's event ID (`event.data.id` or similar) as idempotency key; check before insert; no-op on duplicate. B-7 RB seed migration MUST be idempotent (re-applying should not create duplicate row; use `INSERT ... ON CONFLICT DO NOTHING` or `UPSERT`). |
 | Background jobs | APPLIES (LIGHT) | B-5 email-in webhook could optionally enqueue Inngest event for downstream processing (Wave 3 prep). Defer Inngest integration to Wave 3 per Q8 (real-time deferred); B-5 ships webhook → storage only. |
-| Rate limiting | APPLIES (MEDIUM) | B-5 Resend webhook is external-facing — rate-limit per Resend signature verification (reject any request without valid `Svix-Signature` header); audit-log all rejections. B-2 Owner Portal token endpoint is also external-facing — rate-limit per token to prevent brute-force token guessing. |
+| Rate limiting | APPLIES (HIGH — was MEDIUM, escalated per nwrp200 + iter-1 SYNTHESIS B-6) | B-5 Resend webhook is external-facing — rate-limit per Resend signature verification (reject any request without valid `Svix-Signature` header); audit-log all rejections. **B-2a `/api/owner-portal/*` is external-facing AND mobile-mandatory — rate-limit per token + IP to prevent brute-force token guessing.** Implementation MUST be Vercel-functional (NOT in-process Map; Vercel serverless functions are ephemeral and the Map is destroyed per invocation, making counter accumulation impossible — iter-1 SYNTHESIS B-6). **Approach LOCKED to DB-backed counter table with TTL cleanup job per nwrp202 §3** (neither Vercel KV nor Upstash provisioned; package.json + .env probe confirms; portal traffic profile is low so DB write load is negligible). Per-token + per-IP keys. Migration boundary (table in 00104 vs separate migration) is plan-author choice at iter-1 per nwrp202 §7. Security-reviewer iter-1 mandatory. Halt-and-surface escape valve still applies if implementation balloons past $50 per-plan halt gate (possible `B-2a-rate-limit` micro-plan split). |
 | Observability | APPLIES (HEAVY) | B-3 trigger errors MUST surface to Sentry (Postgres NOTICE/WARNING captured); B-5 Resend webhook MUST tag Sentry events with `event_type` for filterability; B-7 Stripe sanity check verifies Sentry tags `user_id`/`org_id`/`platform_admin` continue to populate post-RB-seed migration. |
-| Data import/export (V.2) | APPLIES (DESIGN-INTENT) | B-2 Owner Portal Path A document downloads use existing storage signed-URL pattern (no new import/export). B-5 `documents.raw_payload` JSONB is import-shape from day one (Resend payload IS the canonical record); design for V.2 framework reuse in F3. |
+| Data import/export (V.2) | APPLIES (DESIGN-INTENT) | **B-2b** (per nwrp200 re-split) Owner Portal Path A document downloads use existing storage signed-URL pattern (no new import/export). Document downloads CONFIRMED in scope per nwrp200 (resolves iter-1 spec-checker W-1). B-5 `documents.raw_payload` JSONB is import-shape from day one (Resend payload IS the canonical record); design for V.2 framework reuse in F3. |
 | Document provenance (V.3) | APPLIES | B-5 stores inbound emails as `documents` rows; provenance is intrinsic (Resend event ID + delivery timestamp). Sets the precedent for Wave 3 multi-modal extraction provenance. |
-| Mobile-friendly | APPLIES (CRITICAL) | B-2 Owner Portal Path A is the FIRST user-facing surface in F1 + the FIRST mobile-mandatory surface (homeowners use phones). Test on iPhone 13/14/15 Pro Max viewport + Android equivalents per F1+-4 multi-viewport contract (B-7 ships the harness extension). |
-| Drummond fixtures sufficient | APPLIES | B-2 Owner Portal Path A needs Drummond client_portal_access token row + sample payment/document data. B-3 trigger needs Drummond tenant-table rows with valid org_id to validate trigger fires correctly. B-6 cost-code reseed preserves Drummond's existing cost_code linkages. B-7 RB seed updates RB org row (Drummond is `org_id = RB_ORG_ID` so seed touches Drummond data). |
+| Mobile-friendly | APPLIES (CRITICAL) | **B-2b** (per nwrp200 re-split) Owner Portal Path A is the FIRST user-facing surface in F1 + the FIRST mobile-mandatory surface (homeowners use phones). Test on iPhone 13/14/15 Pro Max viewport + Android equivalents per F1+-4 multi-viewport contract (B-7 ships the harness extension). B-2a (security-only, no UI) does not require mobile testing. |
+| Drummond fixtures sufficient | APPLIES | **B-2a** (per nwrp200 re-split) needs Drummond `client_portal_access` token row backfilled with non-NULL `client_id` (migration backfill verified). **B-2b** needs Drummond pay-app history + document data to render against. B-3 trigger needs Drummond tenant-table rows with valid org_id to validate trigger fires correctly. B-6 cost-code reseed preserves Drummond's existing cost_code linkages. B-7 RB seed updates RB org row (Drummond is `org_id = RB_ORG_ID` so seed touches Drummond data). |
 | CI test gate | APPLIES (HEAVY) | B-6 Amendment 3 adds pre-commit hook OR plan-review BLOCKING check that every tenant-scoped CREATE TABLE includes fixture-harness-org INSERT in same migration. B-7 multi-viewport harness extension adds new Layer 3 standard to CI. |
 | Error handling for partial failures | APPLIES | B-3 trigger MUST handle the edge case where `current_setting('app.current_user_id', true)` returns NULL (service-role context); trigger writes NULL user_id with a service-role marker, does NOT block the soft-delete. B-5 webhook MUST handle Resend retries gracefully (see idempotency). |
 | Graceful degradation | APPLIES | B-5 Resend webhook failure (Resend down OR webhook endpoint down) should NOT block other Nightwork operations; alert via Sentry. B-7 Stripe test-mode failure does NOT block ship; document in B-7 README + cross-ref to F1+-1 production cutover. |
-| Wave-B prereq #12 smoke gate maintenance | APPLIES (INHERITED) | Plan-review iter-1 verifies smoke harness still passes ≤2 failures matching TD-WE-03 set. B-2 Owner Portal adds new routes — smoke harness route table MUST be extended; the downstream-consumer-sweep is mandatory per lessons.md 2026-05-15 entry. |
-| Downstream-consumer-sweep (`.planning/lessons.md` 2026-05-15) | APPLIES (INHERITED) | All 6 plans MUST include downstream-consumer-sweep in pre-flight verification. Specifically: B-2 sweeps smoke harness route table for new Owner Portal routes + nav/middleware references; B-3 sweeps every tenant table per ENTITY-INVENTORY.md against trigger application; B-4 sweeps `entity_type` consumers (`src/lib/audit/action-labels.ts` `ENTITY_LABELS` Record per Slice-1 iter-3 §3.2 precedent); B-5 sweeps Resend webhook signature verification across any auth/middleware path; B-6 sweeps cost-code consumers for hardcoded code-id references; B-7 sweeps RB org row consumers for assumed-trial-org behaviors. Plan-review iter-1 BLOCKS without sweep results. |
-| Rules 1-6 (Workflow posture) | APPLIES | Rule 1 (schema verification ≠ runtime verification) — B-2/B-3/B-5/B-7 all require_smoke:true (or Layer 3 harness verification). Rule 2 (PostgREST FK citation) — B-2 cites `client_portal_access_client_id_fkey`. Rule 3 (ai-logic-tester executes representative queries) — all plan-review iter-1. Rule 4 (Playwright smoke pre-QA) — B-2 (UI), B-3 (trigger behavior), B-5 (webhook), B-7 (multi-viewport). Rule 5 (files_modified intersection check) — Slice-2 plans authored in parallel; mechanical intersection check mandatory. Rule 6 (pre-flight collision checks) — all 6 plans; hook regex sweep + fixture collision check + path reachability + parallel intersection per nwrp135. |
-| Plan-review iter-1 cross-reviewer factual disagreement HALT (nwrp118) | APPLIES | Any factual disagreement between reviewers HALTS for Jake. Slice-2's blast radius (6 plans, 25+ tables, trigger function, external webhooks) makes this gate more likely to fire than Slice-1's 4 plans. |
+| Wave-B prereq #12 smoke gate maintenance | APPLIES (INHERITED) | Plan-review iter-1 verifies smoke harness still passes ≤2 failures matching TD-WE-03 set. **B-2b** (per nwrp200 re-split) Owner Portal adds new `/owner/{token}` routes — smoke harness route table MUST be extended; the downstream-consumer-sweep is mandatory per lessons.md 2026-05-15 entry. **B-2a** (security-only) does NOT add UI routes but adds `/api/owner-portal/*` API routes — middleware PUBLIC_PATHS sweep mandatory. |
+| Downstream-consumer-sweep (`.planning/lessons.md` 2026-05-15) | APPLIES (INHERITED) | **All 7 plans** (per nwrp200 re-split; was 6) MUST include downstream-consumer-sweep in pre-flight verification. Specifically: **B-2a** sweeps middleware PUBLIC_PATHS + `getScopedOwnerPortalClient` helper consumers + `create_client_portal_invite` RPC callers + admin revocation UI hooks; **B-2b** sweeps smoke harness route table for new Owner Portal routes + nav/middleware references + `activity_log` ENTITY_LABELS Record for new `acknowledged` action; B-3 sweeps every tenant table per ENTITY-INVENTORY.md against trigger application; B-4 sweeps `entity_type` consumers (`src/lib/audit/action-labels.ts` `ENTITY_LABELS` Record per Slice-1 iter-3 §3.2 precedent); B-5 sweeps Resend webhook signature verification across any auth/middleware path; B-6 sweeps cost-code consumers for hardcoded code-id references; B-7 sweeps RB org row consumers for assumed-trial-org behaviors. Plan-review iter-1 BLOCKS without sweep results. |
+| Rules 1-6 (Workflow posture) | APPLIES | Rule 1 (schema verification ≠ runtime verification) — **B-2a/B-2b/B-3/B-5/B-7** all require_smoke:true (or Layer 3 harness verification); B-2a smoke verifies rate-limit + revocation + RPC fix; B-2b smoke verifies route rendering + mobile viewport. Rule 2 (PostgREST FK citation) — **B-2a** cites `client_portal_access_client_id_fkey` + `client_portal_access_job_id_fkey` per iter-1 SYNTHESIS B-8. Rule 3 (ai-logic-tester executes representative queries) — all plan-review iter-1. Rule 4 (Playwright smoke pre-QA) — B-2a (security flows + admin revocation), B-2b (mobile UI + acknowledge), B-3 (trigger behavior), B-5 (webhook), B-7 (multi-viewport). Rule 5 (files_modified intersection check) — Slice-2 plans authored in parallel; mechanical intersection check mandatory; **B-2a + B-2b sequential by design (B-2b depends on B-2a helpers)**. Rule 6 (pre-flight collision checks) — **all 7 plans**; hook regex sweep + fixture collision check + path reachability + parallel intersection per nwrp135. |
+| Plan-review iter-1 cross-reviewer factual disagreement HALT (nwrp118) | APPLIES | Any factual disagreement between reviewers HALTS for Jake. Slice-2's blast radius (**7 plans** per nwrp200 re-split, 25+ tables, trigger function, external webhooks) makes this gate more likely to fire than Slice-1's 4 plans. B-2a HIGH-threat reviewer scope (security + multi-tenant + rls + database + ai-logic) makes Rule 9 disagreement most likely to fire here. |
 
 ---
 
@@ -171,19 +185,19 @@ What's likely needed shortly after — design for it now.
 
 | Domain consideration | Applies? | Rationale |
 |---|---|---|
-| Drummond as reference job | YES | B-2 Owner Portal Path A demos against Drummond's `client_portal_access` token + Drummond's pay-app history. B-3 trigger fires on Drummond soft-deletes (none expected in test, but trigger must handle if executed). B-6 preserves Drummond cost-code linkages. B-7 RB seed updates Drummond's parent org row. |
+| Drummond as reference job | YES | **B-2a + B-2b** (per nwrp200 re-split) Owner Portal Path A demos against Drummond's `client_portal_access` token (B-2a backfills + secures) + Drummond's pay-app history (B-2b renders). B-3 trigger fires on Drummond soft-deletes (none expected in test, but trigger must handle if executed). B-6 preserves Drummond cost-code linkages. B-7 RB seed updates Drummond's parent org row. |
 | Field mistakes become permanent QC entries | N/A (Wave 2) | Slice does not touch daily-log / punchlist workflows. |
 | Draw requests link to punchlist | N/A (Wave 2) | Reconciliation; not in slice. |
-| Invoice review is gold standard UI | NO (RESPECT) | B-2 Owner Portal Path A is NOT invoice review — it's read-only homeowner view. Different pattern (PATTERNS.md may need new "Owner Status View" pattern documented). |
-| Stone blue palette + Slate type + logo top-left | YES (CRITICAL) | B-2 Owner Portal Path A is new user-facing surface — design system applies. Cite SYSTEM.md + COMPONENTS.md tokens; NO hardcoded hex (post-edit hook enforces). |
+| Invoice review is gold standard UI | NO (RESPECT) | **B-2b** (per nwrp200 re-split) Owner Portal Path A is NOT invoice review — it's read-only homeowner view. Existing PATTERNS.md §4h.3 (owner portal dashboard, Dashboard pattern) + §2j.3 (draw approval detail, Document Review extension) cover. **NO new "Owner Status View" pattern needed** per iter-1 SYNTHESIS B-17 (do NOT invent 13th pattern). |
+| Stone blue palette + Slate type + logo top-left | YES (CRITICAL) | **B-2b** (per nwrp200 re-split) Owner Portal Path A is new user-facing surface — design system applies. Cite SYSTEM.md + COMPONENTS.md tokens; NO hardcoded hex (post-edit hook enforces). Use `shadow-[var(--shadow-panel)]` for popovers per iter-1 SYNTHESIS B-15 (`--shadow-popover` does NOT exist). B-2a (security-only, no UI) does not invoke design-system contract. |
 | Stored aggregates require rationale comments | YES (CARRY-FORWARD) | B-7 EXPLAIN ANALYZE may surface a need for a new trigger-maintained cache; if so, plan-author authors rationale comment per CLAUDE.md exception clause. |
-| Cost-plus open-book | YES (CRITICAL) | B-2 Owner Portal Path A surfaces costs to homeowner — every line item / pay-app / document must accurately reflect cost-plus billing reality. Drummond's data is the demo source. |
-| Florida-specific | YES (LIGHT) | B-2 Owner Portal Path A may eventually surface FL homestead exemption status (deferred per umbrella §1 footer); no FL-specific work in slice. |
-| GC fee semantics | YES (LIGHT) | B-2 Owner Portal Path A pay-app view shows GC fee separately from base; existing data model supports — verify in B-2 UI design that fee is surfaced clearly. |
-| Lien waivers / FL release types | YES | B-4 adds `lien_releases` to `activity_log.entity_type`; B-2 Owner Portal Path A surfaces lien-release status to homeowner (visibility into "have all subs released against my draw?" is a homeowner trust factor). |
+| Cost-plus open-book | YES (CRITICAL) | **B-2b** (per nwrp200 re-split) Owner Portal Path A surfaces costs to homeowner — every line item / pay-app / document must accurately reflect cost-plus billing reality. Drummond's data is the demo source. |
+| Florida-specific | YES (LIGHT) | **B-2b** (per nwrp200 re-split) Owner Portal Path A may eventually surface FL homestead exemption status (deferred per umbrella §1 footer); no FL-specific work in slice. |
+| GC fee semantics | YES (LIGHT) | **B-2b** (per nwrp200 re-split) Owner Portal Path A pay-app view shows GC fee separately from base; existing data model supports — verify in B-2b UI design that fee is surfaced clearly. |
+| Lien waivers / FL release types | YES | B-4 adds `lien_releases` to `activity_log.entity_type`; **B-2b** (per nwrp200 re-split) Owner Portal Path A surfaces lien-release status to homeowner (visibility into "have all subs released against my draw?" is a homeowner trust factor). |
 | Retainage | N/A | Not in slice. |
 | Multi-currency | N/A | FL-only. |
-| Owner notification cadence | DEFER | B-2 Owner Portal Path A is read-only; notification cadence ships in Wave 1.1-Lite. |
+| Owner notification cadence | DEFER | **B-2b** (per nwrp200 re-split) Owner Portal Path A is read-only; notification cadence ships in Wave 1.1-Lite. |
 | Compliance retention | APPLIES | B-3 trigger ensures every soft-delete creates audit row — 7-year financial retention rule (VISION §6.4) preserves trail. B-5 `documents` (inbound email storage) inherits forever retention class. |
 
 ---
@@ -198,27 +212,35 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
 
 3. **B-5 Resend webhook signature verification — Svix-Signature scheme vs Resend's own signature?** Resend's webhook security pattern needs verification before plan-authoring. **Question:** Is Resend's webhook signing using Svix (standard webhook signature library) or Resend-specific HMAC? Verify against Resend dashboard config; document in B-5 plan body. **Recommended: defer to plan-author time — Resend docs verification is mechanical, doesn't need Jake decision.** But surface here because failure to verify signatures correctly is a security gap that would surface late if missed.
 
-4. **PII restoration in UI — when do non-admin roles get to see `clients.email`/`clients.phone`?** Slice-1 D-079 fence excludes `clients.email`/`phone` from PostgREST embeds; `/api/clients?search=` returns only `id, full_name`. **Question:** Does Slice-2's B-2 Owner Portal Path A need contact info visibility (e.g., for "contact your PM" surface) OR is restoration deferred to Wave 1.1-Lite? **Recommended: DEFER to Wave 1.1-Lite.** Rationale: B-2 minimum-viable UI per Q4b is read-only progress + payment + documents; contact info is owner-side data the homeowner already has (their own email/phone). PM contact info surfaces from `profiles` table (subject to D-078 fence — PM's email/phone visible to admin/owner role). Slice-2 NOT the place to relax `clients` PII fence.
+4. **PII restoration in UI — when do non-admin roles get to see `clients.email`/`clients.phone`?** Slice-1 D-079 fence excludes `clients.email`/`phone` from PostgREST embeds; `/api/clients?search=` returns only `id, full_name`. **Question:** Does Slice-2's B-2b Owner Portal Path A (per nwrp200 re-split) need contact info visibility (e.g., for "contact your PM" surface) OR is restoration deferred to Wave 1.1-Lite? **Recommended: DEFER to Wave 1.1-Lite.** Rationale: B-2b minimum-viable UI per Q4b is read-only progress + payment + documents; contact info is owner-side data the homeowner already has (their own email/phone). PM contact info surfaces from `profiles` table (subject to D-078 fence — PM's email/phone visible to admin/owner role). Slice-2 NOT the place to relax `clients` PII fence.
 
    **Deferral dependency-chain cost (per nwrp166 §20):**
    - **PM workflows affected (~4-8 week regression):** PMs creating new clients via the find-or-create UI in B-1a-bis cannot subsequently view that client's email/phone from any UI surface until Wave 1.1-Lite ships a `/clients/{id}` detail page with PII visible to PM role. Today: PM types client name → backend creates row → no UI to view the contact info they just (didn't) enter (B-1a-bis dropped the embedded `client_email`/`client_phone` per Q1 fence). Workaround: PM uses Drummond-style external contact records (email/CRM) until Wave 1.1-Lite.
-   - **Owner-facing copy in B-2 UI affected:** if B-2 Owner Portal needs "Your PM is [name] — contact at [email/phone]" surface (likely homeowner expectation), the contact info must come from `profiles.email`/`profiles.phone` (subject to D-078 fence — accessible to admin/owner role, NOT homeowner via token). Homeowner sees PM name only, not contact info, until Wave 1.1-Lite adds explicit PM-contact surface (separate from clients PII restoration).
+   - **Owner-facing copy in B-2b UI affected (per nwrp200 re-split):** if B-2b Owner Portal needs "Your PM is [name] — contact at [email/phone]" surface (likely homeowner expectation), the contact info must come from `profiles.email`/`profiles.phone` (subject to D-078 fence — accessible to admin/owner role, NOT homeowner via token). Homeowner sees PM name only, not contact info, until Wave 1.1-Lite adds explicit PM-contact surface (separate from clients PII restoration).
    - **TD-WB-WIZARD-CLIENT-CONTACT.md (Slice-1 deliberate regression doc)** stays open until Wave 1.1-Lite ships full /clients/{id} detail. The TD was opened during B-1a-bis ITER-2 §3.6 specifically anticipating this gap.
    - **Quantified blast:** estimated 4-8 weeks of "PM can't see client contact info from UI" until Wave 1.1-Lite onboards real RB homeowner usage. RB's current workflow (paper folders + Diane's spreadsheet) covers this gap during the regression window; no production user is currently dependent on UI-visible client contact info.
 
    Slice-2 NOT relaxing the fence preserves D-078 + D-079 + Q1 SOC2-CC6.1 posture; relaxing requires either column-level GRANT REVOKE or RLS-on-clients with explicit `SELECT (id, full_name)` policy for non-admin roles — both larger surface changes than Slice-2's stated scope accommodates.
 
-5. **B-2 Owner Portal Path A — token rotation cadence?** Existing 00074 `client_portal_access` model supports tokens with expiration. **Question:** What's the desired token lifecycle for B-2? Options: (a) one-shot tokens regenerated per pay-app (high security, friction for homeowner); (b) long-lived tokens with manual revocation (low security, low friction); (c) auto-rotate every 90 days with one-click renewal (medium); (d) defer entirely to Wave 1.1-Lite where real RB homeowner usage surfaces requirements. **Recommended: (d) DEFER lifecycle decisions to Wave 1.1-Lite, with B-2 ship-time defaults = 1-year expiration + manual admin revocation.**
+5. **B-2 Owner Portal Path A — token rotation cadence? — LOCKED per nwrp200.** Resolution superseded by nwrp200 B-2 re-split:
 
-   **Orchestrator's preference + reasoning (per nwrp166 §22):** I prefer (d) over (a)/(b)/(c) because the lifecycle policy is fundamentally a homeowner-trust calibration question that benefits enormously from observing real RB usage (Andrew's actual conversations with Drummond homeowners about portal access friction vs. security). Decisions made now without that signal are policy theater. The 1-year default is conservative enough to be safe (not "forever") + low-friction enough to be testable (not "rotate every payment").
+   **DECISION (LOCKED 2026-05-21 per nwrp200):** **1-year expiration + MANDATORY admin revocation capability, both in B-2a scope.** 1-year supersedes existing 00074 90-day sliding window (00074 schema is updated as part of B-2a migration). Mandatory revocation capability is the real security control (kill a known-leaked token immediately regardless of expiration); 1-year is the backstop.
 
-   **Deferral dependency-chain cost (per nwrp166 §20):**
-   - **No PM/Owner regression in observation window:** B-2 ships with working tokens; homeowners can log in; no functionality gap.
-   - **Wave 1.1-Lite carries the lifecycle-policy decision** as one of the early UX learnings from real-world Drummond/Anna Maria Island usage. Estimated trigger: 30-60 days into Wave 1.1-Lite production. NOT a hard blocker for Wave 1.1-Lite launch.
-   - **Security posture during 1-year-default window:** acceptable per Q7 (SOC2-capable, no active pursuit). If first enterprise SOC2 trigger fires during this window, lifecycle revisit becomes blocking — but that's months out per Q7 trigger condition.
-   - **One-shot tokens (option a)** would be the rigorous SOC2-aligned answer; rejected today for UX reasons documented above. Revisit trigger: enterprise customer asks.
+   **Jake's reasoning (per nwrp200):** Custom homes run 12-24 months; homeowner keeps portal access through the build without re-invite friction. Read-only portal (progress + payment + docs, no write, no PII beyond homeowner's own project) means leak severity is low. The MANDATORY revocation requirement is what makes 1-year acceptable — without an admin "kill this token NOW" path, 1-year would be too long.
 
-   B-2 default in this slice: tokens have 1-year expiration (existing 00074 pattern) + manual revocation via admin UI. Document in B-2 README that lifecycle policy is a Wave 1.1-Lite open question.
+   **B-2a deliverables for this decision:**
+   - Migration update to `client_portal_access`: default expiration changed from 90-day sliding window (00074) to 1-year fixed.
+   - Admin revocation API path (sets `revoked_at = NOW()` on a specific token row).
+   - Admin UI surface for revocation (minimum: a "revoke" button in an existing admin-facing list of active tokens; if no such list exists yet, B-2a creates one). Plan-author scopes at /np time.
+   - Audit-log entry on every revocation (uses authenticated `user_id`, NOT `actor_token_id`; the revoker is an admin user).
+   - Existing 00074 sliding-window logic deprecated; B-2a migration body documents the supersession.
+
+   **Wave 1.1-Lite (revisit conditions):**
+   - First enterprise SOC2 customer asks for shorter expiration → re-evaluate to (a) one-shot per pay-app OR (c) auto-rotate every N days with one-click renewal.
+   - Real RB homeowner usage data surfaces friction patterns suggesting different lifecycle.
+   - Otherwise: 1-year + revocation is the steady-state.
+
+   **Superseded prior recommendation:** "DEFER to Wave 1.1-Lite, with B-2 ship-time defaults = 1-year expiration + manual admin revocation" (per nwrp166 §22) — same 1-year default, but now LOCKED as B-2a deliverable rather than ship-time default with Wave 1.1-Lite revisit. The mandatory revocation requirement is new.
 
 6. **B-6 cost-code reseed — destructive timing.** D-020's wipe-and-reseed is destructive to current `org_cost_codes` rows (template rows preserved). **Question:** Apply during B-6 ship (production rows wiped) or defer cost-code reseed to a Wave 1.1-Lite migration where Diane (accounting) can verify the reseed matches her chart of accounts? **Recommended: SPLIT.** (a) B-6 ships the wipe-and-reseed for `org_id IS NULL` (templates) and `fixture-harness-org` only — these are safe to wipe. (b) Defer RB org's `org_cost_codes` wipe to Wave 1.1-Lite where Diane reviews the seed list before destructive apply. (c) Document the deferral in B-6 README. **Avoid: wiping RB's current `org_cost_codes` in an autonomous Slice-2 plan.**
 
@@ -226,9 +248,11 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
 
 8. **B-7 EXPLAIN ANALYZE — pass/fail threshold strict 100ms?** Q2 verification step: "any aggregation >100ms gets a trigger cache before Wave 1.1-Lite." **Question:** Strict 100ms ceiling OR margin (e.g., 100ms is target, alert at 150ms, block at 250ms)? **Recommended: STRICT 100ms with explicit document on margin.** Rationale: 100ms is the published target for "instant" UI; B-7 flags any >100ms for Wave 1.1-Lite engineering attention. Plan-author decides per-aggregation: cache (if >100ms) OR optimize indexing (if 100-150ms borderline). Document threshold rationale in B-7 README.
 
-9. **Slice-2 ship order — strict sequential (B-2 → B-3 → B-4 → ... → B-7) OR parallel where safe?** (per nwrp166 §15: actual Rule 5 intersection matrix required before recommendation, not after.) Slice-1 was strict sequential. Slice-2's 6 plans have nominal independence per umbrella dependency map, but Rule 5 mandates mechanical files_modified intersection check BEFORE authorizing parallel dispatch — not after.
+9. **Slice-2 ship order — strict sequential (B-2a → B-2b → B-3 → B-4 → ... → B-7) OR parallel where safe?** (per nwrp166 §15: actual Rule 5 intersection matrix required before recommendation, not after.) Slice-1 was strict sequential. Slice-2's **7 plans** (per nwrp200 re-split; was 6) have nominal independence per umbrella dependency map, but Rule 5 mandates mechanical files_modified intersection check BEFORE authorizing parallel dispatch — not after.
 
-    **Current state:** B-2..B-7 plan files do NOT exist yet (only umbrella bullet-point scope in `.planning/expansions/stage-f1-knowledge-graph-auth-EXPANDED-SCOPE.md` §9). Without authored plan frontmatter, a true `files_modified` intersection cannot be computed mechanically. What follows is a **best-estimate intersection matrix** based on umbrella scope, intended to flag where parallel dispatch is at-risk pre-authoring — NOT a substitute for the mandatory mechanical check at plan-review iter-1.
+    **Current state per 2026-05-21:** B-2-PLAN.md exists (iter-1 NEEDS-WORK; superseded by nwrp200 re-split into B-2a + B-2b). B-2a + B-2b + B-3..B-7 plan files do NOT exist yet (only umbrella bullet-point scope in `.planning/expansions/stage-f1-knowledge-graph-auth-EXPANDED-SCOPE.md` §9 + this EXPANDED-SCOPE §7 per-plan breakdown). Without authored plan frontmatter, a true `files_modified` intersection cannot be computed mechanically. What follows is a **best-estimate intersection matrix** based on umbrella scope + nwrp200 re-split, intended to flag where parallel dispatch is at-risk pre-authoring — NOT a substitute for the mandatory mechanical check at plan-review iter-1.
+
+    **B-2a → B-2b sequential by design (per nwrp200):** B-2b consumes `getScopedOwnerPortalClient` + `assertDrawBelongsToToken` helpers from B-2a; B-2b depends on B-2a GATE confirmation that token scoping is airtight; parallel dispatch of B-2a + B-2b is FORBIDDEN by re-split charter. Sequential edge is hard.
 
     **Best-estimate matrix (B-4 ∩ B-5 ∩ B-6, the candidate parallel-dispatch trio):**
 
@@ -243,9 +267,9 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
     - **If actual intersection is EMPTY:** parallel dispatch authorized.
     - **If actual intersection is NON-EMPTY:** sequential dispatch (B-4 → B-5 → B-6, OR worktree isolation with explicit merge protocol) is the default; bypass requires Jake authorization with documented rationale.
 
-    **No recommendation for parallel dispatch is given in this EXPANDED-SCOPE.** Sequential B-2 → B-3 (B-3 trigger applies to B-2's new table) → B-4/B-5/B-6 (dispatch posture TBD at plan-review iter-1) → B-7 is the only sequencing this document authorizes pre-dispatch. The cost-saving from parallel (~2-3 days wall-clock) materializes only if the mechanical check is empty.
+    **No recommendation for parallel dispatch is given in this EXPANDED-SCOPE.** Sequential **B-2a → B-2a GATE → B-2b → B-3** (B-3 trigger applies to B-2a's new `client_portal_access.client_id` table per nwrp200) **→ B-4/B-5/B-6** (dispatch posture TBD at plan-review iter-1) **→ B-7** is the only sequencing this document authorizes pre-dispatch. The cost-saving from parallel (~2-3 days wall-clock) materializes only if the mechanical check is empty.
 
-10. **Carry-forward MEDIUM-1 (PATCH /api/jobs missing org_id filter) — bundle into which Slice-2 plan?** Per Slice-1 carry-forward convention: MEDIUM-1 documented in B-1a-bis QA cross-reviewer agreement, NOT a TD entry. **Question:** Which Slice-2 plan bundles the fix? Candidates: (a) B-2 (touches jobs surfaces for Owner Portal); (b) B-4 (touches activity_log write-site coverage adjacent to jobs); (c) Standalone Slice-2 "carry-forward bundle" plan. **Recommended: (b) B-4.** Rationale: B-4 ships activity_log entity_type extension which audits clients-related state changes; PATCH /api/jobs is a write surface that already touches activity_log via `logActivity`. One commit; tight surface; minimal additional review burden.
+10. **Carry-forward MEDIUM-1 (PATCH /api/jobs missing org_id filter) — bundle into which Slice-2 plan?** Per Slice-1 carry-forward convention: MEDIUM-1 documented in B-1a-bis QA cross-reviewer agreement, NOT a TD entry. **Question:** Which Slice-2 plan bundles the fix? Candidates: (a) B-2a/B-2b (touches jobs surfaces for Owner Portal — per nwrp200 re-split); (b) B-4 (touches activity_log write-site coverage adjacent to jobs); (c) Standalone Slice-2 "carry-forward bundle" plan. **Recommended: (b) B-4** (unchanged by nwrp200 re-split). Rationale: B-4 ships activity_log entity_type extension which audits clients-related state changes; PATCH /api/jobs is a write surface that already touches activity_log via `logActivity`. One commit; tight surface; minimal additional review burden.
 
 11. **TD-B1abis-01/02/03 + W.1 listener unflag — distribute across existing Slice-2 plans (DISTRIBUTE, NOT BUNDLE per nwrp166 §7).** Four small carry-forward items need landing somewhere in Slice-2. **Decision (per nwrp166 amendment to original recommendation):** DISTRIBUTE into existing plans rather than create new B-8 bundle plan. Bundle approach creates iter-1 review difficulty (4 unrelated diffs in one review) + any-item-blocks-bundle risk (one finding holds 3 other items hostage). Distribution map:
 
@@ -253,10 +277,10 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
     |---|---|---|
     | TD-B1abis-01 (find-or-create race, ~5 lines) | **B-4** | B-4 already touches activity_log write-sites + the carry-forward MEDIUM-1 fix at `src/app/api/jobs/route.ts`; the `resolveClientId` find-or-create branch is in the same file. Tight surface; one-commit addition. |
     | TD-B1abis-02 (GIN trigram index, ~1 line of migration SQL) | **B-4** | B-4 ships no new migration in current scope; adding `CREATE INDEX idx_clients_full_name_trgm` as a minor companion migration keeps B-4's footprint coherent (audit log + client query infra both feed UX of /api/clients endpoint). Alternative: B-6 (cost-code reseed) also ships a migration; defer to plan-author choice. |
-    | TD-B1abis-03 (ClientCombobox F1+F2 token polish, ~10 lines) | **B-2** | B-2 is the Owner Portal Path A plan = natural home for client-related UI polish. ClientCombobox is the client-search component that the Owner Portal won't even render (read-only homeowner view), but B-2's plan-author is reading client UI code anyway; the polish lands cleanly in their existing context. |
+    | TD-B1abis-03 (ClientCombobox F1+F2 token polish, ~10 lines) | **B-2b** (re-split per nwrp200; was B-2) | B-2b is the Owner Portal UI plan post-re-split = natural home for client-related UI polish. ClientCombobox is the client-search component that the Owner Portal won't even render (read-only homeowner view), but B-2b's plan-author is reading client UI code anyway; the polish lands cleanly in their existing context. Use `shadow-[var(--shadow-panel)]` (`--shadow-popover` does NOT exist per iter-1 SYNTHESIS B-15). |
     | W.1 listener unflag (env-var addition + observation-window check) | **standalone single-commit in B-3 OR B-4** | This is an env-var addition (`NEXT_PUBLIC_AUTH_STATE_LISTENER=true` in Vercel Production + Preview), NOT a code change. Lands as one atomic commit in whichever of B-3/B-4 ships first AFTER the observation window closes (1-2 weeks post-Slice-1 ship + Sentry green + smoke clean). Plan-author of B-3 (or B-4 if B-3 ships before observation window closes) adds an env-var-step task with explicit verification gate. |
 
-    **Net effect:** Slice-2 stays at 6 plans (B-2..B-7); no new B-8 plan; faster iter-1 review per plan; atomic commits preserve rollback boundaries. Each carry-forward gets its own focused review surface within the host plan's existing scope.
+    **Net effect (pre-nwrp200; superseded):** Slice-2 stayed at 6 plans (B-2..B-7) per nwrp166 distribute pattern; no new B-8 plan. **Per nwrp200 re-split: Slice-2 = 7 plans (B-2a, B-2b, B-3..B-7);** distribute pattern preserved (carry-forwards across host plans, not a bundle); TD-B1abis-03 moved from B-2 → B-2b per re-split. Each carry-forward gets its own focused review surface within the host plan's existing scope.
 
 12. **B-3 DEF-WC-3 partial — ARCHITECTURE.md RLS posture summary table — full table OR phased?** DEF-WC-3 partial scope per umbrella: "RLS posture summary table by entity" (single source of truth across all tenant tables). **Question:** Full table including ALL 25 tenant tables (high authoring cost, comprehensive) OR phased table covering only the entities touched by Slice-1/Slice-2 + a note "remaining tables documented in Wave-B0/F2"? **Recommended: FULL TABLE.** Rationale: the gap that DEF-WC-3 closes (Wave-C profiles-wide-open misconception per nwrp118 Item 4) was a reviewer-side knowledge gap that a comprehensive table prevents. Phased table leaves the same gap for non-touched tables. Authoring cost: ~1 hour for ~25 tables × 5 columns (entity, RLS policies, scope-axis Q10b, fixture coverage Q9 D, retention class). Output: ARCHITECTURE.md new §X with table.
 
@@ -268,12 +292,37 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
 
 **Recommended phase scope (matches stated, with explicit additions captured below):**
 
-1. **B-2 — `client_portal_access.client_id` FK + Owner Portal Path A min UI + 1-2 audit integration points + TD-B1abis-03 carry-forward** [Q4b + Slice-1 carry-forward per nwrp166 §10]
-   - Migration: ADD `client_id UUID REFERENCES clients(id) ON DELETE SET NULL` to `client_portal_access`; backfill from existing `client_portal_access.job_id → jobs.client_id`; partial unique index `(org_id, client_id, deleted_at IS NULL)` to prevent duplicate active tokens per client.
-   - UI: minimum-viable `/owner/{token}` route — read-only progress + payment status + document downloads. Mobile-mandatory per F1+-4. NO new role; token-based auth.
-   - Audit: 1-2 owner-initiated actions wire `actor_token_id` (e.g., pay-app acknowledgment via signed receipt).
-   - **Carry-forward (per nwrp166 distribute pattern):** TD-B1abis-03 — replace inline `boxShadow: "0 4px 12px rgba(0,0,0,0.08)"` + inline `style={fontFamily, color}` on `src/components/client-combobox.tsx` with shadow-elevation token + utility classes mirroring cost-code-combobox.tsx label idiom (~10 lines). Lands here because B-2 plan-author is reading client UI code anyway; tight surface; one-commit polish addition.
-   - Threat model: medium (external token surface; mobile-first; first user-facing F1 UI). Plan-review iter-1 includes nightwork-design-pushback for the new UI pattern (likely new PATTERNS.md "Owner Status View" entry).
+1. **B-2a — Token-issuance security model** (re-split per nwrp200; HIGH threat; was B-2 medium) [Q4b + iter-1 SYNTHESIS B-1..B-11 + nwrp200 token expiration decision]
+
+   **Decision-driver:** iter-1 SYNTHESIS B-4 finding (existing `create_client_portal_invite` RPC produces `client_id=NULL` → intra-org cross-homeowner leak). B-4 is a pre-existing security gap that B-2 scope assumed away — re-scope required. B-2a is the security core; ALL cross-client-isolation work lives here; B-2b builds on the verified foundation.
+
+   - **Migration 00104:** ADD `client_id UUID REFERENCES clients(id) ON DELETE SET NULL` to `client_portal_access` **with same-org invariant** (composite FK `(org_id, client_id) REFERENCES clients(org_id, id)` after composite UNIQUE on `clients(org_id, id)`, OR explicit CHECK trigger — plan-author picks per iter-1 SYNTHESIS B-2). Backfill from existing `client_portal_access.job_id → jobs.client_id`. **Partial unique index** `(org_id, client_id, job_id) WHERE revoked_at IS NULL AND client_id IS NOT NULL AND expires_at > now()` per iter-1 SYNTHESIS B-9 (expired-token gap closed) + B-10 (1-client-N-jobs allowed). Index posture per iter-1 SYNTHESIS B-7: **full covering index + app-layer `revoked_at` filter, NOT partial `WHERE revoked_at IS NULL`** (eliminates timing-oracle distinguishing "revoked" from "never existed"); OR Jake-explicit acceptance given 256-bit entropy (plan-author surfaces).
+   - **`create_client_portal_invite` RPC NULL-leak fix** per iter-1 SYNTHESIS B-4: one of (a) BEFORE INSERT trigger auto-populating `client_id` from `jobs.client_id`, (b) `CREATE OR REPLACE` the RPC to derive `client_id`, (c) resolve route guards against `row.client_id IS NULL`. Plan-author picks; security-reviewer iter-1 mandatory.
+   - **Token lifecycle LOCKED per nwrp200:** 1-year default expiration (supersedes 00074 90-day sliding window) + **MANDATORY admin revocation capability**. B-2a delivers BOTH: migration to update default expiration; admin revocation API path; admin UI revocation surface; audit-log entry on revocation (uses `user_id`, not `actor_token_id`).
+   - **PUBLIC_PATHS extension** per iter-1 SYNTHESIS B-5: middleware.ts adds `/owner/*` AND `/api/owner-portal/*` to PUBLIC_PATHS. Without `/api/owner-portal/*`, middleware returns 401 for anon homeowner POST requests before route handler — anon homeowner cannot acknowledge pay-app.
+   - **Rate-limit infrastructure replacement** per iter-1 SYNTHESIS B-6 + nwrp202 LOCKED: in-process Map is non-functional on Vercel (ephemeral serverless functions destroy the Map per invocation). **LOCKED to DB-backed rate-limit (counter table with TTL cleanup)** per nwrp202 §3 — neither Vercel KV nor Upstash provisioned, owner-portal traffic is low (homeowners checking progress occasionally), DB write load negligible, avoids adding new third-party infra dependency to the portal's critical path. Migrate to KV/Upstash later only if traffic justifies. Per-token + per-IP keys on `/api/owner-portal/*`. **Migration boundary:** plan-author chooses at iter-1 — table either lives in migration 00104 alongside other B-2a schema OR ships in companion migration (e.g., 00104a or 00105) for atomic-rollback granularity. NOT pre-decided per nwrp202 §7. **Halt-and-surface escape valve:** if DB-backed rate-limit infra (table schema + TTL cleanup job + per-token + per-IP key derivation + tests) balloons B-2a past $50 per-plan halt gate, plan-author halts + surfaces; possible micro-plan split (`B-2a` = security model, `B-2a-rate-limit` = isolated rate-limit infra). Surface-then-decide pattern preserved per Rule 7d.
+   - **`getScopedOwnerPortalClient(resolvedToken)` helper** per iter-1 SYNTHESIS B-1: server-only helper in `src/lib/owner-portal/token.ts` returning pre-scoped Supabase wrapper. Every B-2b portal query routes through this helper; eliminates "every author must remember `.eq()`" anti-pattern; converts application-layer scoping from convention to construction.
+   - **`assertDrawBelongsToToken(drawId, resolvedToken)` helper** per iter-1 SYNTHESIS B-3: pinned SQL guarantees acknowledge action verifies draw belongs to token's client + org scope. Without this helper, B-2b's acknowledge route could leak intra-org cross-client by using only `.eq('id', drawId).eq('org_id', orgId)` (missing client-scoping).
+   - **PostgREST FK citation** per iter-1 SYNTHESIS B-8 + CLAUDE.md Workflow posture Rule 2: B-2a PLAN body cites `client_portal_access_client_id_fkey` + `client_portal_access_job_id_fkey` constraint names in any `select=...:embed(...)` hint.
+   - **`draws` + `change_orders` `job_id` index verification** per iter-1 SYNTHESIS B-11: plan-author runs `SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('draws', 'change_orders') AND indexdef LIKE '%job_id%'` at /np time; adds missing indexes to migration 00104. Without indexes, every portal page = seq scan (first production queries from external path).
+   - **Out of scope for B-2a (deferred to B-2b):** the `/owner/{token}` route + UI rendering + audit-log integration points + ClientCombobox polish. B-2a ships the security model + helpers; B-2b ships the UI that consumes them.
+   - **Threat model: HIGH** (external token surface, cross-tenant leak surface, foundational security infrastructure for first user-facing F1 UI). Plan-review iter-1 mandatory: security-reviewer + multi-tenant-architect + rls-auditor + database-reviewer + ai-logic-tester + spec-checker + custodian. Design-pushback NOT applicable to B-2a (no UI surface).
+   - **GATE post-B-2a ship:** Jake reviews + confirms token scoping is airtight (RPC fix verified; helper enforces client-scoping; revocation works; rate-limit functional) BEFORE B-2b dispatches.
+
+2. **B-2b — Read-only portal UI + audit integration** (re-split per nwrp200; medium threat; depends on B-2a GATE) [Q4b + iter-1 SYNTHESIS B-12..B-16 + nwrp200 doc-downloads-in-scope]
+
+   - **`/owner/{token}` route + standalone layout:** new `/owner/{token}/page.tsx` + `/owner/{token}/pay-apps/[id]/page.tsx` + `/owner/layout.tsx` (no auth nav-bar; homeowner is anon) + `/owner/error.tsx` (token not found / revoked / expired). Token resolved via existing 00074 SHA-256 hex pattern + `getScopedOwnerPortalClient` helper from B-2a.
+   - **Mobile-first UI:** iPhone 13/14/15 Pro Max + Pixel 7 viewport contract per F1+-4. Renders **OwnerDashboardView** (tenant-blind) + **OwnerDrawView** for pay-app drilldown, fed by real Drummond data from service-role API.
+   - **Document downloads** CONFIRMED in scope per nwrp200 (resolves iter-1 spec-checker W-1). Use existing storage signed-URL pattern; documents scoped by `getScopedOwnerPortalClient`.
+   - **1-2 owner-initiated audit actions:** implement **pay-app acknowledgment** as the canonical audit-integration probe. Writes `activity_log` row with `entity_type='draw'`, `action='acknowledged'` (new ActivityAction value), `user_id=NULL`, `actor_token_id=<portal_access.id>`. Uses `assertDrawBelongsToToken` helper from B-2a for scope verification.
+   - **`activity_log.actor_token_id` migration:** ADD column + mutual-exclusion CHECK for new rows + insert path extension in `src/lib/activity-log.ts`. **No `expected_updated_at` optimistic-lock on `activity_log`** per iter-1 SYNTHESIS B-13 (audit-log is append-only; expected_updated_at doesn't apply). PLAN explicitly documents which target table the contract applies to.
+   - **TOCTOU race on acknowledge idempotency** per iter-1 SYNTHESIS B-12: DB unique constraint `activity_log (entity_id, actor_token_id, action) WHERE action='acknowledged'` + INSERT...ON CONFLICT DO NOTHING. SELECT-then-INSERT pattern banned.
+   - **Soft-delete + status filters on portal queries** per iter-1 SYNTHESIS B-14: every portal `.from('draws')` / `.from('jobs')` / `.from('change_orders')` query includes `.is('deleted_at', null)` + `.in('status', [...]) for draws (exclude `draft` + `pm_review`).
+   - **Carry-forward (per nwrp166 distribute pattern; re-routed B-2 → B-2b per nwrp200):** TD-B1abis-03 — replace `src/components/client-combobox.tsx` inline `boxShadow` + inline `style={fontFamily, color}` with `shadow-[var(--shadow-panel)]` + utility classes mirroring cost-code-combobox.tsx idiom (~10 lines). `--shadow-popover` does NOT exist per iter-1 SYNTHESIS B-15.
+   - **NwButton 56px TD-20 boundary exemption** per iter-1 SYNTHESIS B-16: NwButton has no 56px size variant. B-2b plan explicitly requires TD-20 boundary exemption comment on raw button (mirroring `OwnerDrawView.tsx:158-162` precedent) OR accept NwButton lg=44px with named WCAG-minimum acknowledgment in PLAN body.
+   - **iter-1 SYNTHESIS B-17 RESOLVED (no new PATTERNS.md entry needed):** B-2b does NOT add a new "Owner Status View" pattern. Existing PATTERNS.md §4h.3 (owner portal dashboard, Dashboard pattern) + §2j.3 (draw approval detail, Document Review extension) already cover. B-2 PLAN's proposed TD-B2-01 is dropped.
+   - **Threat model: medium** (read-only UI on proven secure foundation from B-2a; mobile-first first F1 user-facing surface). Plan-review iter-1: spec-checker + custodian + ui-reviewer + design-pushback + ai-logic-tester + security-reviewer (lighter scope than B-2a). multi-tenant-architect + rls-auditor coverage absorbed into B-2a GATE.
+   - **Dependency:** B-2a SHIPPED + GATE confirmed BEFORE B-2b dispatches. Hard sequential edge.
 
 2. **B-3 — Soft-delete DB-trigger safety net + user-identity-threading convention + DEF-WC-1 + DEF-WC-3 partial + W.1 listener unflag (conditional)** [Q6 F + DEF-WC-1 + DEF-WC-3 + Slice-1 carry-forward per nwrp166 §11]
    - 1 `SECURITY DEFINER` function + per-table triggers on ~25 tenant tables (per ENTITY-INVENTORY.md tenant-scope inventory).
@@ -315,17 +364,21 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
    - Remaining harness extensions: multi-viewport per F1+-4 + behavioral test category (if not absorbed into B-1b per hybrid A/C decision from Slice-1).
    - Threat model: medium (production schema touched via RB seed; multi-viewport harness adds runtime cost to CI).
 
-**Note on plan count (per nwrp166 §13):** Slice-2 = 6 plans (B-2..B-7). No new B-8 bundle plan. Slice-1 carry-forwards distributed per Q11 distribution map: TD-B1abis-01 → B-4, TD-B1abis-02 → B-4 (or B-6 per plan-author), TD-B1abis-03 → B-2, MEDIUM-1 → B-4, W.1 listener unflag → B-3 OR B-4 (whichever ships after observation window closes).
+**Note on plan count (per nwrp200 B-2 re-split, supersedes nwrp166 §13):** Slice-2 = **7 plans** (B-2a, B-2b, B-3, B-4, B-5, B-6, B-7). B-2 → B-2a + B-2b re-split per nwrp200 (driven by iter-1 SYNTHESIS B-4 leak finding). No new B-8 bundle plan. Slice-1 carry-forwards distributed per Q11 distribution map: TD-B1abis-01 → B-4, TD-B1abis-02 → B-4 (or B-6 per plan-author), **TD-B1abis-03 → B-2b (was B-2)**, MEDIUM-1 → B-4, W.1 listener unflag → B-3 OR B-4 (whichever ships after observation window closes).
 
 **Cross-slice additions:**
 
-- Pre-flight downstream-consumer-sweep MANDATORY in all 6 plans per `.planning/lessons.md` 2026-05-15 entry.
-- All Slice-2 plans inherit Wave-B prereq #12 smoke gate (≤2 failures matching TD-WE-03 set; B-2 Owner Portal Path A extends route table — sweep + smoke route table update mandatory).
-- Threat model severity at each plan called out above; plan-review iter-1 dispatch matches (security-reviewer for B-3/B-5; multi-tenant + rls + database for B-3; design-pushback for B-2).
+- Pre-flight downstream-consumer-sweep MANDATORY in **all 7 plans** (per nwrp200 re-split; was 6) per `.planning/lessons.md` 2026-05-15 entry.
+- All Slice-2 plans inherit Wave-B prereq #12 smoke gate (≤2 failures matching TD-WE-03 set; **B-2b** Owner Portal Path A extends route table — sweep + smoke route table update mandatory; **B-2a** extends `/api/owner-portal/*` API route table + middleware PUBLIC_PATHS).
+- Threat model severity at each plan called out above; plan-review iter-1 dispatch matches (security-reviewer for **B-2a (HIGH)** / B-3 (HIGH) / B-5; multi-tenant + rls + database for **B-2a** + B-3; design-pushback for **B-2b** (not B-2a; B-2a has no UI surface)).
 - Cost-discipline pattern from Slice-1 carries forward: ceiling per slice (NOT per plan); halt-and-trim if mid-flight cost approaches ceiling.
 
 **Out of scope (deferred):**
 
+- New PATTERNS.md "Owner Status View" entry — DROPPED per iter-1 SYNTHESIS B-17 resolution (§4h.3 + §2j.3 already cover; do not invent 13th pattern).
+- Token lifecycle alternative options (one-shot per pay-app, auto-rotate every N days, etc.) — DEFERRED to Wave 1.1-Lite revisit conditions (first enterprise SOC2 ask OR real RB homeowner usage data); 1-year + revocation is the LOCKED Slice-2 deliverable per nwrp200.
+- "Notify homeowner that token will expire in 30 days" auto-rotation flow — DEFERRED to Wave 1.1-Lite.
+- Token rotation in-place (extend expiration without re-invite) — DEFERRED to Wave 1.1-Lite.
 - Full Owner Portal feature set (notifications, comments, signature workflows, ongoing engagement) → Wave 1.1-Lite or later per Q4b umbrella resolution.
 - AI parsing of inbound email content → Wave 3 per GAP item 21 (B-5 ships webhook → storage only).
 - MX record routing for accounting@rossbuilt.com inbox → Wave 3.
@@ -337,9 +390,29 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
 
 **Acceptance criteria target (preview — final criteria locked in /gsd-discuss-phase Slice-2):**
 
-- [ ] B-2 migration applied; `client_portal_access.client_id` FK exists with `ON DELETE SET NULL`; partial unique index in place; Drummond's token row backfilled with non-NULL `client_id`.
-- [ ] B-2 Owner Portal Path A renders against Drummond's token in fixture-harness-org; mobile viewport (iPhone 14 Pro Max + Pixel 7) per F1+-4 passes Layer 3 visual check.
-- [ ] B-2 audit integration: pay-app acknowledgment writes `activity_log` row with `actor_token_id` populated.
+- [ ] **B-2a** migration applied; `client_portal_access.client_id` FK exists with `ON DELETE SET NULL` + same-org invariant (composite FK OR CHECK trigger); partial unique index `(org_id, client_id, job_id) WHERE revoked_at IS NULL AND client_id IS NOT NULL AND expires_at > now()` in place; Drummond's token row backfilled with non-NULL `client_id`.
+- [ ] **B-2a** `create_client_portal_invite` RPC NULL-leak fix verified via 3 falsifiable queries (closes iter-1 SYNTHESIS B-4; AC strengthened per nwrp201 + nwrp202 §5):
+  1. **Backfill completeness:** `SELECT COUNT(*) FROM public.client_portal_access WHERE client_id IS NULL AND revoked_at IS NULL AND expires_at > NOW();` returns 0 post-migration (every active token row has non-NULL `client_id`).
+  2. **RPC produces non-NULL `client_id` scoped to inviting org:** invoke `create_client_portal_invite(<test_job_id>, <test_email>)` via service-role; resulting row has `client_id = (SELECT client_id FROM jobs WHERE id = <test_job_id>)` AND `org_id = (SELECT org_id FROM jobs WHERE id = <test_job_id>)` — non-NULL, matches parent job's client + org.
+  3. **Cross-org invite rejection:** attempting `create_client_portal_invite(<org_A_job_id>, <test_email>)` from a session authenticated as `org_B` member is rejected (RPC SECURITY DEFINER + explicit org check, OR RLS-enforced fail; plan-author picks at iter-1); post-attempt query `SELECT COUNT(*) FROM client_portal_access WHERE created_at > <attempt_ts> AND org_id = <org_A_id>` returns 0 (no leakage row created — Jake's "real protection" clause per nwrp202 §5).
+- [ ] **B-2a** token expiration locked to 1-year (supersedes 00074 90-day); admin revocation API path exists; admin UI surface for revocation exists; revocation writes audit-log entry with `user_id` (not `actor_token_id`).
+- [ ] **B-2a** rate-limit infrastructure Vercel-functional: per-token + per-IP rate-limit on `/api/owner-portal/*` (NOT in-process Map); load test confirms counter persists across function invocations (iter-1 SYNTHESIS B-6 resolved).
+- [ ] **B-2a** `/api/owner-portal/*` added to middleware PUBLIC_PATHS (NOT just `/owner/*`); anon homeowner POST request reaches route handler not 401 (iter-1 SYNTHESIS B-5 resolved).
+- [ ] **B-2a** index posture: full covering index + app-layer `revoked_at` filter (NOT partial `WHERE revoked_at IS NULL`) — timing-oracle distinguishing "revoked" from "never existed" eliminated (iter-1 SYNTHESIS B-7 resolved); OR Jake-explicit acceptance documented in PLAN.
+- [ ] **B-2a** `getScopedOwnerPortalClient(resolvedToken)` helper exists in `src/lib/owner-portal/token.ts`; returns pre-scoped Supabase wrapper enforcing client + org scope at type-system level (iter-1 SYNTHESIS B-1 resolved).
+- [ ] **B-2a** `assertDrawBelongsToToken(drawId, resolvedToken)` helper exists; cross-client probe test (resolve token A, attempt to assert draw belonging to client B) returns false / throws / equivalent (iter-1 SYNTHESIS B-3 resolved).
+- [ ] **B-2a** PostgREST FK citations in PLAN body: `client_portal_access_client_id_fkey` + `client_portal_access_job_id_fkey` cited per CLAUDE.md Workflow Rule 2 (iter-1 SYNTHESIS B-8 resolved).
+- [ ] **B-2a** `draws.job_id` + `change_orders.job_id` indexes exist (verified via `pg_indexes` query); added to migration 00104 if missing (iter-1 SYNTHESIS B-11 resolved).
+- [ ] **B-2a GATE:** Jake reviews + confirms token scoping is airtight BEFORE B-2b dispatches.
+- [ ] **B-2b** Owner Portal Path A renders against Drummond's token in fixture-harness-org; mobile viewport (iPhone 14 Pro Max + Pixel 7) per F1+-4 passes Layer 3 visual check.
+- [ ] **B-2b** document downloads work: homeowner downloads at least one Drummond fixture document via portal; signed URL respects `getScopedOwnerPortalClient` scope (iter-1 spec-checker W-1 resolved).
+- [ ] **B-2b** audit integration: pay-app acknowledgment writes `activity_log` row with `actor_token_id` populated + `user_id=NULL`; CHECK constraint enforces mutual exclusion.
+- [ ] **B-2b** TOCTOU race closed: concurrent double-tap on acknowledge button produces exactly 1 audit row (DB unique constraint + INSERT...ON CONFLICT; iter-1 SYNTHESIS B-12 resolved).
+- [ ] **B-2b** `activity_log` writes do NOT use `expected_updated_at` optimistic-lock (audit-log is append-only; iter-1 SYNTHESIS B-13 resolved).
+- [ ] **B-2b** portal queries include `.is('deleted_at', null)` + status filter `.in('status', ['submitted', 'approved', 'paid', 'void'])` on draws (iter-1 SYNTHESIS B-14 resolved).
+- [ ] **B-2b** TD-B1abis-03 ClientCombobox: inline `boxShadow` + inline `style` replaced with `shadow-[var(--shadow-panel)]` + utility classes (NOT `--shadow-popover` which does not exist; iter-1 SYNTHESIS B-15 resolved).
+- [ ] **B-2b** NwButton 56px gap: either TD-20 boundary exemption comment on raw button (mirroring OwnerDrawView precedent) OR NwButton lg=44px with named WCAG-minimum acknowledgment in PLAN (iter-1 SYNTHESIS B-16 resolved).
+- [ ] **B-2b** does NOT add new PATTERNS.md "Owner Status View" entry (iter-1 SYNTHESIS B-17 resolved; existing §4h.3 + §2j.3 cited in PLAN).
 - [ ] B-3 trigger function deployed on all ~25 tenant tables; trigger writes activity_log on every soft-delete; representative manual test fires for each entity type.
 - [ ] B-3 DEF-WC-1 RESTRICTIVE backstop policy on `org_members`; cross-org leak test (impersonate user from org A, query `org_members` for org B) returns 0 rows.
 - [ ] B-3 DEF-WC-3 ARCHITECTURE.md RLS posture summary table covers ~25 tenant tables with 5 columns each.
@@ -353,11 +426,11 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
 - [ ] B-7 Stripe test-mode: webhook + portal + checkout routes verified against current schema; Sentry tags continue to populate.
 - [ ] B-7 EXPLAIN ANALYZE: 4 candidate aggregations measured; any >100ms surfaced for Wave 1.1-Lite trigger cache decision; results documented in B-7 README.
 - [ ] B-7 multi-viewport harness: F1+-4 AC-1-12 Layer 3 standards shipped + passing on fixture-harness-org.
-- [ ] B-2 TD-B1abis-03: ClientCombobox `boxShadow` + inline style replaced with shadow token + utility classes.
+- [ ] **B-2b** TD-B1abis-03: ClientCombobox `boxShadow` + inline style replaced with `shadow-[var(--shadow-panel)]` token + utility classes (per nwrp200 re-split + iter-1 SYNTHESIS B-15 token correction; row moved from B-2 to B-2b).
 - [ ] B-4 TD-B1abis-01: `resolveClientId` catches `23505` + re-finds; integration test with two concurrent identical-name inserts shows no 500.
 - [ ] B-4 TD-B1abis-02: `idx_clients_full_name_trgm` exists post-migration; EXPLAIN ANALYZE shows GIN index used on representative `/api/clients?search=` query.
 - [ ] B-3 or B-4 (whichever ships after observation window closes) W.1 listener unflag: `NEXT_PUBLIC_AUTH_STATE_LISTENER=true` in Vercel Production + Preview; Sentry shows no auth-state-change error rate spike during the 7 days post-unflag.
-- [ ] All 6 plans cite source_decisions in frontmatter per nwrp152 convention.
+- [ ] All 7 plans (per nwrp200 re-split; was 6) cite source_decisions in frontmatter per nwrp152 convention.
 - [ ] Plan-review iter-1 passes on all plans without cross-reviewer factual disagreement (per nwrp118 HALT gate).
 - [ ] Smoke harness post-slice run shows ≤2 failures matching TD-WE-03 set (Wave-B prereq #12 maintained).
 
@@ -379,13 +452,30 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
                   /np stage-f1-knowledge-graph-auth-wave-b-slice-2
                           │
                           ▼
-                  Plan-review iter-1 (all 6 plans)
+                  Plan-review iter-1 (all 7 plans per nwrp200 re-split: B-2a, B-2b, B-3..B-7)
                           │
                           ▼
-                  B-2 (Owner Portal + TD-B1abis-03 carry-forward)
+                  B-2a (Token-issuance security model — HIGH threat)
+                       │  RPC NULL-leak fix + same-org FK invariant +
+                       │  1-year + revocation + rate-limit infra +
+                       │  PUBLIC_PATHS + index posture + helpers
                           │
                           ▼
-                  B-3 (depends on B-2's new table for trigger application;
+                  ┌──────────────────────────────────────────┐
+                  │  GATE B-2a (Jake review — token scoping   │
+                  │  airtight; RPC fix verified; helpers      │
+                  │  enforce client+org; revocation works;    │
+                  │  rate-limit functional)                   │
+                  └──────────────────────────────────────────┘
+                          │
+                          ▼
+                  B-2b (Read-only portal UI + audit — medium threat)
+                       │  /owner/{token} + mobile + doc downloads +
+                       │  actor_token_id audit + TOCTOU close +
+                       │  ClientCombobox polish + NwButton TD-20
+                          │
+                          ▼
+                  B-3 (depends on B-2a's new table for trigger application;
                        + W.1 unflag IF observation window closed)
                           │
                           ▼
@@ -415,7 +505,8 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
 
 **Strict-sequential edges:**
 - Slice-1 (B-1b) ships BEFORE Slice-2 dispatches.
-- B-2 BEFORE B-3 (B-3 trigger applies to B-2's new `client_portal_access.client_id` FK shape).
+- **B-2a BEFORE B-2b** (per nwrp200 re-split: B-2b builds on B-2a's verified token-scoping foundation; B-2b dispatch authorization GATED on B-2a GATE confirmation that token scoping is airtight; helpers `getScopedOwnerPortalClient` + `assertDrawBelongsToToken` ship in B-2a and are consumed by B-2b).
+- B-2a BEFORE B-3 (B-3 trigger applies to B-2a's new `client_portal_access.client_id` FK shape; was "B-2 BEFORE B-3" pre-nwrp200; same prereq table now ships under B-2a).
 - B-7 LAST (verifies F1 foundation end-to-end via EXPLAIN ANALYZE + multi-viewport + RB seed).
 
 **Parallel-safe edges (PENDING per Rule 5 actual files_modified intersection check at plan-review iter-1; per nwrp166 §15):**
@@ -429,9 +520,22 @@ These need decisions before /np dispatches Slice-2. Each comes with a recommenda
 
 Per nwrp152 + nwrp164 disciplined posture:
 
-- **HALT GATE 0 (pre-Slice-2):** Slice-1 must fully ship (B-1b complete + GATE 2 HALT review done) BEFORE Slice-2 dispatches. Authoring this EXPANDED-SCOPE during Slice-1's mid-flight halt is fine; **dispatch** of Slice-2 requires Slice-1 closure.
+- **HALT GATE 0 (pre-Slice-2):** Slice-1 must fully ship (B-1b complete + GATE 2 HALT review done) BEFORE Slice-2 dispatches. Authoring this EXPANDED-SCOPE during Slice-1's mid-flight halt is fine; **dispatch** of Slice-2 requires Slice-1 closure. **Status 2026-05-21:** Slice-1 closed (B-1b shipped + GATE 2 review done per nwrp189). HALT GATE 0 satisfied.
 
-- **HALT GATE 1 (post-B-3):** B-3 trigger application across ~25 tenant tables + DEF-WC-1 RESTRICTIVE backstop + DEF-WC-3 RLS posture summary table is the largest architectural change in Slice-2. Manual verification:
+- **HALT GATE B-2a (post-B-2a ship, pre-B-2b dispatch) — NEW per nwrp200 re-split:** B-2a token-issuance security model is the largest cross-tenant-isolation work in Slice-2 + the foundation B-2b builds on. Manual verification:
+  - `create_client_portal_invite` RPC NULL-leak fix verified: representative SQL probe confirms new invites always populate `client_id` (NOT NULL); intra-org cross-homeowner leak surface closed.
+  - Same-org FK invariant enforced: cross-tenant probe (`client_portal_access.client_id` referencing `clients` from different `org_id`) fails at constraint or trigger level.
+  - 1-year default expiration LOCKED in migration; existing 90-day sliding window superseded; admin revocation API path exists + revokes via UI; revocation writes audit-log with `user_id` (not `actor_token_id`).
+  - Rate-limit infrastructure Vercel-functional: counter persists across function invocations (load test with concurrent requests).
+  - `/api/owner-portal/*` reachable as anon (PUBLIC_PATHS extension verified middleware-side).
+  - `getScopedOwnerPortalClient` helper enforces client + org scope at type-system level (compile-time check + runtime test).
+  - `assertDrawBelongsToToken` helper rejects cross-client probe.
+  - PostgREST FK citations in B-2a PLAN body match constraint names in `pg_constraint`.
+  - `draws.job_id` + `change_orders.job_id` indexes verified via `pg_indexes`.
+
+  Jake reviews + confirms token scoping is airtight BEFORE B-2b dispatches. Rejection: B-2a iter-2 OR escalate to fresh-session re-scope; B-2b dispatch held.
+
+- **HALT GATE 1 (post-B-3):** B-3 trigger application across ~25 tenant tables + DEF-WC-1 RESTRICTIVE backstop + DEF-WC-3 RLS posture summary table is the largest architectural change in Slice-2 AFTER B-2a. Manual verification:
   - Trigger fires on each tenant table soft-delete (representative test per table — script-driven).
   - RESTRICTIVE policy on `org_members` blocks cross-org reads (impersonation test).
   - RLS posture summary table accurate against live `pg_policies` (mechanical diff).
@@ -445,7 +549,7 @@ Per nwrp152 + nwrp164 disciplined posture:
 
 - **HALT GATE 3 (post-B-7, Slice-2 close):** /nightwork-qa final + smoke 11/13 verification + EXPLAIN ANALYZE results review. If any aggregation >100ms surfaced, Jake decides per-aggregation Wave 1.1-Lite trigger cache vs index optimization. Slice-2 closes only after Jake explicit sign-off.
 
-- **Cross-cutting HALT (per nwrp118):** any plan-review iter-1 with cross-reviewer factual disagreement HALTS for Jake. Slice-2's high blast radius (6 plans × multiple reviewer cycles) makes this gate more likely than Slice-1.
+- **Cross-cutting HALT (per nwrp118):** any plan-review iter-1 with cross-reviewer factual disagreement HALTS for Jake. Slice-2's high blast radius (7 plans per nwrp200 re-split × multiple reviewer cycles) makes this gate more likely than Slice-1. B-2a HIGH-threat reviewer scope (security + multi-tenant + rls + database + ai-logic) most likely to fire Rule 9 disagreement.
 
 - **Cost-discipline HALT (per nwrp164 / nwrp165):** if mid-Slice-2 cost approaches ceiling, halt + trim QA scope OR halt for fresh session. Do NOT bump ceiling autonomously.
 
@@ -467,17 +571,18 @@ Per nwrp152 + nwrp164 disciplined posture:
 
 **Slice-1 per-plan mean (4 plans):** ~$22 (including B-1b projection middle). Excluding the B-1a-bis $40 high outlier (rework + hook precision + 9-reviewer QA): ~$13 mean.
 
-**Slice-2 forward estimate (6 plans per nwrp166 §13 — no B-8):**
+**Slice-2 forward estimate (7 plans per nwrp200 B-2 re-split):**
 
 | Plan | Estimate | Reasoning |
 |------|----------|-----------|
-| B-2 | $22-33 | UI + migration + threat-model-medium plan-review + TD-B1abis-03 ClientCombobox polish carry-forward (+$2-3) |
+| **B-2a** (nwrp200) | $30-45 | HIGH threat model (was medium for B-2; escalated by nwrp200); migration with composite FK / CHECK trigger + RPC NULL-leak fix + revocation API + admin UI + rate-limit infra (Vercel KV / Upstash / DB-backed) + helpers (`getScopedOwnerPortalClient` + `assertDrawBelongsToToken`) + index posture revision + `draws`/`change_orders` index verification; security + multi-tenant + rls + database + ai-logic reviewers (full HIGH scope). **At $50 per-plan halt gate boundary** — plan-author surfaces if rate-limit infra balloons; possible micro-plan split `B-2a-rate-limit` per Rule 7d. iter-1 B-2 spend ($15-20) is NOT wasted — the 17 BLOCKING findings ARE the re-scope input. |
+| **B-2b** (nwrp200) | $15-22 | UI plan on proven secure foundation from B-2a GATE; threat-model-medium plan-review; `/owner/{token}` route + mobile UI + document downloads + audit integration (actor_token_id with TOCTOU + append-only audit) + soft-delete/status filters + TD-B1abis-03 ClientCombobox polish + NwButton TD-20 exemption; ui + design-pushback + spec-checker + custodian + ai-logic + security-reviewer (lighter scope; multi-tenant + rls absorbed into B-2a). |
 | B-3 | $35-50 | HIGH threat model, security + multi-tenant + rls + database reviewers; trigger function affects ~25 tables; DEF-WC-3 RLS summary table authoring (~1hr); + W.1 unflag carry-forward IF observation window closed (+$1-2 env-var only) |
 | B-4 | $15-25 | Additive type extension + write-site sweep + MEDIUM-1 fix + TD-B1abis-01 race-catch + TD-B1abis-02 trigram migration + W.1 unflag (alt to B-3); 5 carry-forwards inflate from $10-15 baseline to $15-25 (+$5-10) |
 | B-5 | $25-35 | External webhook + security reviewer + idempotency + token-gen |
 | B-6 | $15-20 | Hook addition + reseed migration + Layer 2 assertion |
 | B-7 | $20-30 | RB seed + Stripe verification + EXPLAIN + multi-viewport harness |
-| **Slice-2 total estimate** | **$132-193** | 6-plan range; reflects nwrp166 distribute pattern (carry-forwards inflate B-2 + B-3 + B-4 by ~$8-15 vs pre-distribute estimate) |
+| **Slice-2 total estimate** | **$155-227** | 7-plan range per nwrp200 re-split (was $132-193 for 6 plans pre-nwrp200). +$23-34 from re-split = re-scope cost of properly fixing iter-1 SYNTHESIS B-4 leak + escalating security work to HIGH threat scope. **Range top ($227) exceeds Slice-2 $200 ceiling** — plan-author halt-and-surface posture applies; halt-for-fresh-session per Rule 7c if total approaches ceiling mid-slice. nwrp200: Slice-2 ceiling stays $200; ~10% consumed by iter-1 B-2 ($15-20 spent). |
 
 **Recommended ceiling:** $200 for Slice-2 with buffer. Permits absorbing 1-2 plan rework events (like Slice-1's B-1a-bis) without triggering bump-or-halt decisions. Per nwrp164 discipline: NO autonomous bumps; halt + surface if ceiling hit.
 
@@ -507,7 +612,12 @@ Plan-author halt-and-surface pattern: write the partial plan to disk, surface to
 | B-5 `documents` table missing necessary columns for raw_payload preservation | Plan-author surveys `documents` schema at /np time; if `raw_payload JSONB` column missing, B-5 migration adds it; document import-shape preservation in B-5 README. |
 | B-6 D-020 cost-code reseed inadvertently wipes RB production rows | SPLIT per Q above #6 enforced at plan-author time; B-6 migration ONLY touches `org_id IS NULL` (templates) + fixture-harness-org. WHERE clause MUST exclude RB_ORG_ID. Plan-review iter-1 verifies. |
 | B-7 EXPLAIN ANALYZE reveals existing aggregation >100ms requiring trigger cache before Slice-2 ships | Per Q above #8 — surface to Jake; per-aggregation decision (cache vs optimize vs accept). B-7 may need to ship a trigger cache migration as part of Slice-2 to maintain Wave 1.1-Lite readiness. Document as Q-handoff if discovered. |
-| B-2 Owner Portal Path A introduces new UI pattern not in PATTERNS.md | Plan-review iter-1 includes nightwork-design-pushback; if pattern is novel, plan-author adds "Owner Status View" entry to PATTERNS.md as part of B-2 scope. |
+| B-2a / B-2b Owner Portal Path A introduces new UI pattern not in PATTERNS.md | **RESOLVED per nwrp200 + iter-1 SYNTHESIS B-17:** no new PATTERNS.md "Owner Status View" entry needed; existing §4h.3 (owner portal dashboard, Dashboard pattern) + §2j.3 (draw approval detail, Document Review extension) cover. B-2b PLAN cites both; design-pushback iter-1 verifies. |
+| **B-2a rate-limit infrastructure provisioning balloons plan past $50 per-plan halt gate** | Per nwrp200 explicit escape-valve: if Vercel KV provisioning + integration + tests pushes B-2a past $50, plan-author halts + surfaces; possible micro-plan split (B-2a = security model, B-2a-rate-limit = isolated rate-limit infra). NOT pre-decided; surface-then-decide pattern preserved per Rule 7d. |
+| **B-2a `create_client_portal_invite` RPC fix surfaces additional cross-tenant leak paths during plan-author exploration** | If plan-author discovers additional RPCs / API routes with similar NULL-leak shape, surface to Jake at /np time. Likely candidates: any service-role-backed route reading `client_portal_access` without explicit `client_id IS NOT NULL` filter. Cross-reviewer Rule 9 disagreement HALT if reviewers disagree on whether additional fixes belong in B-2a vs separate cleanup plan. |
+| **B-2a same-org FK invariant requires composite UNIQUE on `clients(org_id, id)` that doesn't currently exist** | Plan-author verifies at /np time via `pg_constraint` query. If composite UNIQUE missing, B-2a migration adds it (parallel composite UNIQUE on every multi-tenant primary-keyed table is the BY-CONSTRUCTION pattern from nwrp200 same-org-invariant scoping). Surface to Jake if migration scope expands materially. Alternative per iter-1 SYNTHESIS B-2: explicit CHECK trigger + TD-B2-02 with deferral rationale. |
+| **B-2a GATE rejection** (Jake reviews + finds token scoping NOT airtight) | B-2b dispatch held; iter-2 on B-2a OR escalate to fresh-session re-scope. B-2b plan-author work NOT pre-authored against B-2a; halt cleanly absorbed. |
+| **iter-1 B-2 plan-author + reviewer work** ($15-20 spent on the original B-2 PLAN + 9-reviewer iter-1) is wasted | NO — iter-1 surfaced the 17 BLOCKING findings (especially B-4 leak) that drove this nwrp200 re-split. The findings ARE the re-scope input. B-2-PLAN.md + 9 reviewer reports + SYNTHESIS remain on disk as historical artifacts; B-2a + B-2b PLANs reference them. |
 | Slice-2 dispatched before Slice-1 closes (B-1b shipped) | Hard prereq #1; preflight check verifies; explicit gate in §9. |
 | Parallel dispatch of B-4 + B-5 + B-6 surfaces Rule 5 files_modified intersection | Mechanical grep at /np time; any intersection forces sequential OR worktree isolation. |
 | Slice-1 carry-forwards (MEDIUM-1 + TD-B1abis-*) drift / get forgotten | Q above #10 routes MEDIUM-1 to B-4 specifically; Q above #11 distributes TDs per nwrp166 amendment (TD-B1abis-01 → B-4, TD-B1abis-02 → B-4, TD-B1abis-03 → B-2, W.1 unflag → B-3 OR B-4). Distribution map embedded in §1 Mapped entities table + §7 Recommended scope per-plan breakdown + §11 Acceptance criteria, so Slice-2 plan-authors find each carry-forward at multiple checkpoints. |
@@ -531,21 +641,20 @@ Plan-author halt-and-surface pattern: write the partial plan to disk, surface to
 
 ## 12. Hand-off
 
-After Jake reviews this expansion (and amends if needed):
+**Status 2026-05-21 (per nwrp200):** B-2 PLAN authored + iter-1 9-reviewer review complete (NEEDS-WORK verdict). B-2 → B-2a + B-2b re-split per nwrp200 driven by iter-1 SYNTHESIS B-4 leak finding. This EXPANDED-SCOPE amended 2026-05-21 awaiting Jake re-review. Next steps:
 
-1. **Approve (or amend):** Mark Status from DRAFT → APPROVED with date.
-2. **Slice-1 closes first.** Resume Slice-1 with B-1b execute + QA + GATE 2 HALT review per nwrp164 sequence in `INTERIM-STATE-2026-05-15-NIGHT.md` §6.
-3. **Run `/nightwork-init-phase stage-f1-knowledge-graph-auth-wave-b-slice-2`** (or equivalent) to:
-   - Capture any stated-scope additions from Jake (verbatim).
-   - Run `/nightwork-auto-setup` to verify AUTO infrastructure (Resend domain ✓ / Stripe price IDs ✓ / fixture data intact ✓ etc.).
-   - Surface MANUAL-CHECKLIST items (Resend MX, Stripe price IDs, env-var population).
-4. **Run `/np stage-f1-knowledge-graph-auth-wave-b-slice-2`** to dispatch discuss-phase + plan-phase + plan-review.
-5. **Plan-review iter-1 + iter-2 cycle** per CLAUDE.md Workflow posture. Cross-reviewer factual disagreements HALT per nwrp118.
-6. **/nx dispatches per dependency map** in §8. Parallel-where-safe per Rule 5 intersection check.
-7. **Halt gates** at end of B-3 + B-5 + B-7 per §9.
+1. **Approve (or amend) THIS amendment:** Jake reviews 2026-05-21 changes (B-2 re-split + 1-year LOCKED + revocation scope-in + rate-limit infra + 7-plan count). Mark Status from "AMENDED — PENDING JAKE RE-REVIEW" → "RE-APPROVED" with date.
+2. **Slice-1 closure:** RESOLVED (B-1b shipped + GATE 2 review done per nwrp189). HALT GATE 0 satisfied.
+3. **Run `/nightwork-init-phase` already done for original B-2** (SETUP-COMPLETE.md exists per nwrp197). nwrp200 re-split may require fresh `/nightwork-init-phase` for B-2a specifically to capture any additional MANUAL-CHECKLIST items (e.g., Vercel KV provisioning IF rate-limit approach chosen at plan-author time).
+4. **Run `/np stage-f1-knowledge-graph-auth-wave-b-slice-2` for B-2a** (after this amendment re-approved). Dispatch discuss-phase + plan-phase + plan-review iter-1 specifically for B-2a (HIGH threat scope per nwrp200). B-2 PLAN + iter-1 reviewer reports + SYNTHESIS remain on disk as historical artifacts; B-2a PLAN references them.
+5. **Plan-review iter-1 + iter-2 cycle on B-2a** per CLAUDE.md Workflow posture. Cross-reviewer factual disagreements HALT per nwrp118.
+6. **/nx dispatches B-2a → HALT GATE B-2a → B-2b → B-3 → B-4/B-5/B-6 → B-7** per dependency map in §8. Parallel-where-safe (B-4/B-5/B-6 only) per Rule 5 intersection check at plan-review iter-1.
+7. **Halt gates** at end of B-2a + B-3 + B-5 + B-7 per §9 (B-2a GATE is the new addition per nwrp200).
 8. **Slice-2 closes** when GATE 3 HALT approved + smoke 11/13 baseline maintained.
 
 After Slice-2 closes, the full F1 Wave-B is done. Wave 1.1-Lite kicks off per ARCHITECTURE.md §6 canonical phase plan.
+
+**iter-1 B-2 work preservation (per nwrp200):** B-2-PLAN.md (963 lines) + 9 reviewer reports + SYNTHESIS remain on disk as historical artifacts. They surfaced the 17 BLOCKING findings (especially the B-4 leak) that drove this nwrp200 re-split. B-2a PLAN + B-2b PLAN reference them; the spend ($15-20) is the re-scope input, not waste.
 
 ---
 
