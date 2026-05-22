@@ -30,6 +30,15 @@ const PUBLIC_PATHS = [
   // 401 by middleware). Route handler does token resolution +
   // `assertDrawBelongsToToken` from src/lib/owner-portal/token.ts.
   "/api/owner-portal/acknowledge",
+  // F1-Wave-B Slice-2 B-2b per BLK-1 fix (plan-checker iter-1): anon
+  // homeowner pay-app acknowledge endpoint. The existing
+  // /api/owner-portal/acknowledge entry above does NOT cover this route
+  // because the matcher at line 65-66 requires `pathname === p` OR
+  // `pathname.startsWith(`${p}/`)` — both fail when the suffix is
+  // `-pay-app` (hyphen, not slash). Explicit entry required.
+  // Reaches route handler as anon; route handler does token resolution +
+  // assertDrawBelongsToToken from src/lib/owner-portal/token.ts.
+  "/api/owner-portal/acknowledge-pay-app",
   // F1-Wave-B Slice-2 B-2a per D-12: authenticated admin revocation
   // endpoint. Reaches route handler as authenticated (PUBLIC_PATHS
   // entry is for auth-redirect skip; route handler enforces auth via
