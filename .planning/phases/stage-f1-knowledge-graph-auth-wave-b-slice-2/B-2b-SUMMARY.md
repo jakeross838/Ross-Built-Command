@@ -3,12 +3,12 @@ phase: stage-f1-knowledge-graph-auth-wave-b-slice-2
 plan: B-2b
 plan-name: owner-portal-readonly-ui-and-audit
 type: summary
-status: EXECUTE-COMPLETE — pending Vercel preview canonical AC-B2b-10 runtime verification + /nightwork-qa
+status: SHIPPED 2026-05-22 per nwrp213 GATE close
 authored: 2026-05-22
-authored_by: gsd-execute-phase executor session (autonomous within plan boundary)
-authorization: nwrp210 (B-2b dispatch with halt-and-surface posture; per-plan halt gate Rule 7d $50; load-bearing AC-B2a-08 forward-carried verification)
-ship-status: not-yet-shipped
-ship-commit: pending Vercel preview AC-B2b-10 attestation + /nightwork-qa PASS
+authored_by: gsd-execute-phase executor session (autonomous within plan boundary) + /np orchestrator (canonical attestation + QA + GATE close)
+authorization: nwrp210 (B-2b dispatch + halt-and-surface) → nwrp211 (ship-path authorization) → nwrp212 (.env.local-only correction + canonical against deployed runtime) → nwrp213 (GATE CLOSED, B-2b SHIPS)
+ship-status: SHIPPED
+ship-commit: 008f621 (execute) + be15317 (QA bundle + canonical attestation) + ship-state docs commit (this update)
 commits-included:
   - e5644f7 feat: B-2b Task 1 — migration 00106 TOCTOU dedupe unique index
   - 584cdf3 feat: B-2b Task 2 — activity-log 'acknowledged' action + onConflictDoNothing flag + ACTION_LABELS mirror
