@@ -168,13 +168,10 @@ export default function ClientCombobox({
   return (
     <div ref={rootRef} className="relative">
       {label && (
-        <span
-          className="block mb-1 text-[10px] uppercase tracking-[0.12em]"
-          style={{
-            fontFamily: "var(--font-jetbrains-mono)",
-            color: "var(--text-tertiary)",
-          }}
-        >
+        // F1-Wave-B Slice-2 B-2b TD-B1abis-03 polish (D-23..D-25):
+        // inline `style={{ fontFamily, color }}` replaced with utility classes.
+        // `font-mono` maps to JetBrains Mono per tailwind.config.ts:64.
+        <span className="block mb-1 text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)] font-mono">
           {label}
         </span>
       )}
@@ -194,14 +191,17 @@ export default function ClientCombobox({
         className="w-full px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--nw-stone-blue)] focus:outline-none disabled:opacity-50"
       />
       {open && (
+        // F1-Wave-B Slice-2 B-2b TD-B1abis-03 polish (D-23..D-25 + iter-1
+        // SYNTHESIS B-15 correction): replace inline boxShadow with
+        // shadow-[var(--shadow-panel)] design token (defined at
+        // src/app/colors_and_type.css:61). `--shadow-popover` does NOT
+        // exist; the closest existing token is `--shadow-panel`.
+        // Inline `style={{ borderColor }}` replaced with border-[var(...)]
+        // bracket utility for consistency.
         <div
           id={listboxId}
           role="listbox"
-          className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-y-auto border bg-[var(--bg-card)]"
-          style={{
-            borderColor: "var(--border-default)",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-          }}
+          className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-y-auto border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-panel)]"
         >
           {loading && (
             <div className="px-3 py-2 text-xs text-[color:var(--text-tertiary)]">
@@ -238,12 +238,11 @@ export default function ClientCombobox({
               aria-selected={options.length === highlight}
               onClick={commitNew}
               onMouseEnter={() => setHighlight(options.length)}
-              className={`w-full text-left px-3 py-2 text-sm border-t transition-colors ${
+              className={`w-full text-left px-3 py-2 text-sm border-t border-[color:var(--border-default)] transition-colors ${
                 options.length === highlight
                   ? "bg-[rgba(91,134,153,0.08)] text-[color:var(--text-primary)]"
                   : "text-[color:var(--text-primary)] hover:bg-[rgba(91,134,153,0.04)]"
               }`}
-              style={{ borderColor: "var(--border-default)" }}
             >
               <span className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)] mr-2">
                 Create
