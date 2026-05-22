@@ -579,12 +579,12 @@ Both TDs filed in `.planning/MASTER-PLAN.md` §11 tech debt registry as part of 
 
 **Problem:** Pre-commit qa-freshness gate at `.claude/hooks/nightwork-pre-commit.sh` fires on execute-time code commits that precede scheduled post-execute QA, forcing `--no-verify` on every multi-task execute. Hook treats every code commit as a post-QA ship commit; doesn't distinguish execute-phase commits.
 
-**4-instance lineage** (5 commits across B-3 execute, all bypassed via Rule 8(a)):
+**3-instance lineage on B-3 alone** (3 commits, each bypassed via Rule 8(a) per-incident; Tasks 3 + 6 + AC-B3-05 were verification-only with no commit-able artifact):
 1. B-3 Task 1 commit `49bb664`
 2. B-3 Task 2 commit `e22a488`
-3. B-3 Task 4 commit (THIS) — pending
+3. B-3 Task 4 commit `ca40e82` (this commit)
 
-(Tasks 3 + 6 were verification-only; no commits = 5 commits → 5 bypasses across B-3 alone.)
+Projected lineage across B-4..B-7 if not addressed pre-B-5: ~15-30 bypasses (each B-N multi-task execute averages 3-5 commits).
 
 **Fix direction:** hook recognizes execute-phase commits (e.g., commits during an active `/nx` execute, OR commits whose SUMMARY/state indicates pre-QA execute phase) and skips qa-freshness for them, WHILE preserving fail-closed for actual post-QA ship commits. Same fail-closed-preserved discipline as the TD-NW-HOOK-DOC-ONLY-DETECT fix (closed 2026-05-20 per commit `c20e5d9` + nwrp192 Option B).
 
