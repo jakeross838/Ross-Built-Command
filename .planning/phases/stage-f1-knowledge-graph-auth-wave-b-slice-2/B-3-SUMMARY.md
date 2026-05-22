@@ -5,11 +5,14 @@ plan-name: soft-delete-trigger-def-wc-1-def-wc-3-rls-hardening
 type: execute
 threat_model_severity: high
 halt_after: true
-status: AUTHORED — PENDING POST-EXECUTE GATE B-3 REVIEW
-shipped_at: 2026-05-22T19:15:00Z
+status: SHIPPED
+shipped_at: 2026-05-22T19:30:00Z
+gate-sign: nwrp219 §1 — GATE B-3 SIGNED with TD condition (TD-B3-FIXTURE-COVERAGE-32-TABLE filed per nwrp219 §7); 5 GATE items verified; ceiling bumped $300→$400 per nwrp219 §11 (Rule 7c second per-slice bump, eyes-open at forcing moment with real numbers)
 authorization-chain:
   - "nwrp216 §1-5 PLAN APPROVED for /nx (POST-EXECUTE GATE B-3 pending)"
   - "nwrp217 §3-22 PROCEED with B-3 execute; --no-verify Rule 8(a) per-incident; 2 TDs MANDATED in this commit"
+  - "nwrp218 §3 GATE pre-sign verification — surface 32-table evaluation evidence (each evaluated, not 27 bulk-skipped); structural guarantee from §1.1 enumeration query confirmed"
+  - "nwrp219 §1-7 GATE B-3 SIGNED with TD condition + ceiling bump $300→$400 + retrospective filed + sequence directive (ship → hook chore → B-4)"
 subsystem: db.audit-trigger + rls.defense-in-depth + arch.docs
 tags:
   - subsystem.db.audit-trigger

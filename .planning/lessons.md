@@ -230,3 +230,49 @@ This clarification entry is itself a doc-only commit but does NOT use `--no-veri
 **Reinforcement for Wave-B onward:** Don't silently defer scope drift. Surface it explicitly at plan-review iter-1 with option (c) as a choice when criteria are met. Slice-2 plans will include new trigger functions with SECURITY DEFINER context — inheriting a clean search_path baseline + REVOKE pattern makes the code-authoring more focused. This cleanup phase as a standalone move enabled that clarity without bloating Slice-2's immediate scope.
 
 ---
+
+## 2026-05-22 — Slice-2 estimate ~2x low: HIGH-threat plans hitting pre-existing-artifact landmines
+
+**Scope:** Stage F1 Wave-B Slice-2 (B-2a, B-2b, B-3 shipped per nwrp209/213/219; B-4..B-7 sequenced). Filed at GATE B-3 sign per nwrp219 §16-17 retrospective directive.
+
+**What happened:** Slice-2's per-plan estimates assumed each plan landed within its declared estimate band. Actuals diverged systematically by plan-class:
+
+| Plan | Estimate | Actual (projected) | Multiplier | Class |
+|------|----------|---------------------|------------|-------|
+| B-2a | $30-45 (HIGH threat per nwrp200) | ~$77-98 | ~2-2.5x | HIGH-threat (composite FK + RPC NULL-leak fix + token lifecycle + revocation + helpers + ACL hardening; pre-existing-artifact landmines: 00074 partial token-hash index timing oracle + B-4 NULL leak surfaced at QA) |
+| B-2b | $15-22 (medium threat) | ~$24-28 | ~1.5x | lean (read-only UI on proven foundation; minimal pre-existing-artifact intersection) |
+| B-3 | $35-50 (HIGH threat per nwrp214) | ~$81-125 | ~2-2.5x | HIGH-threat (32-table trigger + DEF-WC-1 + DEF-WC-3 + 23-entry TS union extension; pre-existing-artifact landmines: pg_default_acl auto-grant + clients/client_portal_access Pattern B taxonomy + RLS-pattern divergence + entity_type singular/plural divergence surfaced at QA iter-1) |
+| Slice-2 (cumulative) | $130-193 (sum of estimates) | ~$315-456 (projected) | ~2-2.4x at high end | — |
+
+**Pattern:** HIGH-threat plans systematically ran ~2-2.5x over estimate because the estimates priced the *plan-author's stated scope* but not the *pre-existing-artifact landmines* that plan-review iter-1 + QA surfaced. Lean plans (no/low intersection with pre-existing artifacts) tracked ~at estimate.
+
+**Specific landmines (B-2a + B-3 examples):**
+- B-2a's iter-1 SYNTHESIS B-4 NULL-leak finding was in the pre-existing `create_client_portal_invite` RPC (migration 00074); the plan's RPC rewrite scope hadn't anticipated the fix-the-pre-existing-bug requirement. Required iter-2 + execute + post-execute ACL hardening (00105) + considered cost bump (nwrp207 + nwrp208).
+- B-2a's `pg_default_acl` discovery at QA — Supabase's default ACL grants `authenticated` EXECUTE on new SECURITY DEFINER functions in `app_private`; required REVOKE-per-function pattern (4 instances filed under TD-NW-APP-PRIVATE-DEFAULT-ACL-HARDEN).
+- B-3's pre-design audit (per nwrp214 §7-13 mandatory) caught: 32 target tables NOT 25 estimated + TWO RLS patterns (Pattern A canonical Wave-A vs Pattern B PERMISSIVE-only joins); these were "discovered facts" the original $35-50 estimate hadn't priced.
+- B-3's BLOCKING-1 catastrophic catch: entity_type singular/plural divergence (TG_TABLE_NAME emits plural; all 74 existing activity_log rows + TS union are singular). Caught at ai-logic-tester iter-1; required CASE mapping addition + Task 6 per-table verification with nwrp216 Q3 mandate.
+
+**Why it matters:**
+1. **Forecast integrity for F2-F5.** The F1 phases were estimated using the same heuristics; if HIGH-threat plans there follow the same 2x pattern, F2-F5 timelines/budgets need adjustment.
+2. **Ceiling discipline at the forcing moment.** Slice-2 needed a second per-slice ceiling bump ($300 → $400 per nwrp219 §11; first bump $50→$75 per iter-2 was per-plan, not Slice-cumulative). The discipline held because GATE B-3 was the forcing moment with real numbers, not preemptive bumping.
+3. **Estimate-vs-discipline.** This is an estimation lesson, NOT a discipline failure. Discipline contracts held: per-plan halt gate triggered for B-2a + B-3 iter-2; per-plan-halt-vs-ceiling-bump-vs-fresh-session decision tree (Rule 7c/d/e) was followed at each forcing moment.
+
+**Reinforcement going forward:**
+
+- **F2-F5 estimation rule of thumb:** HIGH-threat plans ~2-2.5x base estimate; lean plans ~at estimate. Buffer Slice estimates by ~75% if Slice contains HIGH-threat plans; ~20% for lean-majority Slices.
+- **Pre-design audit (per nwrp214 §7-13) is load-bearing.** Surfacing pre-existing-artifact landmines BEFORE design landed catches them at plan-author time, not at QA time. B-3's pre-design audit caught 32 vs 25 + Pattern A/B + auth.uid() refinement BEFORE design ran. The B-2a lesson — that pre-existing artifacts hide landmines — drove this discipline; carry it forward to F2-F5.
+- **Cost ceiling bumps at forcing moments, not preemptively.** nwrp216 Q2 (defer ceiling decision to B-3 actual ship spend) was the right discipline. Pre-bumping $300→$350 at B-3 plan-time would have been "blank check at a moment we didn't have real numbers." nwrp219 bumped $300→$400 with real B-3 actuals + B-4..B-7 projection.
+- **Per-plan halt gate stays even with ceiling bumps.** Slice ceiling went up; per-plan $50 halt gate did NOT. That's the right shape: the gate catches in-flight overruns; the ceiling decision happens at forcing moments. Don't conflate them.
+- **B-4/B-6/B-7 get tightened Tier-2 rigor** (lean reviewers, single iter) since they're lean-class; B-5 gets fuller HIGH rigor (external webhook surface). This is the estimation-aware reviewer-scope discipline going forward.
+
+**Codification:** Estimation lesson for F2-F5. Add explicit "estimate base × HIGH-threat multiplier" note to F2-F5 plan-author dispatch language. Track per-plan multiplier post-ship to refine the heuristic (B-2a 2.0-2.5x, B-3 2.0-2.5x → if F2-F5 HIGH plans land near 2x, heuristic is good; if they land at 1.5x or 3x, refine).
+
+**Cross-references:**
+- nwrp207 + nwrp208 (B-2a considered bumps for QA + ACL fix)
+- nwrp215 (B-3 iter-2 $50→$75 bump scoped to iter-2 only)
+- nwrp219 §11-17 (Slice-2 ceiling $300→$400; this retrospective directive)
+- TD-B3-FIXTURE-COVERAGE-32-TABLE (pre-real-data requirement landed via the same landmine class — 27 of 32 not empirically tested at execute time)
+- TD-NW-APP-PRIVATE-DEFAULT-ACL-HARDEN (4-instance lineage; same pre-existing-artifact-pattern across 4 plans)
+- TD-NW-HOOK-EXECUTE-PHASE-DETECT (process gap surfaced at scale — calibration debt accumulating; same pattern as TD-NW-HOOK-DOC-ONLY-DETECT predecessor)
+
+---
