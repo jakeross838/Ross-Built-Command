@@ -130,10 +130,21 @@ interface RouteCheck {
   // harness-org) holds org-admin role per scripts/harness-auth-bootstrap.ts
   // — sufficient to access /admin/* surfaces; the role gate at
   // src/app/admin/owner-portal-tokens/page.tsx accepts ('owner'|'admin').
-  category: "issue-1" | "issue-2" | "both" | "admin";
+  //
+  // F1-Wave-B Slice-2 B-2b extension (per CONTEXT D-01 + D-02 + BLK-2 fix):
+  // 'owner-portal' category added for /owner/{token} + /owner/{token}/pay-apps/{id}
+  // routes. These routes are PUBLIC_PATHS — they don't require auth (PUBLIC_PATHS
+  // bypasses auth-redirect; route handler does token resolution). The smoke
+  // harness still uses the harness-fixture storageState but PUBLIC_PATHS routes
+  // return their content regardless of authed state.
+  category: "issue-1" | "issue-2" | "both" | "admin" | "owner-portal";
   primary_ux_selector: string | null;
   primary_ux_min_count?: number;
-  pattern?: "document-review" | "admin-list";
+  pattern?:
+    | "document-review"
+    | "admin-list"
+    | "owner-portal-dashboard"
+    | "owner-portal-draw";
   expected_http_status?: number; // default 200
 }
 
@@ -167,7 +178,27 @@ interface SmokeOutput {
 }
 
 // ============================================================================
-// Route table — 13 unique routes (synthetic UUIDs per iter-2 §4.4.2)
+// F1-Wave-B Slice-2 B-2b — HARNESS_FIXTURE_OWNER_TOKEN env (per BLK-2 fix).
+// Plaintext 64-char hex token for the seeded client_portal_access fixture row
+// (id=00000000-0000-0000-0004-100000000001 in scripts/fixtures/smoke-seed.sql
+// Step 8). SHA-256 of this value equals the access_token_hash column on the
+// fixture row. If missing, the 2 owner-portal routes are SKIPPED with a loud
+// WARN (does NOT abort — mirrors VERIFICATION_BYPASS_SECRET posture per iter-2
+// §4.12).
+//
+// Canonical secret-presence verification per CLAUDE.md (nwrp139):
+//   - Never use `${VAR:-NOT_SET}` (leaks $VAR when set).
+//   - Always use `if [ -n "$VAR" ]; then ... else ... fi`.
+//   - In TypeScript: `process.env.HARNESS_FIXTURE_OWNER_TOKEN` returns
+//     `string | undefined`; truthiness check is safe (does not stringify
+//     the value).
+const HARNESS_FIXTURE_OWNER_TOKEN =
+  process.env.HARNESS_FIXTURE_OWNER_TOKEN ?? "";
+const HARNESS_FIXTURE_DRAW_ID = "55555555-5555-5555-5555-500000000001"; // seeded in smoke-seed.sql §Step 8.3
+
+// ============================================================================
+// Route table — 16 unique routes (14 from B-2a + 2 from B-2b owner-portal)
+// (synthetic UUIDs per iter-2 §4.4.2 + B-2b BLK-2 fixture seed)
 // ============================================================================
 
 const ROUTES: RouteCheck[] = [
@@ -294,7 +325,50 @@ const ROUTES: RouteCheck[] = [
     primary_ux_min_count: 1,
     pattern: "admin-list",
   },
+  // F1-Wave-B Slice-2 B-2b per CONTEXT D-01 + D-02 + BLK-2 fix + BLK-3 wrapper:
+  // anon homeowner portal dashboard + drilldown routes. Synthetic seeded UUIDs
+  // per CLAUDE.md "Drummond is the reference job for production-facing artifacts
+  // ONLY" — smoke harness uses synthetic seed at scripts/fixtures/smoke-seed.sql
+  // §Step 8 (client_portal_access fixture + Smoke Job Alpha draw).
+  //
+  // Selector posture: <main data-prototype='owner-dashboard'> wrapper (BLK-3
+  // fix) — selector resolves on the page.tsx wrapper element, NOT on the
+  // tenant-blind primitive (which remains untouched per Latitude #1 (a)).
+  //
+  // Conditional-spread: if HARNESS_FIXTURE_OWNER_TOKEN is not set in env, these
+  // routes are EXCLUDED from the route table (mirrors VERIFICATION_BYPASS_SECRET
+  // posture per iter-2 §4.12 — loud WARN below, but does NOT abort the harness).
+  ...(HARNESS_FIXTURE_OWNER_TOKEN
+    ? ([
+        {
+          route: `/owner/${HARNESS_FIXTURE_OWNER_TOKEN}`,
+          category: "owner-portal",
+          primary_ux_selector:
+            "main[data-prototype='owner-dashboard']",
+          primary_ux_min_count: 1,
+          pattern: "owner-portal-dashboard",
+        },
+        {
+          route: `/owner/${HARNESS_FIXTURE_OWNER_TOKEN}/pay-apps/${HARNESS_FIXTURE_DRAW_ID}`,
+          category: "owner-portal",
+          primary_ux_selector: "main[data-prototype='owner-draw']",
+          primary_ux_min_count: 1,
+          pattern: "owner-portal-draw",
+        },
+      ] as RouteCheck[])
+    : []),
 ];
+
+// Owner-portal env presence warning (does NOT abort; mirrors iter-2 §4.12).
+if (!HARNESS_FIXTURE_OWNER_TOKEN) {
+  console.warn(
+    "[wave-d-smoke] HARNESS_FIXTURE_OWNER_TOKEN: NOT SET — owner-portal routes (/owner/{token} + /owner/{token}/pay-apps/{id}) SKIPPED. Set in .env.local + Vercel Preview/Production for B-2b smoke coverage.",
+  );
+} else {
+  console.log(
+    `[wave-d-smoke] HARNESS_FIXTURE_OWNER_TOKEN: SET (len=${HARNESS_FIXTURE_OWNER_TOKEN.length}) — owner-portal routes included.`,
+  );
+}
 
 // ============================================================================
 // Helpers

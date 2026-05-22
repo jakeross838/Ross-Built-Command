@@ -302,6 +302,182 @@ INSERT INTO public.activity_log (id, org_id, user_id, action, entity_type, entit
   ('44444444-4444-4444-4444-40000000000a', '00000000-0000-0000-0000-fb1ce0a55e55', '00000000-0000-0000-0002-000000000002', 'job_created',       'job',     '22222222-2222-2222-2222-200000000008')
 ON CONFLICT (id) DO NOTHING;
 
+-- ============================================================================
+-- Step 8 (NEW per F1-Wave-B Slice-2 B-2b BLK-2 fix per plan-checker iter-1):
+-- client_portal_access fixture row for owner-portal smoke harness +
+-- AC-B2b-10 runtime revocation probe + AC-B2b-06 TOCTOU concurrent-double-tap
+-- + AC-B2b-03 cross-client isolation probe (W-2 EXECUTE REQUIREMENT per
+-- nwrp210 §12 — synthetic-fixture-only; harness-fixture-org scope).
+--
+-- B-2b execute-time deviation from PLAN (Rule 1 — bug): the PLAN's hardcoded
+-- client UUIDs (e.g., 00000000-0000-0000-0003-100000000001 for Smoke Client A)
+-- do NOT match the actual seeded state at apply time. The clients INSERT at
+-- Step 4.5 uses ON CONFLICT (id) DO NOTHING — but the existing rows came from
+-- a previous apply that used different (auto-generated) UUIDs. The PLAN's
+-- INSERT with plan-UUIDs would create PARALLEL client rows orphaned from the
+-- existing jobs (jobs.client_id FK points at the OLD generated UUIDs, not the
+-- PLAN UUIDs). To bridge: Step 8 uses SELECT subqueries to dynamically resolve
+-- the actual client_id from the existing jobs.client_id FK chain.
+--
+-- access_token_hash convention (per 00074_client_portal.sql LINE 25-34):
+--   - Plaintext: 64-char hex (encode(extensions.gen_random_bytes(32), 'hex'))
+--   - Hash:      SHA-256 hex of plaintext (encode(digest(plaintext, 'sha256'), 'hex'))
+--   - CHECK on access_token_hash enforces 64-char length.
+--
+-- APPLY PROCEDURE (orchestrator-driven, mirrors smoke-seed password lifecycle):
+--
+--   1. Orchestrator generates a shared 64-char hex token plaintext via
+--      Node `crypto.randomBytes(32).toString('hex')` OR re-uses existing
+--      `HARNESS_FIXTURE_OWNER_TOKEN` env value if already provisioned.
+--   2. Orchestrator computes SHA-256 hex of the plaintext.
+--   3. Orchestrator substitutes the placeholder string
+--      '__SHA256_REPLACED_BY_ORCHESTRATOR_FROM_HARNESS_FIXTURE_OWNER_TOKEN__'
+--      below with the computed hash hex.
+--   4. Orchestrator submits the resulting SQL via Supabase MCP `execute_sql`.
+--   5. On apply success, orchestrator writes the plaintext value to
+--      `.env.local` AND adds it to Vercel Preview + Production env vars.
+--      Plaintext is documented in
+--      `.planning/qa-runs/wave-d/smoke-seed-credentials-DO-NOT-COMMIT.txt`
+--      (same restricted-checkin file as the smoke user passwords).
+--
+-- Fixture rows created:
+--   client_portal_access (TWO rows):
+--     - Primary: tied to Smoke Job Alpha + Smoke Client A; used by all smoke
+--       routes + acknowledge + TOCTOU + revocation probes
+--     - W-2 cross-client: tied to Smoke Job Beta + Smoke Client B (different
+--       client); used by AC-B2b-03 cross-client isolation probe to verify
+--       Primary token CANNOT access Job Beta's draw via assertDrawBelongsToToken
+--   draws (TWO rows):
+--     - Smoke Job Alpha draw #1 — status 'submitted' — TOCTOU + acknowledge probes
+--     - Smoke Job Beta draw #1 — status 'submitted' — cross-client probe target
+-- ============================================================================
+
+-- 8.1 Primary client_portal_access fixture row — Smoke Job Alpha + Client A
+INSERT INTO public.client_portal_access (
+  id,
+  org_id,
+  job_id,
+  client_id,
+  email,
+  name,
+  access_token_hash,
+  visibility_config,
+  invited_at,
+  expires_at,
+  created_by
+)
+SELECT
+  '00000000-0000-0000-0004-100000000001'::uuid,
+  '00000000-0000-0000-0000-fb1ce0a55e55'::uuid,
+  '22222222-2222-2222-2222-200000000001'::uuid,
+  j.client_id,
+  'smoke-fixture-owner@nightwork.local',
+  'Smoke Fixture Owner',
+  '__SHA256_REPLACED_BY_ORCHESTRATOR_FROM_HARNESS_FIXTURE_OWNER_TOKEN__',
+  '{}'::jsonb,
+  NOW(),
+  NOW() + interval '365 days',
+  '5eb26edc-5989-477f-ac42-d1e9264db0e2'
+FROM public.jobs j
+WHERE j.id = '22222222-2222-2222-2222-200000000001'
+  AND j.org_id = '00000000-0000-0000-0000-fb1ce0a55e55'
+  AND j.client_id IS NOT NULL
+ON CONFLICT (id) DO UPDATE SET
+  access_token_hash = EXCLUDED.access_token_hash,
+  expires_at        = EXCLUDED.expires_at,
+  revoked_at        = NULL;
+
+-- 8.2 W-2 cross-client portal_access — Smoke Job Beta + Client B (different client)
+-- Used by AC-B2b-03 to prove the Primary token CANNOT resolve Job Beta's draws
+-- via assertDrawBelongsToToken. Separate token + separate hash so the
+-- cross-client probe operates on a fresh token plaintext.
+INSERT INTO public.client_portal_access (
+  id,
+  org_id,
+  job_id,
+  client_id,
+  email,
+  name,
+  access_token_hash,
+  visibility_config,
+  invited_at,
+  expires_at,
+  created_by
+)
+SELECT
+  '00000000-0000-0000-0004-100000000002'::uuid,
+  '00000000-0000-0000-0000-fb1ce0a55e55'::uuid,
+  '22222222-2222-2222-2222-200000000002'::uuid,
+  j.client_id,
+  'smoke-fixture-owner-beta@nightwork.local',
+  'Smoke Fixture Owner Beta',
+  -- Placeholder hash that satisfies the 64-char CHECK constraint; not used
+  -- for resolve attempts (AC-B2b-03 only probes whether Primary token can
+  -- access Beta's draw, not whether Beta's token can authenticate).
+  repeat('a', 64),
+  '{}'::jsonb,
+  NOW(),
+  NOW() + interval '365 days',
+  '5eb26edc-5989-477f-ac42-d1e9264db0e2'
+FROM public.jobs j
+WHERE j.id = '22222222-2222-2222-2222-200000000002'
+  AND j.org_id = '00000000-0000-0000-0000-fb1ce0a55e55'
+  AND j.client_id IS NOT NULL
+ON CONFLICT (id) DO UPDATE SET
+  expires_at = EXCLUDED.expires_at,
+  revoked_at = NULL;
+
+-- 8.3 Synthetic draws — one per client/job for AC-B2b-06 TOCTOU + AC-B2b-03 cross-client
+INSERT INTO public.draws (
+  id,
+  org_id,
+  job_id,
+  draw_number,
+  application_date,
+  period_start,
+  period_end,
+  status,
+  revision_number,
+  original_contract_sum,
+  net_change_orders,
+  contract_sum_to_date,
+  total_completed_to_date,
+  less_previous_payments,
+  current_payment_due,
+  balance_to_finish,
+  deposit_amount,
+  submitted_at
+) VALUES
+  -- Primary draw on Smoke Job Alpha (Smoke Client A) — TOCTOU + acknowledge target
+  (
+    '55555555-5555-5555-5555-500000000001',
+    '00000000-0000-0000-0000-fb1ce0a55e55',
+    '22222222-2222-2222-2222-200000000001',
+    1,
+    CURRENT_DATE,
+    CURRENT_DATE - interval '30 days',
+    CURRENT_DATE,
+    'submitted',
+    0,
+    250000000, 0, 250000000, 50000000, 0, 50000000, 200000000, 25000000,
+    NOW()
+  ),
+  -- W-2 cross-client draw on Smoke Job Beta (Smoke Client B) — AC-B2b-03 probe target
+  (
+    '55555555-5555-5555-5555-500000000002',
+    '00000000-0000-0000-0000-fb1ce0a55e55',
+    '22222222-2222-2222-2222-200000000002',
+    1,
+    CURRENT_DATE,
+    CURRENT_DATE - interval '30 days',
+    CURRENT_DATE,
+    'submitted',
+    0,
+    350000000, 0, 350000000, 70000000, 0, 70000000, 280000000, 35000000,
+    NOW()
+  )
+ON CONFLICT (id) DO NOTHING;
+
 COMMIT;
 
 -- ============================================================================
