@@ -7,7 +7,7 @@ threat_model_severity: high
 halt_after: true
 requires_smoke: true
 autonomous: true
-status: REVISED ITER-2 — PENDING JAKE REVIEW AT GATE B-3 (per nwrp215 §15-16)
+status: PLAN-APPROVED FOR /nx — POST-EXECUTE GATE B-3 PENDING (per nwrp216 §1-5; Q3 mandate applied; live-DB GATE pending post-execute)
 depends_on:
   - B-2a   # SHIPPED 2026-05-21 per nwrp209 (composite FK + SECURITY DEFINER + search_path discipline + REVOKE/GRANT pattern precedent)
   - B-2b   # SHIPPED 2026-05-22 per nwrp213 (activity_log.actor_token_id + lean direct authoring + halt_after precedent)
@@ -40,6 +40,7 @@ source_decisions:
   - "nwrp213 — B-2b SHIPPED; halt_after pattern; activity_log.actor_token_id available"
   - "nwrp214 — B-3 DISPATCH full HIGH-threat rigor + MANDATORY pre-design audit baked into plan-author (B-2a lesson)"
   - "nwrp215 — Iter-2 authorized: 5 decisions (cost bump $50→$75; DEF-WC-1 canonical direct-call; reuse 'deleted' action; defer W.1 to B-4; ADD Task 6 per-table verification). HALT after iter-2."
+  - "nwrp216 — PLAN APPROVED for /nx (not ship; live-DB GATE post-execute). Q1 plan-approval; Q2 defer Slice-2 ceiling decision to B-3 actual ship spend; Q3 MANDATE Task 6 per-table entity_type capture; Q4 no iter-3. /nx fresh-scoping under existing $300; halt_after: true → POST-EXECUTE GATE B-3."
   - "CLAUDE.md Workflow posture Rules 1-9 — Rule 1 schema≠runtime; Rule 3 ai-logic-tester executes; Rule 6 pre-flight collision; Rule 7d per-plan halt gate; Rule 9 cross-reviewer factual disagreement HALT"
   - "CLAUDE.md Architecture posture — Multi-tenant RLS BY CONSTRUCTION; Q10b scope-axis; soft-delete only"
   - "CLAUDE.md Dev Rules — SECURITY DEFINER + explicit search_path mandatory; soft-delete only; trigger-maintained caches require rationale comment"
@@ -824,26 +825,32 @@ Violation = audit-spoofing surface. The trigger does NOT guard against this beca
 
 **Iter-2 correction (per ai-logic-tester Finding 10):** Initial PLAN coupled Drummond with fixture-harness-org incorrectly. Drummond is a JOB in Ross Built org (id `a1bb4d28-103d-40d8-98fd-2dc449bf5d1c`, org_id `00000000-0000-0000-0000-000000000001`). Smoke harness uses synthetic-seed fixture-harness-org ONLY per Domain rules.
 
-### Task 6 — Per-table verification DO-block (NEW per nwrp215 decision 5)
+### Task 6 — Per-table verification DO-block (NEW per nwrp215 decision 5 + nwrp216 Q3 MANDATE)
 
-**Subject:** `feat(stage-f1-wave-b-slice-2): B-3 Task 6 — per-table trigger verification DO-block`
+**Subject:** `feat(stage-f1-wave-b-slice-2): B-3 Task 6 — per-table trigger verification DO-block with entity_type capture`
 
 **Rationale (Jake's framing per nwrp215 §11):** "The audit ESTABLISHED the 32 tables aren't uniform (client_portal_access doesn't fit DEF-WC-3, uses revoked_at). Non-uniformity is fact, not hypothesis. The catastrophic risk on a 32-table trigger is the one table with a quirk you didn't individually test. Per-table verification is cheap insurance against the silent one-of-32 failure."
 
-**Scope:**
+**Per-table entity_type capture MANDATE (per nwrp216 Q3):** Task 6 MUST capture + assert the `entity_type` each table emits, verifying the singular-form CASE mapping holds across ALL 32 tables (not just representative tests). Jake's framing: "entity_type singular/plural was THE catastrophic iter-1 catch. Task 6 already loops all 32 tables; having it capture + assert the entity_type each table emits verifies the singular-'job' fix holds across ALL 32, not just representative tables. Verifying the exact failure mode that nearly shipped, in a loop we're already running, is nearly free." NOT executor discretion.
+
+**Scope (per-table for all 32 target tables):**
 - Author a DO-block that loops over all 32 target tables; for each table:
   1. Identify ONE fixture-org test row (org_id = harness-fixture-org; deleted_at IS NULL)
   2. UPDATE that row's deleted_at = NOW() (transaction-safe via SAVEPOINT)
-  3. Verify activity_log row was created: count of new rows with entity_id = test_row.id AND action = 'deleted' AND entity_type = singular-mapped-form
-  4. Verify activity_log.org_id matches test_row.org_id (cross-tenant integrity)
-  5. Verify activity_log.details.actor_source = 'service_role' (DO-block context lacks JWT)
-  6. Verify activity_log.details.mechanism = 'db_trigger'
-  7. ROLLBACK TO SAVEPOINT (restores test row's deleted_at = NULL)
-- For tables that don't have an fixture-harness-org test row available (e.g., entities not present in synthetic seed): record as N/A with explicit reason
-- Output: structured JSONB report summarizing per-table pass/fail/N/A
-- Halt-and-surface if ANY table fails verification
+  3. Verify activity_log row was created: count of new rows with entity_id = test_row.id AND action = 'deleted'
+  4. **Capture + assert `entity_type` (MANDATED per nwrp216 Q3):**
+     - Capture the singular form emitted: `SELECT entity_type FROM public.activity_log WHERE entity_id = test_row.id ORDER BY created_at DESC LIMIT 1`
+     - Assert it matches the CASE mapping expected value from §2.1 (e.g., `'jobs'` table → `entity_type='job'`; `'invoices'` table → `entity_type='invoice'`)
+     - FAIL if captured entity_type contains the plural form OR doesn't match the singular expectation
+  5. Verify activity_log.org_id matches test_row.org_id (cross-tenant integrity)
+  6. Verify activity_log.details.actor_source = 'service_role' (DO-block context lacks JWT)
+  7. Verify activity_log.details.mechanism = 'db_trigger'
+  8. ROLLBACK TO SAVEPOINT (restores test row's deleted_at = NULL)
+- For tables that don't have a fixture-harness-org test row available (e.g., entities not present in synthetic seed): record as N/A with explicit reason
+- Output: structured JSONB report summarizing per-table pass/fail/N/A INCLUDING captured entity_type per row
+- Halt-and-surface if ANY table fails verification OR entity_type doesn't match expected singular form
 
-**Implementation (sketch):**
+**Implementation (sketch — per nwrp216 Q3 MANDATE: includes entity_type capture + assertion per table):**
 ```sql
 DO $$
 DECLARE
@@ -851,13 +858,58 @@ DECLARE
   v_test_id uuid;
   v_test_org_id uuid;
   v_audit_row_count int;
+  v_captured_entity_type text;
+  v_expected_entity_type text;
   v_results jsonb := '[]'::jsonb;
   v_target_tables text[] := ARRAY[
     -- Same 32-table list as Task 1 DO-block
-    'approval_chains','budget_lines',...,'vendors'
+    'approval_chains','budget_lines','change_order_lines','change_orders','clients',
+    'cost_codes','document_extraction_lines','document_extractions','draw_adjustment_line_items',
+    'draw_adjustments','draw_line_items','draws','internal_billings','invoice_allocations',
+    'invoice_line_items','invoices','items','job_item_activity','job_milestones','jobs',
+    'lien_releases','line_bom_attachments','line_cost_components','po_line_items',
+    'proposal_line_items','proposals','purchase_orders','selection_categories','selections',
+    'unit_conversion_suggestions','vendor_item_pricing','vendors'
   ];
+  -- Per nwrp216 Q3 MANDATE: expected entity_type per table (singular form from §2.1 CASE)
+  v_expected_map jsonb := jsonb_build_object(
+    'approval_chains', 'approval_chain',
+    'budget_lines', 'budget_line',
+    'change_order_lines', 'change_order_line',
+    'change_orders', 'change_order',
+    'clients', 'client',
+    'cost_codes', 'cost_code',
+    'document_extraction_lines', 'document_extraction_line',
+    'document_extractions', 'document_extraction',
+    'draw_adjustment_line_items', 'draw_adjustment_line_item',
+    'draw_adjustments', 'draw_adjustment',
+    'draw_line_items', 'draw_line_item',
+    'draws', 'draw',
+    'internal_billings', 'internal_billing',
+    'invoice_allocations', 'invoice_allocation',
+    'invoice_line_items', 'invoice_line_item',
+    'invoices', 'invoice',
+    'items', 'item',
+    'job_item_activity', 'job_item_activity',  -- already singular shape
+    'job_milestones', 'job_milestone',
+    'jobs', 'job',
+    'lien_releases', 'lien_release',
+    'line_bom_attachments', 'line_bom_attachment',
+    'line_cost_components', 'line_cost_component',
+    'po_line_items', 'po_line_item',
+    'proposal_line_items', 'proposal_line_item',
+    'proposals', 'proposal',
+    'purchase_orders', 'purchase_order',
+    'selection_categories', 'selection_category',
+    'selections', 'selection',
+    'unit_conversion_suggestions', 'unit_conversion_suggestion',
+    'vendor_item_pricing', 'vendor_item_pricing',  -- already singular shape
+    'vendors', 'vendor'
+  );
 BEGIN
   FOREACH v_table IN ARRAY v_target_tables LOOP
+    v_expected_entity_type := v_expected_map ->> v_table;
+
     -- Find a fixture-harness-org test row
     EXECUTE format(
       'SELECT id, org_id FROM public.%I WHERE org_id = ''<fixture_harness_org_id>'' AND deleted_at IS NULL LIMIT 1',
@@ -865,7 +917,12 @@ BEGIN
     ) INTO v_test_id, v_test_org_id;
 
     IF v_test_id IS NULL THEN
-      v_results := v_results || jsonb_build_object('table', v_table, 'status', 'N/A', 'reason', 'no fixture row');
+      v_results := v_results || jsonb_build_object(
+        'table', v_table,
+        'status', 'N/A',
+        'reason', 'no fixture row',
+        'expected_entity_type', v_expected_entity_type
+      );
       CONTINUE;
     END IF;
 
@@ -881,10 +938,27 @@ BEGIN
          AND action = 'deleted'
          AND created_at > NOW() - INTERVAL '5 seconds';
 
+      -- Capture entity_type (per nwrp216 Q3 MANDATE)
+      SELECT entity_type INTO v_captured_entity_type
+        FROM public.activity_log
+       WHERE entity_id = v_test_id
+         AND action = 'deleted'
+         AND created_at > NOW() - INTERVAL '5 seconds'
+       ORDER BY created_at DESC
+       LIMIT 1;
+
       v_results := v_results || jsonb_build_object(
         'table', v_table,
-        'status', CASE WHEN v_audit_row_count = 1 THEN 'PASS' ELSE 'FAIL' END,
-        'audit_rows_created', v_audit_row_count
+        'status', CASE
+          WHEN v_audit_row_count = 1 AND v_captured_entity_type = v_expected_entity_type THEN 'PASS'
+          WHEN v_audit_row_count = 0 THEN 'FAIL_NO_AUDIT'
+          WHEN v_captured_entity_type IS NULL THEN 'FAIL_NO_ENTITY_TYPE'
+          WHEN v_captured_entity_type != v_expected_entity_type THEN 'FAIL_ENTITY_TYPE_MISMATCH'
+          ELSE 'FAIL'
+        END,
+        'audit_rows_created', v_audit_row_count,
+        'captured_entity_type', v_captured_entity_type,
+        'expected_entity_type', v_expected_entity_type
       );
 
       ROLLBACK TO SAVEPOINT sp_test;
@@ -892,23 +966,25 @@ BEGIN
       v_results := v_results || jsonb_build_object(
         'table', v_table,
         'status', 'ERROR',
-        'message', SQLERRM
+        'message', SQLERRM,
+        'expected_entity_type', v_expected_entity_type
       );
       ROLLBACK TO SAVEPOINT sp_test;
     END;
   END LOOP;
 
   -- Output the structured report
-  RAISE NOTICE 'Per-table verification: %', jsonb_pretty(v_results);
+  RAISE NOTICE 'Per-table verification (nwrp216 Q3 MANDATE — entity_type capture): %',
+               jsonb_pretty(v_results);
 
-  -- Fail loud if any table FAILed
-  IF v_results @? '$[*] ? (@.status == "FAIL")' THEN
-    RAISE EXCEPTION 'Per-table verification FAILED for at least one table — see NOTICE above';
+  -- Fail loud if any table FAILed (any FAIL_* OR ERROR status)
+  IF v_results @? '$[*] ? (@.status starts with "FAIL")' OR v_results @? '$[*] ? (@.status == "ERROR")' THEN
+    RAISE EXCEPTION 'Per-table verification FAILED — see NOTICE above. Per nwrp216 Q3, entity_type singular mapping MUST hold across all 32 tables.';
   END IF;
 END $$;
 ```
 
-**Plan-author finalizes exact DO-block at execute time** (table list constant; fixture-harness-org UUID resolved from `scripts/fixtures/smoke-seed.sql`). Surface the structured report verbatim in B-3-SUMMARY.md per-table results section.
+**Plan-author finalizes exact DO-block at execute time** (table list constant; expected_map constant per §2.1 CASE statement; fixture-harness-org UUID resolved from `scripts/fixtures/smoke-seed.sql`). Surface the structured report verbatim in B-3-SUMMARY.md per-table results section — INCLUDING the captured + expected entity_type for each table per nwrp216 Q3.
 
 **Files modified:** NONE (verification is transaction-scoped; ROLLBACK restores state)
 
@@ -1335,27 +1411,44 @@ UPDATE public.jobs SET deleted_at = NULL WHERE id = 'a1bb4d28-103d-40d8-98fd-2dc
 
 **Falsifiability:** If B-3 trigger breaks fixture seed (e.g., service-role soft-deletes blocked or audit_log writes failing), smoke fails.
 
-### AC-B3-12 — Per-table verification DO-block (NEW iter-2 per nwrp215 decision 5)
+### AC-B3-12 — Per-table verification DO-block with entity_type capture (NEW iter-2 per nwrp215 decision 5; MANDATED per nwrp216 Q3)
 
 **Verification (LIVE — see Task 6 for full DO-block):**
 
 The Task 6 DO-block loops over all 32 target tables; for each table:
 1. Identifies one fixture-harness-org test row (or records N/A if no fixture row)
 2. Soft-deletes the row in a SAVEPOINT
-3. Verifies activity_log row was created with correct entity_type (singular CASE mapping), action='deleted', org_id matching test row, details.mechanism='db_trigger', details.actor_source='service_role'
-4. ROLLBACK TO SAVEPOINT (restores deleted_at = NULL)
-5. Records structured PASS/FAIL/N/A per table
+3. Verifies activity_log row was created with:
+   - correct `action='deleted'`
+   - correct `org_id` matching test row (cross-tenant integrity)
+   - correct `details.mechanism='db_trigger'`
+   - correct `details.actor_source='service_role'`
+4. **Captures + asserts entity_type per table (nwrp216 Q3 MANDATE):**
+   - Captures the actual `entity_type` emitted (e.g., for `jobs` table, expect `'job'`)
+   - Compares against expected singular form from §2.1 CASE mapping
+   - FAILs with status `FAIL_ENTITY_TYPE_MISMATCH` if captured doesn't match expected
+5. ROLLBACK TO SAVEPOINT (restores deleted_at = NULL)
+6. Records structured PASS/FAIL/N/A per table INCLUDING captured + expected entity_type
 
 **Expected (structured JSONB output from DO-block):**
-- ALL tables with fixture rows: status = 'PASS'
-- Tables without fixture rows: status = 'N/A' with reason
-- ZERO tables with status = 'FAIL' or 'ERROR'
+- ALL tables with fixture rows: `status = 'PASS'` AND `captured_entity_type == expected_entity_type` (singular form match)
+- Tables without fixture rows: `status = 'N/A'` with reason + expected_entity_type still recorded
+- ZERO tables with status starting with `'FAIL'` or `'ERROR'`
 
-**Falsifiability:** Per nwrp215 §11 — "the catastrophic risk on a 32-table trigger is the one table with a quirk you didn't individually test." If any table's trigger silently fails to fire (e.g., due to renamed column, unusual permissions, or fixture-row missing in seed), this AC catches it. PLAN execute halts on any 'FAIL' status.
+**Failure statuses (per nwrp216 Q3 granular):**
+- `FAIL_NO_AUDIT` — trigger fired BUT no audit row created (BLOCKING; trigger function body bug)
+- `FAIL_NO_ENTITY_TYPE` — audit row exists BUT entity_type is NULL (BLOCKING; entity_type column not written)
+- `FAIL_ENTITY_TYPE_MISMATCH` — audit row exists BUT entity_type doesn't match expected singular form (BLOCKING per nwrp216 Q3; CASE mapping has a gap; the singular-'job' fix did NOT hold for this table)
+- `ERROR` — exception during table verification (BLOCKING; investigate cause)
+
+**Falsifiability:** Per nwrp215 §11 — "the catastrophic risk on a 32-table trigger is the one table with a quirk you didn't individually test." Per nwrp216 Q3 — "entity_type singular/plural was THE catastrophic iter-1 catch. Task 6 already loops all 32 tables; having it capture + assert the entity_type each table emits verifies the singular-'job' fix holds across ALL 32, not just representative tables. Verifying the exact failure mode that nearly shipped, in a loop we're already running, is nearly free."
+
+If any table's trigger silently fails to fire OR emits a plural/unmapped entity_type, this AC catches it. PLAN execute halts on any `FAIL_*` or `ERROR` status — `RAISE EXCEPTION` triggers ROLLBACK.
 
 **Notes:**
 - AC-B3-12 + Task 6 directly addresses ai-logic-tester Finding 6's concern about understated trigger landscape AND the more general "non-uniformity is fact, not hypothesis" insight from the pre-design audit (e.g., client_portal_access has revoked_at instead of deleted_at).
-- ai-logic-tester executes the DO-block at iter-2 verification time; output captured verbatim in PLAN-REVIEW-B3-ITER2 reports.
+- Per nwrp216 Q3 MANDATE: the entity_type capture + assertion is NOT optional. Verifies the singular-form fix holds across ALL 32 tables, not just the representative test in AC-B3-02.
+- Execute step captures the verbatim JSONB report; ai-logic-tester at /nightwork-qa time re-runs (or verifies the recorded result) per Rule 3 LIVE execution contract.
 
 ---
 
