@@ -388,10 +388,12 @@ $function$;
 **Critical design implication (per CONTEXT D-23, D-24):**
 - `auth.uid()` reads from `request.jwt.claim.sub` GUC set by PostgREST per-transaction. NO new middleware wiring needed for the ~95% authenticated-user case.
 - `app.current_user_id` GUC is service-role escape hatch ONLY — used when API routes deliberately invoke service-role Supabase clients (which lack JWT context).
-- **B-3 trigger reads via three-tier fallback:**
+- **B-3 trigger reads via three-tier fallback (iter-2 design — see §2.1 for authoritative code):**
   1. `auth.uid()` — primary (covers authenticated calls)
   2. `current_setting('app.current_user_id', true)` — service-role escape
   3. NULL — fallback for headless context (Inngest, pg_cron, smoke seed)
+
+**Note on iter-1 narrative drift (per multi-tenant NOTE-1 + rls-auditor N-RLS-01):** Earlier iter-1 narrative in this §1.3 referenced a SELECT-wrapped form for DEF-WC-1 (`(SELECT app_private.user_org_id())`). That form was SUPERSEDED by nwrp215 decision 2 Option A; §2.3 authoritative design uses canonical direct-call form. This §1.3 description is a pre-design audit RECORD of what was considered; the executable design lives in §2.3.
 
 This is a SIMPLER design than EXPANDED-SCOPE §2 #13 implied. The original wording "current_setting populated by getCurrentMembership()" is essentially redundant with `auth.uid()` for authenticated calls. **Recommend Jake confirms this design refinement at GATE B-3.**
 
@@ -754,19 +756,20 @@ Violation = audit-spoofing surface. The trigger does NOT guard against this beca
 - M-02: function has SECURITY DEFINER + search_path set → `SELECT prosecdef, proconfig FROM pg_proc WHERE proname='audit_soft_delete';`
 - M-03: 32 triggers applied → `SELECT COUNT(*) FROM pg_trigger WHERE tgname LIKE 'zz_soft_delete_audit_%' AND NOT tgisinternal;` returns 32
 - M-04: org_members RESTRICTIVE policies exist → `SELECT policyname, permissive FROM pg_policies WHERE tablename='org_members' AND permissive='RESTRICTIVE';` returns 2 rows
-- M-05 (iter-2 BLOCKING-4 fix per security-reviewer SEC-B3-08): EXECUTE not granted to PUBLIC — use canonical aclexplode pattern from 00103 + 00105:
+- M-05 (iter-2 BLOCKING-4 fix per security-reviewer SEC-B3-08 + iter-2 SEC-B3-08-V2 follow-up fix: removed spurious `grantor = grantee` clause that caused false-positive on owner self-grant `postgres=X/postgres`): EXECUTE not granted to PUBLIC — use canonical aclexplode pattern from 00103 + 00105:
   ```sql
-  SELECT bool_or(grantor = grantee OR grantee = 0) AS public_grant_present
+  SELECT COALESCE(bool_or(grantee = 0), false) AS public_grant_present
     FROM pg_proc p
     CROSS JOIN LATERAL aclexplode(p.proacl) AS acl
    WHERE p.proname = 'audit_soft_delete'
      AND p.pronamespace = 'app_private'::regnamespace
      AND acl.privilege_type = 'EXECUTE';
-  -- Expected: false (no PUBLIC EXECUTE grant)
-  -- NOTE: aclexplode returns empty set if proacl is NULL — that is also a PASS
-  -- because Postgres default ACL grants EXECUTE to PUBLIC implicitly. The migration
-  -- MUST explicitly REVOKE FROM PUBLIC + verify with this query. If proacl is NULL
-  -- post-migration, REVOKE was not applied — HALT.
+  -- Expected: false (no PUBLIC EXECUTE grant; grantee = 0 represents PUBLIC in pg ACL)
+  -- NOTE: aclexplode returns empty set if proacl is NULL — Postgres default ACL grants
+  -- EXECUTE to PUBLIC implicitly when proacl is NULL. The migration MUST explicitly
+  -- REVOKE FROM PUBLIC + verify with this query. If aclexplode returns 0 rows
+  -- post-migration (i.e., proacl IS NULL), REVOKE was NOT applied — HALT.
+  -- This M-05 form matches AC-B3-08 PART 2 verbatim (iter-2 SEC-B3-08-V2 alignment).
   ```
 - M-06: `npx supabase gen types typescript --linked > src/lib/types/database.types.ts` regenerates
 - M-07 (iter-2 added — entity_type singular check): TypeScript union extension verified — `src/lib/activity-log.ts` ActivityEntityType union contains 23 new singular entity types (`approval_chain`, `change_order_line`, `document_extraction_line`, `document_extraction`, `draw_adjustment_line_item`, `draw_adjustment`, `draw_line_item`, `internal_billing`, `invoice_allocation`, `invoice_line_item`, `item`, `job_item_activity`, `job_milestone`, `lien_release`, `line_bom_attachment`, `line_cost_component`, `po_line_item`, `proposal_line_item`, `proposal`, `selection_category`, `selection`, `unit_conversion_suggestion`, `vendor_item_pricing`); `src/lib/audit/action-labels.ts` ENTITY_LABELS Record extended with same 23 entries; `npm typecheck` passes
@@ -921,7 +924,7 @@ END $$;
 **Scope:**
 - Author `.planning/phases/stage-f1-knowledge-graph-auth-wave-b-slice-2/B-3-SUMMARY.md`:
   - Status: AUTHORED — PENDING GATE B-3 REVIEW
-  - Acceptance criteria status (all 11 ACs with verbatim verification query output)
+  - Acceptance criteria status (all 12 ACs with verbatim verification query output — iter-2 added AC-B3-12 per nwrp215 decision 5)
   - Forward-carried gates: HALT GATE 1 (post-B-3) per EXPANDED-SCOPE §9 — 3 verification items
   - Risks materialized / mitigated
   - Slice-2 ledger entry (B-3 actual spend)
@@ -1161,19 +1164,22 @@ Expected: `user_id = NULL`, `actor_source = 'service_role'`.
 
 ### AC-B3-07 — activity_log row has correct org_id (cross-tenant integrity)
 
-**Verification query (LIVE):**
+**Verification query (LIVE — iter-2 spec-checker NEW-1 + database-reviewer MF-1 fix: action='deleted' not 'soft_deleted'):**
 ```sql
 -- After trigger fires from §AC-B3-02
 SELECT al.org_id AS audit_org_id, j.org_id AS source_org_id
   FROM public.activity_log al
   JOIN public.jobs j ON j.id = al.entity_id
- WHERE al.entity_id = '<test_id>'
-   AND al.action = 'soft_deleted';
+ WHERE al.entity_id = 'a1bb4d28-103d-40d8-98fd-2dc449bf5d1c'  -- Drummond Residence
+   AND al.action = 'deleted'                                   -- iter-2 BLOCKING-2 fix: action is 'deleted' (NOT 'soft_deleted')
+   AND al.details->>'mechanism' = 'db_trigger'                 -- iter-2: discriminator for trigger-written rows
+ ORDER BY al.created_at DESC
+ LIMIT 1;
 ```
 
 **Expected:** `audit_org_id = source_org_id` (trigger preserves cross-tenant integrity).
 
-**Falsifiability:** If trigger writes wrong org_id (e.g., from session instead of NEW row), audit_org_id != source_org_id.
+**Falsifiability:** If trigger writes wrong org_id (e.g., from session instead of NEW row), audit_org_id != source_org_id. If filter selects wrong rows (e.g., stale `'soft_deleted'` action), query returns zero rows = silent false-positive on NULL-NULL comparison.
 
 ### AC-B3-08 — Trigger function has correct SECURITY DEFINER + search_path posture
 
