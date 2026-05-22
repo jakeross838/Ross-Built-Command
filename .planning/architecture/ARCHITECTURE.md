@@ -215,7 +215,65 @@ CONTEXT D-08's "owner_view role gate" claim is misleading. iter-2 clarification:
 
 ---
 
-## 9. Decisions reference
+## 9. RLS posture summary table by entity (per DEF-WC-3 / B-3)
+
+Captures the as-is RLS posture for every tenant-scoped entity post-B-3 ship (2026-05-22). Pattern variance documented to enable future Pattern B → Pattern A uniformity sweep (deferred to Wave 1.1-Lite per B-3-CONTEXT D-48).
+
+**Cross-references:**
+- [ENTITY-INVENTORY.md](./ENTITY-INVENTORY.md) — Retention class + PII? columns
+- [phases/stage-f1-knowledge-graph-auth-wave-b-slice-2/B-3-PLAN.md §2.4](../phases/stage-f1-knowledge-graph-auth-wave-b-slice-2/B-3-PLAN.md) — full design rationale
+
+| Entity (table) | RLS pattern | Scope axis (Q10b) | Soft-delete trigger | Audit coverage |
+| --- | --- | --- | --- | --- |
+| approval_chains | B (PERMISSIVE-only joins) | ORG-scoped tenant | YES (B-3) | Trigger only |
+| budget_lines | A (RESTRICTIVE backstop) | ORG-scoped tenant | YES (B-3) | Trigger only |
+| change_order_lines | A | ORG-scoped tenant | YES (B-3) | Trigger only |
+| change_orders | A | ORG-scoped tenant | YES (B-3) | Both (app `logActivity` + trigger) |
+| clients | B (PERMISSIVE-only — 3 PERMISSIVE policies, NO RESTRICTIVE backstop per live `pg_policies`) | ORG-scoped tenant | YES (B-3) | Both |
+| cost_codes | A | ORG-scoped tenant | YES (B-3) | Trigger only |
+| document_extraction_lines | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| document_extractions | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| draw_adjustment_line_items | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| draw_adjustments | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| draw_line_items | A | ORG-scoped tenant | YES (B-3) | Trigger only |
+| draws | A | ORG-scoped tenant | YES (B-3) | Both (app + trigger) |
+| internal_billings | A | ORG-scoped tenant | YES (B-3) | Trigger only |
+| invoice_allocations | A (Q10b SELECT-wrapped — sole table on this form; see migration 00096) | ORG-scoped tenant | YES (B-3) | Trigger only |
+| invoice_line_items | A | ORG-scoped tenant | YES (B-3) | Trigger only |
+| invoices | A | ORG-scoped tenant | YES (B-3) | Both (app + trigger) |
+| items | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| job_item_activity | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| job_milestones | B | ORG-scoped tenant | YES (B-3) | Both (app + trigger) |
+| jobs | A | ORG-scoped tenant | YES (B-3) | Both (app + trigger) |
+| lien_releases | A | ORG-scoped tenant | YES (B-3) | Both (app + trigger) |
+| line_bom_attachments | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| line_cost_components | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| po_line_items | A | ORG-scoped tenant | YES (B-3) | Trigger only |
+| proposal_line_items | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| proposals | B | ORG-scoped tenant | YES (B-3) | Both (app + trigger) |
+| purchase_orders | A | ORG-scoped tenant | YES (B-3) | Both (app + trigger) |
+| selection_categories | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| selections | B | ORG-scoped tenant | YES (B-3) | Both (app + trigger) |
+| unit_conversion_suggestions | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| vendor_item_pricing | B | ORG-scoped tenant | YES (B-3) | Trigger only |
+| vendors | A | ORG-scoped tenant | YES (B-3) | Trigger only |
+| org_members | A (post-B-3 DEF-WC-1; canonical direct-call form) | ORG-scoped tenant | N/A (no deleted_at column) | App only |
+| activity_log | A | ORG-scoped tenant | N/A (append-only; no deleted_at column) | N/A (IS the audit) |
+| platform_admins | Special (cross-org) | Cross-tenant | N/A | App only |
+| client_portal_access | B (PERMISSIVE-only — 3 PERMISSIVE policies; uses `revoked_at`/`expires_at` lifecycle NOT `deleted_at`) | ORG-scoped tenant | N/A (no deleted_at; uses revoked_at lifecycle) | App only |
+
+**Legend:**
+- **RLS pattern A** = canonical Wave-A: RESTRICTIVE "org isolation" backstop + role-bound PERMISSIVE writes (per migration 00080 / 00094 sweep)
+- **RLS pattern B** = pre-Wave-A: PERMISSIVE-only with `org_id IN (SELECT FROM org_members)` JOIN-style isolation (17 tables + `client_portal_access`)
+- **Scope axis Q10b** — ORG-scoped tenant (direct-filter RLS) vs USER-scoped child (RLS-by-join, e.g., `support_messages`)
+- **Soft-delete trigger** — `zz_soft_delete_audit_<table>` from B-3 fires on `deleted_at` transition NULL → NOT NULL; uses generic CASE-mapped singular entity_type
+- **Audit coverage** — application-layer `logActivity` calls + trigger-layer `audit_soft_delete` complement (B-3 trigger fills the gap for the 22 "trigger only" tables; the 10 "both" tables ALREADY had application-layer audit via `logActivity` before B-3)
+
+**Sweep plan (Wave 1.1-Lite):** Convert Pattern B → Pattern A for the 17 PERMISSIVE-only tenant tables + `client_portal_access`. Adds RESTRICTIVE backstop matching the canonical 15-table Wave-A shape. NOT in B-3 scope (B-3 is trigger + `org_members` DEF-WC-1 only).
+
+---
+
+## 10. Decisions reference
 
 D-001..D-077 in [MASTER-PLAN.md DECISIONS LOG](../MASTER-PLAN.md). 1.5c phase decisions D-01..D-27 in [stage-1.5c-information-architecture/CONTEXT.md](../phases/stage-1.5c-information-architecture/CONTEXT.md).
 
