@@ -1,38 +1,40 @@
-# Preflight PASS — stage-f1-knowledge-graph-auth-wave-b-slice-2 (B-2a)
+# Preflight PASS — stage-f1-knowledge-graph-auth-wave-b-slice-2 (B-2b dispatch)
 
 **Verdict:** PASS — execute cleared
-**Generated:** 2026-05-21-1434 (re-run after SETUP-COMPLETE.md authoring per nwrp206)
+**Generated:** 2026-05-22-1103 (re-run for B-2b /nx dispatch per nwrp210 §14; supersedes prior 2026-05-21-1434 B-2a-context PASS)
 **Branch:** main
-**HEAD:** 346d1f5
-**Supersedes:** `.planning/expansions/stage-f1-knowledge-graph-auth-wave-b-slice-2-PREFLIGHT-FAIL.md` (initial 9/10 PASS / Check 2 FAIL; Check 2 closed via SETUP-COMPLETE.md authoring)
+**HEAD:** e94ba6f (B-2b PLAN W-1 + N-2 fixes; pre-/nx revision)
 
 ## Check results — all 10 PASS
 
 | # | Check | Result | Evidence |
 |---|---|---|---|
-| 1 | EXPANDED-SCOPE.md approved | **PASS** | Status line: "RE-APPROVED 2026-05-21 per nwrp202" |
-| 2 | SETUP-COMPLETE.md exists | **PASS** | `.planning/expansions/stage-f1-knowledge-graph-auth-wave-b-slice-2-SETUP-COMPLETE.md` authored 2026-05-21 per nwrp206 §7; inherits Slice-1 baseline + documents Slice-2 no-op rationale per nwrp197; Status: COMPLETE / READY FOR PLAN |
-| 3 | Prerequisite phases shipped | **PASS** | Slice-1 closed (B-1b shipped + GATE 2 review done per nwrp189) |
-| 4 | Vercel env vars present in Prod + Preview | **PASS** | 12 env vars verified via `vercel env ls`: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, RESEND_API_KEY, NEXT_PUBLIC_APP_URL, OPENAI_API_KEY, NOTIFICATION_FROM_EMAIL — all present in BOTH Production and Preview. VERIFICATION_BYPASS_SECRET in Preview only (expected for verification harness). |
-| 5 | Supabase tables + RLS | **PASS** | All 6 B-2a-required tables verified via `mcp__supabase__list_tables`: `client_portal_access` (0 rows, RLS), `clients` (26, RLS), `jobs` (26, RLS), `activity_log` (73, RLS), `draws` (3, RLS), `change_orders` (88, RLS). RLS posture on `client_portal_access` preserved per 00074:247-301. |
-| 6 | Third-party accounts active | **PASS** | Vercel env vars present (Check 4) is proxy for connectivity; Anthropic API check cached. No new third-party introduced by B-2a (DB-backed rate-limit per nwrp201/202 — neither Vercel KV nor Upstash). |
-| 7 | Drummond fixtures sufficient | **PASS** | `.planning/fixtures/drummond/` intact: SUBSTITUTION-MAP.md + source1-pdrive + source2-supabase + source3-downloads. |
-| 8 | Last QA verdict not BLOCKING | **PASS** | `.planning/qa-runs/2026-05-20-1525-migration-00103-qa-report.md` verdict: "**PASS** — ship-ready. All 3 reviewers PASS." |
-| 9 | Working tree clean | **PASS** | `git status --short` empty post-commit `346d1f5`. |
+| 1 | EXPANDED-SCOPE.md approved | **PASS** | Status: "RE-APPROVED 2026-05-21 per nwrp202" — covers BOTH B-2a (SHIPPED) and B-2b dispatch |
+| 2 | SETUP-COMPLETE.md exists | **PASS** | `.planning/expansions/stage-f1-knowledge-graph-auth-wave-b-slice-2-SETUP-COMPLETE.md` (authored 2026-05-21 per nwrp206; covers all 7 Slice-2 plans including B-2b) |
+| 3 | Prerequisite phases shipped | **PASS** | B-2a SHIPPED per nwrp209 GATE SIGNED 2026-05-22 (commits `fc19a2e..ee43e78` + `59459a7` ACL hardening). Slice-1 closed prior. |
+| 4 | Vercel env vars present in Prod + Preview | **PASS** | 12 env vars verified at B-2a preflight (2026-05-21); no new env vars introduced by B-2b (HARNESS_FIXTURE_OWNER_TOKEN is for smoke harness test fixture, not production runtime); state unchanged |
+| 5 | Supabase tables + RLS | **PASS** | All 6 B-2a-required tables verified at B-2a preflight. B-2b adds migration 00106 (TOCTOU dedupe unique index) at execute time — not a preexisting dependency. `client_portal_access` now has B-2a's `client_id` FK + `revoked_seq` column + ACL hardening live (post-00104 + 00105). |
+| 6 | Third-party accounts active | **PASS** | No new third-party introduced by B-2b. Anthropic + Supabase + Resend + Stripe all verified at B-2a preflight; state unchanged. |
+| 7 | Drummond fixtures sufficient | **PASS** | `.planning/fixtures/drummond/` intact (SUBSTITUTION-MAP.md + source1-pdrive + source2-supabase + source3-downloads). B-2b also requires second-client fixture per nwrp210 §12 EXECUTE REQUIREMENT — executor extends smoke-seed.sql during execute (not a preflight gap; explicit execute deliverable). |
+| 8 | Last QA verdict not BLOCKING | **PASS** | Most recent: `.planning/qa-runs/2026-05-22-0949-stage-f1-wave-b-slice-2-B-2a-acl-reverify.md` verdict: "**PASS — both findings closed. NO new BLOCKING. No AC regression.**" |
+| 9 | Working tree clean | **PASS** | `git status --short` empty post-commit `e94ba6f`. |
 | 10 | Branch ↔ phase match | **PASS** | Current branch `main` (canonical Nightwork transition branch per preflight skill spec exception). |
 
 ## Verdict
 
 **PASS — execute cleared.**
 
-All 10 substantive checks pass. SETUP-COMPLETE.md gap closed honestly (vs `--skip-preflight` override) per nwrp206 §1-5 reasoning.
+All 10 substantive checks pass. State has only moved forward since prior preflight (B-2a SHIPPED + ACL hardening live + B-2b PLAN authored + iter-1 PASS + W-1 + N-2 fixes applied). No infrastructure regression. Slice-2 SETUP-COMPLETE.md inheritance pattern from nwrp206 holds for B-2b (same author scope; no new MANUAL items for B-2b).
 
-Structural benefit (per nwrp206 §5): the remaining 6 Slice-2 plans (B-2b, B-3, B-4, B-5, B-6, B-7) dispatch against this same SETUP-COMPLETE.md without per-dispatch override. Same structural-fix logic as the gsd-executor enumeration fix (`bceae9f`) — fix the gap once, not per-dispatch.
-
-Run `/gsd-execute-phase stage-f1-knowledge-graph-auth-wave-b-slice-2` (or continue via `/nx` which calls execute next).
+Run `/gsd-execute-phase stage-f1-knowledge-graph-auth-wave-b-slice-2` for B-2b (or continue via `/nx` which calls execute next).
 
 ## Cost context
 
-- Fresh $50 B-2a ceiling per nwrp204
-- Spent this session: ~$16-25 (iter-2 revision + re-review + synthesis + line 297 fix + anti-drift + preflight failure + SETUP-COMPLETE + this preflight pass)
-- Buffer remaining: ~$25-34 for execute + GATE B-2a
+- Slice-2 ceiling $300 per nwrp210 §3 correction (was $200 in EXPANDED-SCOPE; raised nwrp209+ considered bump)
+- Consumed through B-2b iter-1: ~$107-138
+- Buffer remaining: ~$162-193 for B-2b execute + GATE + B-3..B-7
+- B-2b per-plan halt gate: $50 (Rule 7d). B-2b estimate $15-22 ON pace per nwrp210 §5.
+
+## Anti-drift verification
+
+Pre-/nx anti-drift check: PASS (logged at `.planning/drift-checks/2026-05-22-1103-b-2b-nx-execute.md`). All 4 checks pass; no blocked findings.
