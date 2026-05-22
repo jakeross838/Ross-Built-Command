@@ -22,7 +22,7 @@ source_decisions:
   - "nwrp202 §15 (B-2b includes design-pushback in plan-review iter-1; B-2a security-only excluded it)"
   - "nwrp209 §1-17 (B-2a SHIPPED + B-2b LEANER dispatch + forward-carried AC-B2a-08 + per-plan halt gate Rule 7d)"
   - "iter-1 SYNTHESIS B-12..B-17 (TOCTOU close, append-only audit, soft-delete/status filters, --shadow-panel correction, NwButton TD-20 exemption, no new PATTERNS entry — all RESOLVED via B-2b deliverables OR explicit no-op decision)"
-  - "PATTERNS.md §4h.3 (Owner Portal Dashboard pattern) + §2j.3 (Owner Draw Review = Document Review extension) — consumed; NO new pattern entry"
+  - "PATTERNS.md §4h.3 (Owner Portal Dashboard pattern) + §2h.3 (Owner Draw Review = Document Review extension) — consumed; NO new pattern entry"
   - "SYSTEM.md (Slate type system + Stone Blue palette + 44px touch target minimum + 56px high-stakes + WCAG 2.2 AA mandatory + viewport contract)"
   - "COMPONENTS.md (Button/NwButton size variants; raw-button TD-20 exemption pattern)"
   - "CLAUDE.md UI rules (Slate type + Stone Blue + design tokens always + logo top-left + invoice review as gold standard for document-review surfaces)"
@@ -58,13 +58,18 @@ files_modified:
   - scripts/fixtures/smoke-seed.sql
   # MODIFIED (smoke harness route table extension per Workflow Rule 4 — first user-facing F1 routes)
   - scripts/wave-d-smoke.ts
+  # NEW — probe scripts for runtime verification + harness assertions (N-2 fix per plan-review iter-1 synthesis;
+  # previously referenced in PLAN body but not enumerated here):
+  - scripts/b-2b-toctou-probe.ts             # TOCTOU concurrent-double-tap probe (Task 7 / AC-B2b-06)
+  - scripts/b-2b-touch-target-probe.ts       # mobile touch-target audit (Task 7 / AC-B2b-09)
+  - scripts/b-2b-revocation-runtime-probe.ts # forward-carried AC-B2a-08 runtime revocation test (Task 8 / AC-B2b-10) per nwrp209 §3
 files_referenced:
   - .planning/phases/stage-f1-knowledge-graph-auth-wave-b-slice-2/B-2b-CONTEXT.md
   - .planning/phases/stage-f1-knowledge-graph-auth-wave-b-slice-2/B-2a-PLAN.md
   - .planning/phases/stage-f1-knowledge-graph-auth-wave-b-slice-2/B-2a-SUMMARY.md
   - .planning/phases/stage-f1-knowledge-graph-auth-wave-b-slice-2/PLAN-REVIEW-B2A-ITER1-SYNTHESIS.md
   - .planning/expansions/stage-f1-knowledge-graph-auth-wave-b-slice-2-EXPANDED-SCOPE.md
-  - .planning/design/PATTERNS.md            # §4h.3 + §2j.3 consumed
+  - .planning/design/PATTERNS.md            # §4h.3 + §2h.3 consumed
   - .planning/design/SYSTEM.md              # tokens + touch targets + viewport contract
   - .planning/design/COMPONENTS.md          # Button/NwButton size variants
   - src/lib/owner-portal/token.ts           # B-2a; consumed (resolveOwnerToken, getScopedOwnerPortalClient, assertDrawBelongsToToken, ResolvedOwnerToken, OwnerPortalScopableTable)
@@ -239,7 +244,7 @@ Specifically:
 ### Out of scope for B-2b (deferred or RESOLVED)
 
 - **B-2a security model SHIPPED** (per nwrp209 GATE 2026-05-22): composite same-org FK, RPC NULL-leak fix, 1-year token lifecycle + MANDATORY revocation, DB-backed rate-limit infrastructure, `getScopedOwnerPortalClient` + `assertDrawBelongsToToken` helpers, non-partial token-hash index, `actor_token_id` activity_log column + TS interface, middleware PUBLIC_PATHS extension. **All consumed by B-2b; not re-derived.**
-- **New PATTERNS.md "Owner Status View" entry** — iter-1 SYNTHESIS B-17 RESOLVED. Existing §4h.3 (Owner Portal Dashboard, Dashboard pattern) + §2j.3 (Owner Draw Review, Document Review extension) cover. Cited in §3 below; not duplicated.
+- **New PATTERNS.md "Owner Status View" entry** — iter-1 SYNTHESIS B-17 RESOLVED. Existing §4h.3 (Owner Portal Dashboard, Dashboard pattern) + §2h.3 (Owner Draw Review, Document Review extension) cover. Cited in §3 below; not duplicated.
 - **Full Owner Portal feature set** (notifications, comments, signature workflows, ongoing engagement) → Wave 1.1-Lite. B-2b is minimum-viable read-only.
 - **Token lifecycle alternatives** (one-shot per pay-app, auto-rotate every N days) → Wave 1.1-Lite revisit conditions per EXPANDED-SCOPE §6 Q5.
 - **Owner Portal email notifications** ("your pay-app is ready") → Wave 1.1-Lite.
@@ -257,7 +262,7 @@ Specifically:
 
 **Latitude #2 — `src/app/owner/layout.tsx` structure.** Plan-author proposes minimal top bar (Ross Built logo top-left + job name center) + main content + bottom safe-area handling for iPhone notch/home-bar. Defer fancier surface (PM contact info, app-icon, branding) to Wave 1.1-Lite. Iter-1 design-pushback confirms shape.
 
-**Latitude #3 — Document download UX (footnote on D-22 + EXPANDED-SCOPE §11 line 408).** "Owner Portal Path A document downloads work: homeowner downloads at least one Drummond fixture document." Plan-author proposes a link list (one `<a>` per doc) in the OwnerDrawView right-rail (mirroring InvoiceReviewView's attachments list per PATTERNS.md §2j.3 Document Review extension). Alternative: accordion or cards. Iter-1 ui-reviewer + design-pushback confirms; if doc downloads are out-of-scope-for-B-2b (because Caldwell fixtures lack signed-URL data), explicitly defer to Wave 1.1-Lite OR scope-in via fixture-level mocked URLs — plan-author surfaces.
+**Latitude #3 — Document download UX (footnote on D-22 + EXPANDED-SCOPE §11 line 408).** "Owner Portal Path A document downloads work: homeowner downloads at least one Drummond fixture document." Plan-author proposes a link list (one `<a>` per doc) in the OwnerDrawView right-rail (mirroring InvoiceReviewView's attachments list per PATTERNS.md §2h.3 Document Review extension). Alternative: accordion or cards. Iter-1 ui-reviewer + design-pushback confirms; if doc downloads are out-of-scope-for-B-2b (because Caldwell fixtures lack signed-URL data), explicitly defer to Wave 1.1-Lite OR scope-in via fixture-level mocked URLs — plan-author surfaces.
 
 **Latitude #4 — D-27 NwButton TD-20 vs lg=44px choice.** Per D-26: (a) raw `<button>` with TD-20 exemption comment + 56px height (mirroring `OwnerDrawView.tsx:158-162` precedent), OR (b) NwButton lg=44px with named WCAG-minimum acknowledgment. **Plan-author recommendation: (a)** — mirrors the precedent in the same component being consumed; acknowledge is a high-stakes action (homeowner irreversible attestation); 56px is a measurable upgrade over 44px in the touch-target standards. Iter-1 design-pushback confirms.
 
@@ -289,7 +294,7 @@ None — no pending todos matched B-2b scope.
 - **Sequencing rationale (per EXPANDED-SCOPE §8 + nwrp200 + nwrp209):** B-2a SHIPPED 2026-05-22 (GATE SIGNED per nwrp209 §1). B-2b's read-only UI depends on B-2a's verified token-scoping helpers + admin revocation API + middleware extension + rate-limit infrastructure. B-2b ship unlocks B-3 dispatch (subject to nwrp209 §7 deferred pace-vs-ceiling conversation; per-plan halt gate Rule 7d applies).
 - **Forward-carried AC-B2a-08 runtime revocation** (per nwrp209 §3): B-2a deferred this AC to QA (status DEFERRED-TO-QA per B-2a-SUMMARY.md). The test is the load-bearing condition for B-2b ship. If it fails: HALT before ship per nwrp209 §3.
 - **Hook calibration phase** (stage-f1-hook-doc-only-detect shipped 2026-05-20 per commit `c20e5d9`): B-2b is mixed-diff (migration + .ts + .tsx + .sql); fail-closed posture applies normally. Doc-only-skip carve-out is NOT applicable.
-- **PATTERNS.md alignment** (B-17 RESOLVED): §4h.3 (Owner Portal Dashboard, Dashboard pattern) + §2j.3 (Owner Draw Review, Document Review extension) cover B-2b's surfaces without new pattern entry. Plan body §6 cites both.
+- **PATTERNS.md alignment** (B-17 RESOLVED): §4h.3 (Owner Portal Dashboard, Dashboard pattern) + §2h.3 (Owner Draw Review, Document Review extension) cover B-2b's surfaces without new pattern entry. Plan body §6 cites both.
 - **Slice-2 cost ledger** (per nwrp209 §17): B-2a actual ~$28-37 vs §10 estimate $31-49 (under-budget). B-2b §10 estimate $17-25 (revised per WARN-3 to add Playwright probe realism); combined Slice-2 spend $45-62 of $200 ceiling. Per-plan halt gate Rule 7d: $50 max per plan; B-2b well under.
 
 ## 4. Resolution map — iter-1 SYNTHESIS B-12..B-16 → B-2b
@@ -303,7 +308,7 @@ Per CLAUDE.md Workflow Rule 9 (cross-reviewer factual disagreement HALT) + the i
 | **B-14** | spec-checker + multi-tenant | Missing `.is('deleted_at', null)` + status filter on draws queries → homeowner sees `draft` + `pm_review` drafts | Every B-2b query on draws includes `.is('deleted_at', null)` + `.in('status', ['submitted', 'approved', 'paid', 'void'])`; on jobs (parent) `.is('deleted_at', null)` where applicable | D-22 |
 | **B-15** | design-pushback + ui-reviewer | ClientCombobox cites `--shadow-popover` non-existent token | Replace with `shadow-[var(--shadow-panel)]` (closest existing per `colors_and_type.css:61`); replace inline `style={fontFamily, color}` with utility classes mirroring `cost-code-combobox.tsx` idiom | D-23 + D-24 + D-25 |
 | **B-16** | design-pushback | NwButton lacks 56px size variant for high-stakes acknowledge CTA | Either (a) TD-20 boundary exemption raw `<button>` with comment citing 56px (mirroring OwnerDrawView.tsx:158-162) OR (b) NwButton lg=44px with WCAG-minimum acknowledgment; plan-author latitude #4; iter-1 design-pushback confirms | D-26 + D-27 |
-| **B-17** | architect | (Proposed) New PATTERNS.md "Owner Status View" entry | RESOLVED — §4h.3 + §2j.3 already cover; do NOT invent 13th pattern; cite both in §6 below | (no D-NN; cited by exclusion) |
+| **B-17** | architect | (Proposed) New PATTERNS.md "Owner Status View" entry | RESOLVED — §4h.3 + §2h.3 already cover; do NOT invent 13th pattern; cite both in §6 below | (no D-NN; cited by exclusion) |
 
 **B-1..B-11 RESOLVED in B-2a** (SHIPPED per nwrp209). **B-2b consumes**: composite same-org FK (B-2), RPC NULL-leak fix (B-4), 1-year + MANDATORY revocation (Q5), middleware PUBLIC_PATHS extension (B-5), DB-backed rate-limit (B-6), non-partial token-hash index (BLK-3), `getScopedOwnerPortalClient` + `assertDrawBelongsToToken` helpers (B-1 + B-3), full covering index (B-7), `draws.job_id` unfiltered single-column index (B-11).
 
@@ -1138,7 +1143,7 @@ Iter-1 design-pushback confirms or counter-proposes (b) per D-27.
 Per iter-1 SYNTHESIS B-17 + EXPANDED-SCOPE §15 line 191: B-2b does NOT add a new pattern entry. Existing PATTERNS.md sections cover both surfaces:
 
 - **§4h.3 — Owner Portal Dashboard (Dashboard pattern)** — covers `/owner/{token}` (B-2b's `OwnerDashboardView` consumption). KPI tiles + draws list + change-orders summary + recent-activity sidebar.
-- **§2j.3 — Owner Draw Review (Document Review extension)** — covers `/owner/{token}/pay-apps/{id}` (B-2b's `OwnerDrawView` consumption). Document Review pattern (file preview LEFT + structured fields right-rail + audit timeline below) extended for homeowner audience (no AI confidence + no PM override audit + no internal cost-code mapping per OwnerDrawView.tsx:25-32).
+- **§2h.3 — Owner Draw Review (Document Review extension)** — covers `/owner/{token}/pay-apps/{id}` (B-2b's `OwnerDrawView` consumption). Document Review pattern (file preview LEFT + structured fields right-rail + audit timeline below) extended for homeowner audience (no AI confidence + no PM override audit + no internal cost-code mapping per OwnerDrawView.tsx:25-32).
 
 B-2b implementation files include these citations in top-of-file docstrings.
 
@@ -1417,7 +1422,7 @@ grep -n 'data-prototype' src/components/prototypes/OwnerDashboardView.tsx
 **Files:**
 - `src/app/owner/[token]/pay-apps/[id]/page.tsx` (NEW; includes acknowledge CTA per §6.f; BLK-3: `<main data-prototype="owner-draw">` wraps `<OwnerDrawView />`)
 
-**Action:** Implement per §6.a + §6.f. `assertDrawBelongsToToken` cross-validation. Document download UX per Latitude #3 (plan-author recommendation: link list mirroring InvoiceReviewView attachments per PATTERNS.md §2j.3). Acknowledge CTA per D-26/D-27 (plan-author recommendation a: raw `<button>` with TD-20 comment + 56px minHeight). **BLK-3 fix**: wrap the tenant-blind `OwnerDrawView` render in `<main data-prototype="owner-draw">...</main>` at the page.tsx layer.
+**Action:** Implement per §6.a + §6.f. `assertDrawBelongsToToken` cross-validation. Document download UX per Latitude #3 (plan-author recommendation: link list mirroring InvoiceReviewView attachments per PATTERNS.md §2h.3). Acknowledge CTA per D-26/D-27 (plan-author recommendation a: raw `<button>` with TD-20 comment + 56px minHeight). **BLK-3 fix**: wrap the tenant-blind `OwnerDrawView` render in `<main data-prototype="owner-draw">...</main>` at the page.tsx layer.
 
 **Verify:**
 ```bash
@@ -1810,11 +1815,11 @@ Per nwrp209 §15-16 + halt_after: true: this PLAN halts at plan-review iter-1 fo
 - [ ] **NOTE-1 fix (plan-checker iter-1)** — inline `style={{ fontFamily: 'var(--font-space-grotesk)' }}` replaced with `font-display` utility on layout.tsx + error.tsx (per `tailwind.config.ts:64` mapping). Mirrors §6.e TD-B1abis-03 posture.
 - [ ] **NOTE-2 fix (plan-checker iter-1)** — `mapDbDrawToCaldwell` uses explicit field-by-field map (mirroring `mapDbJobToCaldwell` precedent) — no cast.
 - [ ] **§6.f Latitude #4 disposition — NwButton TD-20 vs lg=44px: APPROVED (a) per plan-author recommendation** (raw button + TD-20 exemption comment + 56px minHeight; mirrors OwnerDrawView.tsx:158-162 precedent). Iter-1 design-pushback signs off (D-31).
-- [ ] **§6.g PATTERNS.md alignment accepted (B-17 RESOLVED).** §4h.3 + §2j.3 cited; no new pattern entry (D-32).
+- [ ] **§6.g PATTERNS.md alignment accepted (B-17 RESOLVED).** §4h.3 + §2h.3 cited; no new pattern entry (D-32).
 - [ ] **§6.h smoke harness extension accepted (Workflow Rule 4 + D-30 + BLK-2 fix).** 2 new route entries; selector posture `main[data-prototype='...']` (per BLK-3); fixture row seeded in smoke-seed.sql Step 8 (per BLK-2); plaintext token via HARNESS_FIXTURE_OWNER_TOKEN env (per BLK-2 + CLAUDE.md secret-presence pattern).
 - [ ] **BLK-2 fix (plan-checker iter-1)** — `scripts/fixtures/smoke-seed.sql` Step 8 extension with `client_portal_access` fixture row + synthetic submitted draw; `HARNESS_FIXTURE_OWNER_TOKEN` env-var declared with canonical presence-check pattern (`if [ -n ... ]; then ... fi` per nwrp139).
 - [ ] **§6.i threat model MEDIUM severity accepted.** Plan-review iter-1 reviewer set: spec-checker + ui-reviewer + design-pushback + custodian + security-reviewer (5 reviewers per nwrp209 §10 LEANER scope).
-- [ ] **Latitude #3 disposition — document download UX: link list mirroring InvoiceReviewView attachments per PATTERNS.md §2j.3.** Iter-1 ui-reviewer + design-pushback confirms. If Caldwell fixtures lack signed-URL data, scope-in mocked URLs OR defer to Wave 1.1-Lite — plan-author surfaces choice.
+- [ ] **Latitude #3 disposition — document download UX: link list mirroring InvoiceReviewView attachments per PATTERNS.md §2h.3.** Iter-1 ui-reviewer + design-pushback confirms. If Caldwell fixtures lack signed-URL data, scope-in mocked URLs OR defer to Wave 1.1-Lite — plan-author surfaces choice.
 - [ ] **Latitude #5 disposition — AC-B2a-08 runtime revocation test: Playwright headless.** Iter-1 security-reviewer confirms.
 - [ ] **Latitude #6 disposition — TOCTOU test: Playwright concurrent-double-tap.** Iter-1 ai-logic-tester confirms.
 - [ ] **Latitude #7 disposition — 1.5c thin wrapper cleanup (D-33): leave as design-system playground.** Iter-1 custodian confirms.
