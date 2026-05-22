@@ -58,7 +58,14 @@ function parseArgs(argv: string[]): { previewUrl: string } {
 }
 
 const HARNESS_ORG_ID = "00000000-0000-0000-0000-fb1ce0a55e55";
-const HARNESS_JOB_ID = "22222222-2222-2222-2222-200000000001"; // Smoke Job Alpha
+// Smoke Job Iota (job_id ending 09) intentionally chosen — no primary
+// fixture portal_access row points at this job, so the ephemeral probe
+// row does NOT collide with the 00104 unique constraint on
+// (org_id, client_id, job_id, revoked_seq) WHERE client_id IS NOT NULL.
+// Primary fixture (0004-100000000001) targets Smoke Job Alpha (job 01) and
+// W-2 cross-client fixture (0004-100000000002) targets Smoke Job Beta
+// (job 02); Iota (09) is unoccupied.
+const HARNESS_JOB_ID = "22222222-2222-2222-2222-200000000009"; // Smoke Job Iota
 const HARNESS_CREATOR = "5eb26edc-5989-477f-ac42-d1e9264db0e2"; // harness-fixture user
 const EPHEMERAL_ID = "88888888-8888-8888-8888-880000000001"; // ephemeral probe row id
 

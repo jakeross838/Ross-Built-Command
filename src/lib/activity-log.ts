@@ -137,24 +137,40 @@ export async function logActivity(args: LogActivityArgs): Promise<void> {
       action: args.action,
       details: args.details ?? null,
     };
-    let error;
-    if (args.onConflictDoNothing === true) {
-      // F1-Wave-B Slice-2 B-2b per CONTEXT D-19 + D-20 (WARN-2 LOCKED option (b)).
-      // Upsert path resolves to migration 00106's partial unique index
-      // `activity_log_ack_dedupe_unique` on (entity_id, actor_token_id, action)
-      // WHERE action='acknowledged' AND actor_token_id IS NOT NULL.
-      // The onConflict column list MUST exactly match the index column list
-      // so PostgREST/Supabase resolves the conflict target correctly.
-      ({ error } = await supabase
-        .from("activity_log")
-        .upsert(row, {
-          onConflict: "entity_id,actor_token_id,action",
-          ignoreDuplicates: true,
-        }));
-    } else {
-      ({ error } = await supabase.from("activity_log").insert(row));
-    }
+    const { error } = await supabase.from("activity_log").insert(row);
     if (error) {
+      // F1-Wave-B Slice-2 B-2b per CONTEXT D-19 + D-20 (WARN-2 LOCKED option (b))
+      // — TOCTOU close on owner-portal pay-app acknowledgment. Migration 00106's
+      // PARTIAL unique index `activity_log_ack_dedupe_unique` on (entity_id,
+      // actor_token_id, action) WHERE action='acknowledged' AND actor_token_id
+      // IS NOT NULL guards the unique tuple at DB level. When the application
+      // opts into idempotent insert via `onConflictDoNothing: true`, we use
+      // plain INSERT + catch the unique-violation error (Postgres SQLSTATE
+      // 23505), then treat it as a successful no-op.
+      //
+      // The original implementation used supabase.upsert() with
+      // {onConflict: 'entity_id,actor_token_id,action', ignoreDuplicates: true},
+      // but Postgres rejected the ON CONFLICT clause with "there is no unique
+      // or exclusion constraint matching the ON CONFLICT specification" —
+      // partial unique indexes can only be referenced by ON CONFLICT clauses
+      // that include the SAME predicate (`WHERE action='acknowledged' AND
+      // actor_token_id IS NOT NULL`), which the Supabase JS client cannot
+      // express. INSERT + catch SQLSTATE 23505 is the equivalent semantic
+      // and is the documented pattern for partial-index dedupe.
+      //
+      // PostgREST error.code for unique_violation is "23505" (matches
+      // PostgreSQL standard SQLSTATE). When opt-in: silently no-op + return.
+      const isUniqueViolation =
+        // PostgREST surfaces SQLSTATE in error.code
+        (error as { code?: string }).code === "23505" ||
+        // Defensive fallback: message text contains "duplicate key"
+        /duplicate key value violates unique constraint/i.test(error.message);
+      if (args.onConflictDoNothing === true && isUniqueViolation) {
+        // Idempotent dedupe — second concurrent acknowledgment from the same
+        // (entity_id, actor_token_id) tuple. NOT an error; the first write
+        // succeeded and that's the row that persists.
+        return;
+      }
       console.warn(`[activity-log] insert failed: ${error.message}`);
     }
   } catch (err) {
