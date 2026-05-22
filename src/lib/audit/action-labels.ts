@@ -80,6 +80,12 @@ const ACTION_LABELS: Record<ActivityAction, string> = {
   // both are explicit lifecycle reversals). Record exhaustiveness requirement
   // per B-1a-bis precedent.
   revoked: "revoked",
+  // F1-Wave-B Slice-2 B-2b per CONTEXT D-16. Owner-portal pay-app
+  // acknowledgment surfaces in the audit timeline as "Pay App acknowledged"
+  // via entityLabel + actionLabel composition (ENTITY_LABELS['draw'] =
+  // 'Pay App' per Stage 1.5c D-01 terminology rename). Record exhaustiveness
+  // requirement per B-1a-bis precedent.
+  acknowledged: "acknowledged",
 };
 
 /**

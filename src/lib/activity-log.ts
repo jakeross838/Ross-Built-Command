@@ -70,7 +70,15 @@ export type ActivityAction =
   // mirror ACTION_LABELS Record entry in src/lib/audit/action-labels.ts per
   // B-1a-bis precedent (Record exhaustiveness — TypeScript fails compile if
   // a union member lacks a Record entry).
-  | "revoked";
+  | "revoked"
+  // F1-Wave-B Slice-2 B-2b per CONTEXT D-16. Owner-portal pay-app
+  // acknowledgment uses entity_type='draw' + action='acknowledged' +
+  // actor_token_id=resolved.portal_access_id + user_id=NULL. TOCTOU
+  // close via migration 00106 partial unique index +
+  // INSERT...ON CONFLICT DO NOTHING semantics (via the new
+  // onConflictDoNothing flag below). Must mirror ACTION_LABELS Record entry
+  // in src/lib/audit/action-labels.ts per B-1a-bis precedent.
+  | "acknowledged";
 
 interface LogActivityArgs {
   org_id: string;
@@ -90,6 +98,25 @@ interface LogActivityArgs {
   entity_id?: string | null;
   action: ActivityAction;
   details?: Record<string, unknown> | null;
+  /**
+   * F1-Wave-B Slice-2 B-2b per CONTEXT D-19 + D-20 + iter-1 SYNTHESIS B-12
+   * closure (WARN-2 LOCKED option (b) — centralize ON CONFLICT semantics in
+   * the helper module instead of scattering across route handlers).
+   *
+   * When true, the underlying INSERT is replaced by an upsert with
+   * `onConflict='entity_id,actor_token_id,action'` and `ignoreDuplicates=true`.
+   * Concurrent acknowledgment double-tap from the owner portal then produces
+   * exactly 1 audit_log row (migration 00106 partial unique index closes the
+   * race at the DB level; this flag wires the application-layer side).
+   *
+   * Default false — existing callers retain plain-INSERT semantics.
+   *
+   * The current consumer is the owner-portal acknowledge endpoint
+   * (`src/app/api/owner-portal/acknowledge-pay-app/route.ts`); the
+   * onConflict columns intentionally match the 00106 unique-index columns
+   * so PostgREST's upsert path resolves to the index correctly.
+   */
+  onConflictDoNothing?: boolean;
 }
 
 export async function logActivity(args: LogActivityArgs): Promise<void> {
@@ -101,7 +128,7 @@ export async function logActivity(args: LogActivityArgs): Promise<void> {
     return;
   }
   try {
-    const { error } = await supabase.from("activity_log").insert({
+    const row = {
       org_id: args.org_id,
       user_id: args.user_id ?? null,
       actor_token_id: args.actor_token_id ?? null, // F1-Wave-B Slice-2 B-2a per CONTEXT D-23. Defaults to NULL; B-2b acknowledge endpoint populates this on homeowner-initiated writes.
@@ -109,7 +136,24 @@ export async function logActivity(args: LogActivityArgs): Promise<void> {
       entity_id: args.entity_id ?? null,
       action: args.action,
       details: args.details ?? null,
-    });
+    };
+    let error;
+    if (args.onConflictDoNothing === true) {
+      // F1-Wave-B Slice-2 B-2b per CONTEXT D-19 + D-20 (WARN-2 LOCKED option (b)).
+      // Upsert path resolves to migration 00106's partial unique index
+      // `activity_log_ack_dedupe_unique` on (entity_id, actor_token_id, action)
+      // WHERE action='acknowledged' AND actor_token_id IS NOT NULL.
+      // The onConflict column list MUST exactly match the index column list
+      // so PostgREST/Supabase resolves the conflict target correctly.
+      ({ error } = await supabase
+        .from("activity_log")
+        .upsert(row, {
+          onConflict: "entity_id,actor_token_id,action",
+          ignoreDuplicates: true,
+        }));
+    } else {
+      ({ error } = await supabase.from("activity_log").insert(row));
+    }
     if (error) {
       console.warn(`[activity-log] insert failed: ${error.message}`);
     }
