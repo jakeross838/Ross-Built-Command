@@ -57,6 +57,36 @@ const ENTITY_LABELS: Record<ActivityEntityType, string> = {
   // (entity-level noun for audit-log display).
   client_portal_access: "Owner Portal Token",
   user: "User",
+  // F1-Wave-B Slice-2 B-3 per CONTEXT D-NN (iter-2 BLOCKING-1 fix per nwrp215
+  // decision 3b + nwrp216 Q3 mandate): 23 entries added matching the 23 new
+  // singular entity types added to ActivityEntityType union for the
+  // soft-delete-trigger coverage of all 32 target tables. Migration 00107's
+  // CASE statement emits these singular forms; Record exhaustiveness here is
+  // enforced by TypeScript (`Record<ActivityEntityType, string>`). Labels
+  // follow the title-case convention used by existing entries.
+  approval_chain: "Approval Chain",
+  change_order_line: "Change Order Line",
+  document_extraction_line: "Document Extraction Line",
+  document_extraction: "Document Extraction",
+  draw_adjustment_line_item: "Pay App Adjustment Line", // draw -> 'Pay App' per Stage 1.5c D-01
+  draw_adjustment: "Pay App Adjustment",
+  draw_line_item: "Pay App Line",
+  internal_billing: "Internal Billing",
+  invoice_allocation: "Bill Allocation", // invoice -> 'Bill' per Stage 1.5c D-01
+  invoice_line_item: "Bill Line",
+  item: "Item",
+  job_item_activity: "Job Item Activity",
+  job_milestone: "Job Milestone",
+  lien_release: "Lien Release",
+  line_bom_attachment: "BOM Attachment",
+  line_cost_component: "Cost Component",
+  po_line_item: "PO Line",
+  proposal_line_item: "Proposal Line",
+  proposal: "Proposal",
+  selection_category: "Selection Category",
+  selection: "Selection",
+  unit_conversion_suggestion: "Unit Conversion Suggestion",
+  vendor_item_pricing: "Vendor Item Pricing",
 };
 
 const ACTION_LABELS: Record<ActivityAction, string> = {

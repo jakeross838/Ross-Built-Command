@@ -46,7 +46,40 @@ export type ActivityEntityType =
   | "draw"
   | "user"
   | "client" // F1-Wave-B Slice-1 B-1a-bis per nwrp155 B5 partial pull from Slice-2 B-4 — clients table writes (find-or-create in /api/jobs) need audit-log coverage during B-1a-bis -> B-4 window.
-  | "client_portal_access"; // F1-Wave-B Slice-2 B-2a per CONTEXT D-10 + Sweep 4 WARNING #1 resolution path (a). Admin revocation of owner-portal tokens writes audit-log rows with this entity_type + action='revoked'. Must mirror ENTITY_LABELS Record entry in src/lib/audit/action-labels.ts per B-1a-bis precedent (line 17 explicit comment).
+  | "client_portal_access" // F1-Wave-B Slice-2 B-2a per CONTEXT D-10 + Sweep 4 WARNING #1 resolution path (a). Admin revocation of owner-portal tokens writes audit-log rows with this entity_type + action='revoked'. Must mirror ENTITY_LABELS Record entry in src/lib/audit/action-labels.ts per B-1a-bis precedent (line 17 explicit comment).
+  // F1-Wave-B Slice-2 B-3 per CONTEXT D-NN (iter-2 BLOCKING-1 fix per nwrp215
+  // decision 3b + nwrp216 Q3 mandate): 23 new singular entity types added to
+  // cover all 32 soft-delete-trigger target tables. Trigger function in
+  // app_private.audit_soft_delete() (migration 00107) maps plural TG_TABLE_NAME
+  // to these singular forms via CASE; Record exhaustiveness on ENTITY_LABELS
+  // in src/lib/audit/action-labels.ts is required (TS fails compile without
+  // matching entries). Per nwrp216 Q3, Task 6 per-table verification captures
+  // + asserts each table's emitted entity_type against the expected singular
+  // form, so any union/Record drift between this file and migration 00107
+  // CASE statement surfaces at execute time.
+  | "approval_chain"
+  | "change_order_line"
+  | "document_extraction_line"
+  | "document_extraction"
+  | "draw_adjustment_line_item"
+  | "draw_adjustment"
+  | "draw_line_item"
+  | "internal_billing"
+  | "invoice_allocation"
+  | "invoice_line_item"
+  | "item"
+  | "job_item_activity"
+  | "job_milestone"
+  | "lien_release"
+  | "line_bom_attachment"
+  | "line_cost_component"
+  | "po_line_item"
+  | "proposal_line_item"
+  | "proposal"
+  | "selection_category"
+  | "selection"
+  | "unit_conversion_suggestion"
+  | "vendor_item_pricing";
 
 export type ActivityAction =
   | "created"
