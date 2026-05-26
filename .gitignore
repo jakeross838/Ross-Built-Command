@@ -163,6 +163,15 @@ skills-lock.json
 # (nwrp169 Q-W9 Option a precedent) + tech-debt/ (nwrp129 TD-WD-01 precedent).
 !/.planning/grounding-pass/
 !/.planning/grounding-pass/**
+# launch/ — authoritative scope-lock + (forthcoming) launch plan artifacts for
+# the first internal Ross Built deployment (per nwrp225). Must sync across PCs
+# because the scope-lock survives /clear + grounds subsequent launch-plan
+# drafts. Content sensitivity scan: architectural scope only; no credentials,
+# no PII, no customer data. Same whitelist pattern as grounding-pass/ (nwrp223
+# precedent) + decisions-pending/decisions-resolved (nwrp169 Q-W9 Option a)
+# + tech-debt/ (nwrp129 TD-WD-01).
+!/.planning/launch/
+!/.planning/launch/**
 # decisions-pending/ + decisions-resolved/ — investigative decision briefs
 # (e.g. user-identity-fk-convention BRIEF surfaced D-078; F1+-1 production
 # domain BRIEF + F1+-2 SSO posture BRIEF). Must sync across PCs because Jake
