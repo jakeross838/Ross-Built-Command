@@ -370,10 +370,20 @@ export const PATCH = withApiError(async (request: NextRequest) => {
     patch.previous_change_orders_total = Math.round(body.previous_change_orders_total);
   }
 
+  // F1-Wave-B Slice-2 B-4 Task 4 (MEDIUM-1 fix) per nwrp166 §10 carry-forward +
+  // B-1a-bis QA cross-reviewer agreement (rls-auditor + security-reviewer both
+  // flagged this UPDATE chain missing the `.eq("org_id", ...)` defense-in-depth
+  // filter). RLS at DB layer still gates writes to authenticated user's org, BUT
+  // application-layer filter is required by CLAUDE.md "Multi-tenant RLS BY
+  // CONSTRUCTION" + "Every API route uses getCurrentMembership() before DB
+  // access. RLS alone is a backstop, not a substitute for application-layer
+  // auth. A dropped policy must not cause a leak. Filter every query by
+  // membership.org_id." Closes MEDIUM-1 carry-forward filed in MASTER-PLAN §11.
   const { error } = await supabase
     .from("jobs")
     .update(patch)
     .eq("id", body.id)
+    .eq("org_id", membership.org_id)
     .is("deleted_at", null);
 
   if (error) throw new ApiError(error.message, 500);
