@@ -7,7 +7,7 @@ threat_model_severity: low
 halt_after: true
 requires_smoke: true
 autonomous: true
-status: AUTHORED — PENDING PLAN-REVIEW ITER-1
+status: PLAN-REVIEW ITER-1 COMPLETE (4 PASS + ai-logic-tester NEEDS-WORK + iter-1 finalization corrections applied inline per nwrp220 §7 ONE-iter-cycle target) — PENDING JAKE GATE B-4 REVIEW
 depends_on:
   - B-2a   # SHIPPED 2026-05-21 per nwrp209 (added client_portal_access entity_type)
   - B-2b   # SHIPPED 2026-05-22 per nwrp213 (added 'acknowledged' action)
@@ -262,6 +262,8 @@ NO source file edits for Tasks 1+2. NO ACs that require code changes.
 
 **Falsifiability:** grep output + per-route disposition matrix in SUMMARY. AC PASS = every CREATE/UPDATE/state-change handler in the target route set either has `logActivity` OR has an explicit inline rationale comment for skip.
 
+**Iter-1 spec-checker NOTE on Task 3 gap count:** Per live grep at iter-1 review, ALL 4 proposal routes (`commit`, `extract`, `extract/reject`, `convert-to-po`) have ZERO `logActivity` calls. Task 3 will require at minimum 4 inline fills (one per handler that does CREATE/UPDATE/state-change). Estimate per fill: ~2-3 lines. If sweep surfaces additional gaps (e.g., client_portal_access admin routes or clients routes), executor surfaces past 4-fill threshold + halt-checks $50 per-plan gate (Rule 7d).
+
 ### §2.3 Task 4 MEDIUM-1 fix
 
 ```diff
@@ -359,24 +361,52 @@ vercel --prod
 
 ### §2.7 Tasks 8-10 validator fixes
 
-**Task 8 — F-J + F-K NaN guards:**
+**Task 8 — F-J + F-K NaN guards (CORRECTED per iter-1 ai-logic-tester MUST-FIX #1+#2):**
 
-WI-013 (wi-013-multi-job-allocation.ts:49-54):
+Both validators use `.reduce()` aggregation (NOT loop iteration), so the `continue` keyword does NOT fit. The correct fix shape is a **pre-pass NaN check BEFORE the reduce**, which pushes violation(s) + skips/excludes NaN allocations from the sum (or short-circuits the validator with ok:false).
+
+WI-013 (`wi-013-multi-job-allocation.ts` around the `.reduce()` at line 52-55):
+
 ```typescript
-// At the start of the loop body that processes allocation.amount:
-if (!Number.isFinite(a.amount)) {
+// BEFORE the .reduce() at line ~52 (pre-pass NaN check):
+const nanAllocations = input.allocations.filter((a) => !Number.isFinite(a.amount));
+for (const a of nanAllocations) {
   violations.push({
     code: 'wi-013-allocation-amount-not-finite',
-    severity: 'high',
-    entity_type: 'invoice_allocation',
-    entity_id: a.id,
-    message: `Allocation amount is not finite (got: ${a.amount})`,
+    message: `Allocation amount is not finite (got: ${a.amount}) — input source likely produced NaN/Infinity which silently bypasses sum-drift check.`,
+    evidence: { allocation_id: a.id ?? null, amount: a.amount, job_id: a.job_id },
   });
-  continue;
 }
+
+// Then the existing .reduce() filters out NaN to prevent total-poisoning:
+const sum = input.allocations
+  .filter((a) => Number.isFinite(a.amount))
+  .reduce((acc, a) => acc + a.amount, 0);
+// Continue with existing drift check on sum vs invoice_total_amount.
 ```
 
-WI-001 (wi-001-inline-budget-context.ts:101-105): same shape on `invoice.total_amount` with code `wi-001-invoice-amount-not-finite`.
+WI-001 (`wi-001-inline-budget-context.ts` around line 101-105):
+
+```typescript
+// BEFORE the priorTotal computation (pre-pass NaN check):
+if (!Number.isFinite(invoice.total_amount)) {
+  violations.push({
+    code: 'wi-001-invoice-amount-not-finite',
+    message: `Invoice total_amount is not finite (got: ${invoice.total_amount}) — silently bypasses overage check.`,
+    evidence: { invoice_id: invoice.id ?? null, total_amount: invoice.total_amount },
+  });
+  return { ok: false, violations };
+}
+
+// Also guard the approvedInvoices reduce against NaN poisoning:
+const priorTotal = (approvedInvoices ?? [])
+  .filter((row) => Number.isFinite(row.total_amount))
+  .reduce((acc, row) => acc + row.total_amount, 0);
+```
+
+**Verification (unit test):** Each validator gets 1-2 cases — NaN input case + Infinity input case — confirming the new violation code is emitted AND that the downstream checks (sum-drift / budget-overage) are NOT silently bypassed.
+
+**Original PLAN diff shape used `continue` keyword + line range 49-54 / 101-105.** That shape implied loop iteration but the actual code uses `.reduce()` — surfaced by ai-logic-tester iter-1 MUST-FIX #1+#2. Corrected to pre-pass-NaN-filter pattern that fits the existing `.reduce()` control flow.
 
 **Task 9 — F-D rationale comment:**
 
@@ -397,22 +427,39 @@ const { data: job } = await supabase
   .maybeSingle();
 ```
 
-**Task 10 — F-A regex case-insensitivity:**
+**Task 10 — F-A regex case-insensitivity (CORRECTED per iter-1 ai-logic-tester BLOCKING):**
 
-```diff
-- const WILDCARD_PATTERN = /clients?\s*\(\s*\*\s*\)/;
-+ const WILDCARD_PATTERN = /clients?\s*\(\s*\*\s*\)/i;
-- const ALIAS_WILDCARD = /\bclients?:\s*\*/;
-+ const ALIAS_WILDCARD = /\bclients?:\s*\*/i;
-- const EMAIL_PATTERN = /clients?\s*\([^)]*\bemail\b[^)]*\)/;
-+ const EMAIL_PATTERN = /clients?\s*\([^)]*\bemail\b[^)]*\)/i;
-- const PHONE_PATTERN = /clients?\s*\([^)]*\bphone\b[^)]*\)/;
-+ const PHONE_PATTERN = /clients?\s*\([^)]*\bphone\b[^)]*\)/i;
+The actual patterns at `client-pii-not-embedded.ts:40-46` use the `/g` flag (required by downstream `.matchAll()` calls; without `g` flag, `String.prototype.matchAll` THROWS `TypeError: String.prototype.matchAll called with a non-global RegExp argument`) and `\b` word-boundary anchors. The fix is to **append `i` to `g` (→ `gi`)** — preserving both `g` and `\b`. NOT replace `g` with `i`.
+
+Actual current patterns (verified at `src/lib/knowledge-graph/validators/client-pii-not-embedded.ts:40-46`):
+
+```typescript
+const WILDCARD_PATTERN = /\bclients?\s*\(\s*\*\s*\)/g;
+const ALIAS_WILDCARD = /:\s*clients?\s*\(\s*\*\s*\)/g;
+const EMAIL_PATTERN = /\bclients?\s*\([^)]*\bemail\b[^)]*\)/g;
+const PHONE_PATTERN = /\bclients?\s*\([^)]*\bphone\b[^)]*\)/g;
 ```
 
-Unit tests (added to existing `client-pii-not-embedded.test.ts`):
-- 1 test: `CLIENTS(*)` (uppercase) — should match WILDCARD_PATTERN
-- 1 test: `Clients(email)` (mixed-case) — should match EMAIL_PATTERN
+Correct fix diff (append `i` flag; preserve `g` flag + `\b` anchor + ALIAS_WILDCARD's `:` prefix shape):
+
+```diff
+- const WILDCARD_PATTERN = /\bclients?\s*\(\s*\*\s*\)/g;
++ const WILDCARD_PATTERN = /\bclients?\s*\(\s*\*\s*\)/gi;
+- const ALIAS_WILDCARD = /:\s*clients?\s*\(\s*\*\s*\)/g;
++ const ALIAS_WILDCARD = /:\s*clients?\s*\(\s*\*\s*\)/gi;
+- const EMAIL_PATTERN = /\bclients?\s*\([^)]*\bemail\b[^)]*\)/g;
++ const EMAIL_PATTERN = /\bclients?\s*\([^)]*\bemail\b[^)]*\)/gi;
+- const PHONE_PATTERN = /\bclients?\s*\([^)]*\bphone\b[^)]*\)/g;
++ const PHONE_PATTERN = /\bclients?\s*\([^)]*\bphone\b[^)]*\)/gi;
+```
+
+Each fix is exactly +1 character (`g` → `gi`). Total 4 characters across 4 patterns. `\b` word-boundary anchor preserved (catches `\bclients?\(` against `subclients(`; without `\b`, false positives slip).
+
+**Failure mode if applied literally as the original PLAN diff (stripping `g` flag):** Runtime crash on `.matchAll()` call at line 62-64 + 83. Validator unusable. Verified by ai-logic-tester via Node REPL.
+
+Unit tests (added to existing `__tests__/validators/client-pii-not-embedded.test.ts`):
+- 1 test: `CLIENTS(*)` (uppercase) — should match WILDCARD_PATTERN after `i` flag
+- 1 test: `Clients(email)` (mixed-case) — should match EMAIL_PATTERN after `i` flag
 
 ---
 
@@ -469,7 +516,7 @@ Each commit MUST include `Execute-Phase: B-4-Task-<N>` footer (per CONTEXT D-34 
 
 **Files modified:**
 - `src/app/api/jobs/route.ts` (1 line edit)
-- `__tests__/api/jobs.test.ts` (NEW or UPDATE — 1 test case)
+- `__tests__/api-jobs.test.ts` (FLAT naming per database-reviewer iter-1 MUST-FIX: existing test infrastructure uses `__tests__/api-*.test.ts` flat convention, NOT `__tests__/api/*.test.ts` subdirectory) (NEW or UPDATE — 1 test case)
 
 **Commit body cites:** CONTEXT D-15..D-17 + §2.3 fix design + B-1a-bis QA cross-reviewer agreement source + focused security-reviewer scope per nwrp220 §8.
 
@@ -483,7 +530,7 @@ Each commit MUST include `Execute-Phase: B-4-Task-<N>` footer (per CONTEXT D-34 
 
 **Files modified:**
 - `src/app/api/jobs/route.ts` (~8 line edit)
-- `__tests__/api/jobs.test.ts` (UPDATE — 1 test case)
+- `__tests__/api-jobs.test.ts` (FLAT naming per database-reviewer iter-1 MUST-FIX: existing test infrastructure uses `__tests__/api-*.test.ts` flat convention, NOT `__tests__/api/*.test.ts` subdirectory) (UPDATE — 1 test case)
 
 **Commit body cites:** CONTEXT D-18..D-19 + §2.4 race-catch design + TD-B1abis-01 source.
 
