@@ -56,6 +56,7 @@ import {
   type ParsedProposal,
 } from "@/lib/ingestion/extract-proposal";
 import { PlanLimitError } from "@/lib/claude";
+import { logActivity } from "@/lib/activity-log";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -245,6 +246,29 @@ export const POST = withApiError(async (request: NextRequest) => {
       500
     );
   }
+
+  // F1-Wave-B Slice-2 B-4 Task 3 (write-site coverage sweep): audit-log the
+  // extraction event. entity_type='proposal' per PLAN §2.2 line 264 — at this
+  // point the proposals row does NOT yet exist (commit step at /api/proposals/
+  // commit creates it later); entity_id is null and details.extraction_id
+  // provides traceability to the document_extractions row that was updated
+  // with the AI extraction. action='updated' captures "extraction state was
+  // refreshed with parsed data" (cache-miss path; the cache-hit early-return
+  // above does NOT need an audit row because no state changed).
+  await logActivity({
+    org_id: membership.org_id,
+    user_id: user?.id ?? null,
+    entity_type: "proposal",
+    entity_id: null,
+    action: "updated",
+    details: {
+      source: "api/proposals/extract",
+      extraction_id: extractionId,
+      cache_miss_reason: cacheMissReason,
+      extraction_prompt_version: EXTRACTION_PROMPT_VERSION,
+      ai_confidence: parsed.confidence_score,
+    },
+  });
 
   return NextResponse.json({
     extraction_id: extractionId,

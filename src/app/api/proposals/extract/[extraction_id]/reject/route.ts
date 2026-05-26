@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentMembership } from "@/lib/org/session";
 import { ApiError, withApiError } from "@/lib/api/errors";
+import { logActivity } from "@/lib/activity-log";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,25 @@ export const POST = withApiError(async (
   if (updateError) {
     throw new ApiError(`Failed to mark rejected: ${updateError.message}`, 500);
   }
+
+  // F1-Wave-B Slice-2 B-4 Task 3 (write-site coverage sweep): audit-log the
+  // rejection. entity_type='proposal' per PLAN §2.2 line 265 — at this point
+  // no proposals row exists (rejection prevents commit); entity_id is null
+  // and details.extraction_id provides traceability. action='denied' is the
+  // canonical ActivityAction for "extraction attempt rejected by PM"
+  // (semantically: the future-proposal was denied at the extraction stage).
+  await logActivity({
+    org_id: membership.org_id,
+    user_id: user?.id ?? null,
+    entity_type: "proposal",
+    entity_id: null,
+    action: "denied",
+    details: {
+      source: "api/proposals/extract/reject",
+      extraction_id,
+      prior_verification_status: row.verification_status,
+    },
+  });
 
   return NextResponse.json({ extraction_id, status: "rejected" });
 });

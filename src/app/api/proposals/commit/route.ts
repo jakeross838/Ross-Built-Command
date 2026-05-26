@@ -52,6 +52,7 @@ import { ApiError, withApiError } from "@/lib/api/errors";
 import { generateEmbedding, vectorLiteral } from "@/lib/cost-intelligence/embeddings";
 import { findSimilarLineItems } from "@/lib/cost-intelligence/queries";
 import { PlanLimitError } from "@/lib/claude";
+import { logActivity } from "@/lib/activity-log";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -715,6 +716,29 @@ export const POST = withApiError(async (request: NextRequest) => {
       .eq("org_id", membership.org_id)
       .eq("status", "pending");
   }
+
+  // F1-Wave-B Slice-2 B-4 Task 3 (write-site coverage sweep): audit-log the
+  // proposal creation BEFORE the target_entity_id update so the audit row
+  // captures the creation event even if the cleanup step fails (in which
+  // case the proposal row exists with status='accepted' but the extraction
+  // pointer isn't yet wired). entity_type='proposal' + action='created' per
+  // PLAN §2.2 — note that ActivityAction union does NOT include 'committed';
+  // 'created' is the canonical mapping for "proposal row newly inserted via
+  // PM commit-from-extraction" (status='accepted' on insert at line ~488).
+  await logActivity({
+    org_id: membership.org_id,
+    user_id: user.id,
+    entity_type: "proposal",
+    entity_id: proposalId,
+    action: "created",
+    details: {
+      source: "api/proposals/commit",
+      extraction_id,
+      line_items_count: insertedLines.length,
+      new_items_created,
+      items_matched,
+    },
+  });
 
   // Update document_extractions.target_entity_id → proposalId.
   const { error: targetError } = await supabase

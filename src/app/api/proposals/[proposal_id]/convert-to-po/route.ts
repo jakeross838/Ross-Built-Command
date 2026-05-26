@@ -14,6 +14,16 @@
  * 'converted_to_po' without an actual PO would corrupt the audit
  * trail. Phase 3.5 owns the real status transition once a PO is
  * generated.
+ *
+ * F1-Wave-B Slice-2 B-4 Task 3 (write-site coverage sweep) — NO
+ * `logActivity` call here per Rule 1 deviation documented in
+ * B-4-SUMMARY.md §Task-3. B-4-PLAN §2.2 line 266 originally
+ * prescribed `entity_type='proposal'/action='status_changed'`, but
+ * this route is a 501 stub that mutates NO state. Adding an audit
+ * row would log a phantom event (false evidence) violating audit
+ * integrity. When Phase 3.5 wires the real PO-generation pipeline,
+ * THAT implementation will own the `logActivity` call on the actual
+ * proposal status transition + PO creation event.
  */
 
 import { NextRequest, NextResponse } from "next/server";
