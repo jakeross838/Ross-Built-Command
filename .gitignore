@@ -154,6 +154,15 @@ skills-lock.json
 # B-1a-bis ITER-2-PATCHES §3.10 codification.
 !/.planning/runbooks/
 !/.planning/runbooks/**
+# grounding-pass/ — multi-agent read-only inventory output (per nwrp223 §10-44).
+# 4 detailed agent reports (A-D) + GROUNDED-INVENTORY.md synthesis. Must sync
+# across PCs because the synthesis is the foundation for the launch plan Jake
+# reviews + builds on. Content sensitivity scan: architectural inventory only;
+# file paths + status labels + plain-language gap analysis; no credentials, no
+# customer data. Same whitelist pattern as decisions-pending/decisions-resolved
+# (nwrp169 Q-W9 Option a precedent) + tech-debt/ (nwrp129 TD-WD-01 precedent).
+!/.planning/grounding-pass/
+!/.planning/grounding-pass/**
 # decisions-pending/ + decisions-resolved/ — investigative decision briefs
 # (e.g. user-identity-fk-convention BRIEF surfaced D-078; F1+-1 production
 # domain BRIEF + F1+-2 SSO posture BRIEF). Must sync across PCs because Jake
