@@ -192,6 +192,54 @@ test("budget_line revised_estimate null → no overage check", async () => {
   assert.equal(result.violations.length, 0);
 });
 
+// ── F1-Wave-B Slice-2 B-4 Task 8 F-K carry-forward (per nwrp172) ──────
+// Pre-pass NaN/Infinity check on invoice.total_amount. Without the guard,
+// NaN silently bypasses the budget-overage check (NaN > x is false;
+// NaN + x is NaN). Validator must emit wi-001-invoice-amount-not-finite
+// + return early so downstream computation operates only on valid input.
+
+test("invoice total_amount = NaN → wi-001-invoice-amount-not-finite (early return)", async () => {
+  const ctx: ValidatorContext = {
+    supabase: makeStubClient({}),
+    org_id: ORG_ID,
+    user_id: null,
+  };
+  const result = await wi001InlineBudgetContext(
+    mkInvoice({ total_amount: Number.NaN }),
+    ctx,
+  );
+  assert.equal(result.ok, false);
+  const codes = result.violations.map((v) => v.code);
+  assert.ok(
+    codes.includes("wi-001-invoice-amount-not-finite"),
+    `expected wi-001-invoice-amount-not-finite in [${codes.join(", ")}]`,
+  );
+  // Early-return contract: NO downstream violations emitted (the validator
+  // SHORT-CIRCUITS rather than running the budget-line lookup with NaN).
+  // We assert the violation is the ONLY one emitted to lock in the
+  // early-return semantics.
+  assert.equal(result.violations.length, 1, "early-return should emit ONLY the not-finite violation");
+});
+
+test("invoice total_amount = Infinity → wi-001-invoice-amount-not-finite (early return)", async () => {
+  const ctx: ValidatorContext = {
+    supabase: makeStubClient({}),
+    org_id: ORG_ID,
+    user_id: null,
+  };
+  const result = await wi001InlineBudgetContext(
+    mkInvoice({ total_amount: Number.POSITIVE_INFINITY }),
+    ctx,
+  );
+  assert.equal(result.ok, false);
+  const codes = result.violations.map((v) => v.code);
+  assert.ok(
+    codes.includes("wi-001-invoice-amount-not-finite"),
+    `expected wi-001-invoice-amount-not-finite in [${codes.join(", ")}]`,
+  );
+  assert.equal(result.violations.length, 1, "early-return should emit ONLY the not-finite violation");
+});
+
 // ── runner ────────────────────────────────────────────────────────────
 
 (async () => {

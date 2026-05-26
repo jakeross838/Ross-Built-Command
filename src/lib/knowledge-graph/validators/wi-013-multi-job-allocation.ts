@@ -12,6 +12,7 @@
 //       `budget_lines` row for that allocation's job
 //
 // Violation codes:
+//   - `wi-013-allocation-amount-not-finite`            — allocation amount is NaN/Infinity (F1-Wave-B Slice-2 B-4 Task 8 F-J carry-forward)
 //   - `wi-013-allocation-sum-drift`                    — sum ≠ invoice total
 //   - `wi-013-allocation-job-not-found`                — allocation job_id unknown / unreadable
 //   - `wi-013-allocation-cross-tenant`                 — allocation job belongs to a different org
@@ -45,11 +46,32 @@ export const wi013MultiJobAllocation: Validator<MultiJobAllocationInput> =
   async (input, ctx) => {
     const violations: ValidatorViolation[] = [];
 
-    // (a) Sum equality (R.2 recalculate, 1¢ tolerance)
-    const sum = input.allocations.reduce(
-      (acc, a) => acc + (a.amount ?? 0),
-      0,
-    );
+    // F1-Wave-B Slice-2 B-4 Task 8 (F-J carry-forward per nwrp172):
+    // Pre-pass NaN check on allocation amounts BEFORE the .reduce()
+    // aggregation. NaN/Infinity from an upstream input poisons the sum,
+    // silently bypasses the wi-013-allocation-sum-drift check
+    // (NaN > 1 is false; NaN - x is NaN; Math.abs(NaN) is NaN; the
+    // drift comparison is non-blocking even when allocations are
+    // garbage). Emit a violation per non-finite allocation; then
+    // FILTER non-finite values from the .reduce() sum so the drift
+    // check operates on the finite subset.
+    for (const a of input.allocations) {
+      if (!Number.isFinite(a.amount)) {
+        violations.push({
+          code: "wi-013-allocation-amount-not-finite",
+          message: `Allocation amount is not finite (got: ${a.amount}) — upstream input likely produced NaN/Infinity which would silently bypass the sum-drift check.`,
+          evidence: {
+            job_id: a.job_id,
+            amount: a.amount,
+          },
+        });
+      }
+    }
+
+    // (a) Sum equality (R.2 recalculate, 1¢ tolerance) — NaN-filtered
+    const sum = input.allocations
+      .filter((a) => Number.isFinite(a.amount))
+      .reduce((acc, a) => acc + a.amount, 0);
     const drift = Math.abs(sum - input.invoice_total_amount);
     if (drift > 1) {
       violations.push({

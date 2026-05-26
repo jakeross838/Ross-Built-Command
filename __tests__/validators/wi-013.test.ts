@@ -267,6 +267,76 @@ test("combination of multiple violations → all surfaced", async () => {
   assert.ok(codes.includes("wi-013-allocation-cost-code-no-budget-line"));
 });
 
+// ── F1-Wave-B Slice-2 B-4 Task 8 F-J carry-forward (per nwrp172) ──────
+// Pre-pass NaN/Infinity check on allocation amounts. Without the guard,
+// NaN poisons the .reduce() sum + silently bypasses the sum-drift check
+// (NaN > 1 is false; Math.abs(NaN) is NaN).
+
+test("allocation amount = NaN → wi-013-allocation-amount-not-finite (and sum-drift on the finite remainder)", async () => {
+  const ctx = baseCtx({
+    jobsById: {
+      "job-a": { id: "job-a", org_id: ORG_ID },
+      "job-b": { id: "job-b", org_id: ORG_ID },
+    },
+    budgetLinesByJobCc: {
+      "job-a::cc-1": { id: "bl-a-1" },
+      "job-b::cc-1": { id: "bl-b-1" },
+    },
+  });
+  const result = await wi013MultiJobAllocation(
+    {
+      invoice_id: "inv-1",
+      invoice_total_amount: 100_000,
+      allocations: [
+        { job_id: "job-a", cost_code_id: "cc-1", amount: 60_000 },
+        { job_id: "job-b", cost_code_id: "cc-1", amount: Number.NaN },
+      ],
+    },
+    ctx,
+  );
+  assert.equal(result.ok, false);
+  const codes = result.violations.map((v) => v.code);
+  // The NaN allocation triggers wi-013-allocation-amount-not-finite
+  assert.ok(
+    codes.includes("wi-013-allocation-amount-not-finite"),
+    `expected wi-013-allocation-amount-not-finite in [${codes.join(", ")}]`,
+  );
+  // AND the sum-drift fires on the finite remainder (60_000 ≠ 100_000)
+  // — proving the validator does NOT silently treat NaN as 0 (pre-fix
+  // behavior would coerce via `?? 0` and miss the drift).
+  assert.ok(
+    codes.includes("wi-013-allocation-sum-drift"),
+    `expected wi-013-allocation-sum-drift in [${codes.join(", ")}]`,
+  );
+});
+
+test("allocation amount = Infinity → wi-013-allocation-amount-not-finite", async () => {
+  const ctx = baseCtx({
+    jobsById: {
+      "job-a": { id: "job-a", org_id: ORG_ID },
+    },
+    budgetLinesByJobCc: {
+      "job-a::cc-1": { id: "bl-a-1" },
+    },
+  });
+  const result = await wi013MultiJobAllocation(
+    {
+      invoice_id: "inv-1",
+      invoice_total_amount: 100_000,
+      allocations: [
+        { job_id: "job-a", cost_code_id: "cc-1", amount: Number.POSITIVE_INFINITY },
+      ],
+    },
+    ctx,
+  );
+  assert.equal(result.ok, false);
+  const codes = result.violations.map((v) => v.code);
+  assert.ok(
+    codes.includes("wi-013-allocation-amount-not-finite"),
+    `expected wi-013-allocation-amount-not-finite in [${codes.join(", ")}]`,
+  );
+});
+
 // ── runner ────────────────────────────────────────────────────────────
 
 (async () => {

@@ -12,6 +12,7 @@
 // the cost code over `revised_estimate` by an unflagged amount.
 //
 // Violation codes:
+//   - `wi-001-invoice-amount-not-finite`   — invoice.total_amount is NaN/Infinity (F1-Wave-B Slice-2 B-4 Task 8 F-K carry-forward)
 //   - `wi-001-budget-line-query-error`     — DB error on budget_lines lookup
 //   - `wi-001-cost-code-no-budget-line`    — invoice's cost_code_id has no matching budget_lines row for the job
 //   - `wi-001-invoice-aggregation-error`   — DB error on prior-invoices aggregation
@@ -32,6 +33,24 @@ export const wi001InlineBudgetContext: Validator<InvoiceRow> = async (
     // Cost-code-less invoices skip the budget context check; this is a
     // legitimate state pre-PM-review (cost_code_id assigned during review).
     return { ok: true, violations: [] };
+  }
+
+  // F1-Wave-B Slice-2 B-4 Task 8 (F-K carry-forward per nwrp172):
+  // Pre-pass NaN check on invoice.total_amount. NaN/Infinity from an
+  // upstream input silently bypasses the budget-overage check
+  // (NaN > x is false; NaN + x is NaN). Emit a violation + return
+  // early so the downstream proposedTotalToDate computation operates
+  // only on validated inputs.
+  if (!Number.isFinite(invoice.total_amount)) {
+    violations.push({
+      code: "wi-001-invoice-amount-not-finite",
+      message: `Invoice total_amount is not finite (got: ${invoice.total_amount}) — upstream input likely produced NaN/Infinity which would silently bypass the budget-overage check.`,
+      evidence: {
+        invoice_id: invoice.id ?? null,
+        total_amount: invoice.total_amount,
+      },
+    });
+    return { ok: false, violations };
   }
 
   // Look up the budget_line for this (job_id, cost_code_id).
@@ -98,11 +117,18 @@ export const wi001InlineBudgetContext: Validator<InvoiceRow> = async (
     return { ok: false, violations };
   }
 
-  const priorTotal = (approvedInvoices ?? []).reduce(
-    (acc, row) => acc + (row.total_amount ?? 0),
-    0,
-  );
-  const proposedTotalToDate = priorTotal + (invoice.total_amount ?? 0);
+  // F1-Wave-B Slice-2 B-4 Task 8 (F-K carry-forward, defensive sibling
+  // to the early-return guard above): filter NaN/Infinity from the prior-
+  // approved sum so a single garbage row in the approvedInvoices array
+  // doesn't poison priorTotal. The early-return guard catches the active
+  // invoice's bad value; this filter catches the same in historical rows
+  // (e.g., a partial-write or admin-edited row that retained a non-finite
+  // amount). Defense-in-depth — no separate violation emitted because the
+  // historical rows aren't part of the validator's input contract.
+  const priorTotal = (approvedInvoices ?? [])
+    .filter((row) => Number.isFinite(row.total_amount))
+    .reduce((acc, row) => acc + row.total_amount, 0);
+  const proposedTotalToDate = priorTotal + invoice.total_amount;
 
   if (
     budgetLine.revised_estimate != null &&
