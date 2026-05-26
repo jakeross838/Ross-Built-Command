@@ -5,13 +5,15 @@ plan-name: activity-log-verification-write-site-sweep-carry-forward-cleanup
 type: execute
 threat_model_severity: low
 halt_after: true
-status: AUTHORED — PENDING POST-EXECUTE GATE B-4 REVIEW (per nwrp216 §3 REFRAME — NOT auto-flipped to SHIPPED; lean Tier-2 GATE per nwrp220 §26)
+status: SHIPPED
 authored_at: 2026-05-26T18:10:00Z
-gate-sign-target: nwrp222 §7 GATE B-4 SIGNED for /nx execute; POST-EXECUTE GATE B-4 pending Jake review of execute artifacts
+shipped_at: 2026-05-26T20:30:00Z
+gate-sign: nwrp223 §1-6 — POST-EXECUTE GATE B-4 SIGNED (lighter GATE per nwrp220 §26). All 4 lighter-GATE items verified: (1) Task 3 close-and-verify (3 fills + 1 documented rationale on convert-to-po 501 stub; ai-logic independent code-read confirmed); (2) Task 4 canonical membership.org_id filter (security-narrow PASS); (3) Task 7 W.1 unflag clean + Sentry 7-day observation 2026-05-26 → 2026-06-02 ACTIVE (env-flag rollback if spike); (4) no regressions. Hook fix `6c8085b` first-production-proof CLEAN (11/11 Execute-Phase footers; ZERO --no-verify across full execute cycle; bypass gap genuinely closed).
 authorization-chain:
   - "nwrp220 — B-4 DISPATCH lean Tier-2 (4-reviewer scope + focused security-reviewer on Task 4)"
   - "nwrp221 — Task 3 close-and-verify clarifications + AC-B4-07 3-detector Sentry spike threshold + iter-1 corrections (NaN guard pre-pass pattern + Task 10 regex append-not-replace)"
   - "nwrp222 §7 GATE B-4 SIGNED for /nx execute; per-plan halt gate $50 (Rule 7d)"
+  - "nwrp223 §1-8 POST-EXECUTE GATE B-4 SIGNED + /gsd-ship B-4 + GROUNDING PASS authorized (HARD STOP after ship — NOT B-5 dispatch)"
 subsystem: app.audit-coverage + db.search-index + ops.feature-flag-unflag + lib.validators
 tags:
   - subsystem.app.audit-coverage
