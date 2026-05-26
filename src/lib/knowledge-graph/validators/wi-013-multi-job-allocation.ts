@@ -87,6 +87,35 @@ export const wi013MultiJobAllocation: Validator<MultiJobAllocationInput> =
 
     // (b) Cross-tenant check + (c) budget_line existence per allocation.
     for (const alloc of input.allocations) {
+      // F1-Wave-B Slice-2 B-4 Task 9 (F-D carry-forward per nwrp172):
+      // INTENTIONAL — this lookup OMITS .eq("org_id", ctx.org_id) for
+      // diagnostic clarity. The validator MUST see foreign-org rows so
+      // it can emit `wi-013-allocation-cross-tenant` with the actual
+      // foreign org_id in the evidence payload. If we filtered by
+      // org_id at query time, cross-tenant allocations would return
+      // null from .maybeSingle() and the validator would emit
+      // `wi-013-allocation-job-not-found` instead — same safety
+      // outcome (the violation is still surfaced), but less
+      // diagnostic for the PM reviewing the audit log.
+      // Outcome-safe because:
+      //   - This validator runs in a server-side admin/system context
+      //     (`ctx.supabase` may be a service-role client or an RLS-
+      //     bound caller); cross-tenant visibility here does NOT leak
+      //     data to the end-user UI — the validator returns only the
+      //     violation code + evidence, never the row.
+      //   - Production callers ARE RLS-bound at the API layer
+      //     (getCurrentMembership() + .eq("org_id", membership.org_id)
+      //     filters before validator invocation per CLAUDE.md API
+      //     route discipline); a malicious user cannot trigger this
+      //     code path with a job_id they don't already have a read
+      //     channel to.
+      //   - The evidence payload reveals the foreign org_id, but
+      //     that's NOT a meaningful tenant-isolation leak: knowing
+      //     "job X belongs to some other org" is publicly inferable
+      //     from any constraint-violation error on a cross-org job_id
+      //     attempt.
+      // See B-1b QA report 2026-05-18-1230 F-D finding +
+      // nwrp172 GATE 2 disposition for the discussion thread.
       const { data: job, error: jobErr } = await ctx.supabase
         .from("jobs")
         .select("id, org_id")
