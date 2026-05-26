@@ -5,6 +5,35 @@
 # Set NIGHTWORK_PRECOMMIT_DISABLE=1 to disable entirely.
 #
 # ---
+# Execute-phase-skip contract (per TD-NW-HOOK-EXECUTE-PHASE-DETECT, nwrp217 + nwrp219 §22):
+#
+# Commits made DURING an active /nx execute (pre-scheduled-QA) skip the
+# qa-freshness check + verdict-BLOCKING check below, because /nx Step 3
+# runs /nightwork-qa AFTER execute completes. The qa-freshness gate is
+# calibrated for post-QA ship commits ("don't ship un-QA'd code"); B-N
+# execute commits are pre-QA by design.
+#
+# Trigger marker (commit body must contain ONE of):
+#   - `Execute-Phase: <plan-id>` (canonical footer; preferred going forward)
+#   - `execute-time commit pre-scheduled-QA` (legacy nwrp217 citation literal;
+#     preserved for backward-compat with the 4 B-3 execute commits already on
+#     origin/main that used --no-verify + this citation language)
+#
+# Fail-closed contract preserved:
+# - Drummond grep gate STILL fires on every commit (pre-QA-skip)
+# - Execute-phase marker must be EXPLICIT (no implicit bypass)
+# - Ship commits (no marker) STILL enforce qa-freshness + verdict-BLOCKING
+# - --no-verify STILL works as the manual escape hatch (Rule 8(a) per-incident)
+#
+# Origin: TD-NW-HOOK-EXECUTE-PHASE-DETECT (MASTER-PLAN §11; filed 2026-05-22
+# per nwrp217 §14-18; closed per this hook edit + nwrp219 §22).
+# 4-instance lineage on B-3 alone (49bb664, e22a488, ca40e82, 8ed0e38 amend).
+# Discipline contract: Workflow posture Rule 8 fail-closed (CLAUDE.md).
+# Precedent: TD-NW-HOOK-DOC-ONLY-DETECT (closed `c20e5d9` per nwrp192 Option B);
+# same fail-closed-preserved discipline applied to a different calibration gap.
+# ---
+#
+# ---
 # Doc-only-skip contract (per stage-f1-hook-doc-only-detect, nwrp190 Q1=C / Q2=B / Q3=A;
 # nwrp192 Option B Amendment 1 correction — `.sh`-enforces wins):
 #
@@ -77,6 +106,14 @@ if [[ "$CMD" =~ \ -m\ .*Merge ]] || [[ "$CMD" =~ \ -m\ .*merge ]]; then
   exit 0
 fi
 
+# Execute-phase-skip detection (per TD-NW-HOOK-EXECUTE-PHASE-DETECT, nwrp217 + nwrp219 §22)
+# See header contract block above. Sets SKIP_QA_GATES=1 to skip qa-freshness +
+# verdict-BLOCKING checks below WHILE preserving Drummond grep gate fail-closed.
+SKIP_QA_GATES=0
+if echo "$CMD" | grep -qE 'Execute-Phase:[[:space:]]|execute-time commit pre-scheduled-QA'; then
+  SKIP_QA_GATES=1
+fi
+
 # Allow .planning/-only and docs/-only commits (no source change → no QA needed)
 STAGED=$(git diff --cached --name-only 2>/dev/null || true)
 if [ -n "$STAGED" ]; then
@@ -147,6 +184,15 @@ also block this commit if it landed on main."
   exit 2
 fi
 
+# Skip qa-freshness + verdict-BLOCKING gates for execute-phase commits.
+# Per TD-NW-HOOK-EXECUTE-PHASE-DETECT (closed via this hook edit per nwrp219 §22),
+# /nx execute commits land BEFORE /nx Step 3 /nightwork-qa runs; the freshness
+# + verdict gates are calibrated for post-QA ship commits, not pre-QA execute.
+# Drummond grep gate above (line ~108) STILL fired for execute commits.
+if [ "$SKIP_QA_GATES" = "1" ]; then
+  exit 0
+fi
+
 # Find latest QA report
 LATEST_QA=$(ls -t .planning/qa-runs/*-qa-report.md 2>/dev/null | head -1 || true)
 
@@ -158,6 +204,7 @@ The repo is configured to require QA review before commits to source files.
 Options:
   • Run /nightwork-qa first, then re-commit
   • Pass --no-verify to bypass (use sparingly)
+  • Add 'Execute-Phase: <plan-id>' footer if this is a pre-scheduled-QA execute commit
   • Set NIGHTWORK_PRECOMMIT_DISABLE=1 to disable this hook"
   NW_REASON="$REASON" node -e "
   process.stdout.write(JSON.stringify({
@@ -178,6 +225,7 @@ if [ "$AGE" -gt 3600 ]; then
   REASON="[nightwork-pre-commit] Latest /nightwork-qa report is ${AGE_MIN} minutes old (>60). Recent code may not be covered.
 
   • Run /nightwork-qa to refresh
+  • Or add 'Execute-Phase: <plan-id>' footer if this is a pre-scheduled-QA execute commit
   • Or pass --no-verify if you've manually verified the latest changes"
   NW_REASON="$REASON" node -e "
   process.stdout.write(JSON.stringify({
