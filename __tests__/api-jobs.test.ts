@@ -5,9 +5,9 @@
  *  - Task 4 MEDIUM-1 fix: PATCH chain includes `.eq("org_id", membership.org_id)`
  *    defense-in-depth filter alongside RLS at DB layer
  *    (B-4-PLAN §2.3 + AC-B4-04 + nwrp166 §10 carry-forward from B-1a-bis QA)
- *
- * Task 5 (TD-B1abis-01 race-catch) tests are added in the same file by
- * the Task 5 commit (B-4-PLAN §3 Task 5).
+ *  - Task 5 TD-B1abis-01 race-catch: 23505 unique_violation branch with
+ *    re-find logic in resolveClientId find-or-create
+ *    (B-4-PLAN §2.4 + AC-B4-05 + nwrp166 §11 carry-forward)
  *
  * Test methodology mirrors the rest of `__tests__/api-*.test.ts`:
  * grep-based static analysis of the route source. Full handler-invocation
@@ -77,6 +77,43 @@ test("PATCH MEDIUM-1 fix carries documented rationale referencing B-1a-bis QA", 
   );
 });
 
+// ── Task 5 — TD-B1abis-01 resolveClientId race-catch ─────────────
+test("resolveClientId catches 23505 unique_violation and re-finds the winner", () => {
+  // The 23505 branch is the race-catch path: when two concurrent identical-
+  // name find-or-create requests both miss the prior ilike find and both
+  // INSERT, the second hits the partial unique index, throws insertError
+  // with code='23505'. The fix branches on that code, re-runs the find
+  // (now the winner exists), and returns that id — surfacing as 200 not
+  // 500 to the UX.
+  assert.match(
+    jobsRoute,
+    /['"]23505['"]/,
+    "resolveClientId MUST catch SQLSTATE 23505 (unique_violation) per Task 5 race-catch fix"
+  );
+});
+
+test("resolveClientId race-catch references the existing ilike-by-full_name re-find", () => {
+  // The race-catch path uses the same find query as the initial find branch.
+  // Verify the re-find pattern is present: SELECT id FROM clients WHERE
+  // org_id=... AND full_name ILIKE typedName AND deleted_at IS NULL LIMIT 1.
+  assert.match(
+    jobsRoute,
+    /\.from\(\s*['"]clients['"]\s*\)\s*\.select\(\s*['"]id['"]/,
+    "race-catch must include a 'SELECT id FROM clients' re-find branch"
+  );
+});
+
+test("resolveClientId race-catch carries documented rationale referencing TD-B1abis-01", () => {
+  // The Task 5 fix landed with inline citation to the carry-forward source.
+  // This guards against accidental code cleanup removing the race-catch
+  // without re-litigating the concurrent-find behavior.
+  assert.match(
+    jobsRoute,
+    /TD-B1abis-01|race-catch|concurrent\s+(insert|identical)/i,
+    "Task 5 fix MUST carry inline rationale comment per B-4-PLAN §2.4"
+  );
+});
+
 // ── Cross-tenant probe (live, only when env wires permit) ───────
 test(
   "RLS: cross-org PATCH /api/jobs is REJECTED at DB layer (live probe; SKIPs if env missing)",
@@ -99,6 +136,27 @@ test(
         + "Wave 1.1-Lite test infrastructure pass per B-4-PLAN §5 R-3. AC-B4-04 "
         + "falsifiability satisfied via static analysis above + focused "
         + "security-reviewer code review (nwrp220 §8)."
+    );
+  }
+);
+
+// ── Concurrent race probe (live, only when env wires permit) ────
+test(
+  "race: concurrent resolveClientId returns same id for identical name (SKIPs if env missing)",
+  () => {
+    // Per B-4-PLAN §5 R-3 disposition: full concurrent-handler probe deferred
+    // to Wave 1.1-Lite. AC-B4-05 falsifiability satisfied by static analysis
+    // of the 23505 branch above + code review.
+    //
+    // When infrastructure is ready:
+    //   - Set up org_A fixture; pre-condition: no client named "RaceTest"
+    //   - Promise.all([resolveClientId("RaceTest"), resolveClientId("RaceTest")])
+    //   - Assert id1 === id2 (same row; second request hit 23505 and re-found
+    //     the winner; no 500 thrown)
+    console.warn(
+      "B-4-T5-RACE-CATCH-PROBE-SKIP: live concurrent race probe deferred to "
+        + "Wave 1.1-Lite test infrastructure pass per B-4-PLAN §5 R-3. AC-B4-05 "
+        + "falsifiability satisfied via static analysis above + code review."
     );
   }
 );

@@ -74,6 +74,27 @@ async function resolveClientId(
       .select("id, full_name")
       .single();
     if (insertError) {
+      // F1-Wave-B Slice-2 B-4 Task 5 (TD-B1abis-01 race-catch): two
+      // concurrent identical-name find-or-create requests both miss the
+      // prior ilike find above, both proceed to INSERT, and the second
+      // hits the partial unique index `idx_clients_org_name_email_unique`
+      // (migration 00100) which throws SQLSTATE 23505 (unique_violation).
+      // Pre-fix: 500 to the UX. Post-fix: re-find branch returns the
+      // winner's id; UX surfaces 200 with that id. Idempotent semantics
+      // for the find-or-create contract per nwrp166 §11 carry-forward.
+      if ((insertError as { code?: string }).code === "23505") {
+        const { data: raceWinner } = await supabase
+          .from("clients")
+          .select("id")
+          .eq("org_id", membership.org_id)
+          .ilike("full_name", typedName)
+          .is("deleted_at", null)
+          .limit(1)
+          .maybeSingle();
+        if (raceWinner) {
+          return (raceWinner as { id: string }).id;
+        }
+      }
       throw new ApiError(`Failed to create client: ${insertError.message}`, 500);
     }
 
