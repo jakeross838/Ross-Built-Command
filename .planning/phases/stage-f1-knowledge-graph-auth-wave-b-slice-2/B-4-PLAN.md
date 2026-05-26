@@ -7,7 +7,7 @@ threat_model_severity: low
 halt_after: true
 requires_smoke: true
 autonomous: true
-status: PLAN-REVIEW ITER-1 COMPLETE (4 PASS + ai-logic-tester NEEDS-WORK + iter-1 finalization corrections applied inline per nwrp220 §7 ONE-iter-cycle target) — PENDING JAKE GATE B-4 REVIEW
+status: GATE B-4 SIGNED per nwrp222 §7 — PENDING /nx EXECUTE (Task 3 + AC-B4-07 clarifications applied inline per nwrp221 + nwrp222)
 depends_on:
   - B-2a   # SHIPPED 2026-05-21 per nwrp209 (added client_portal_access entity_type)
   - B-2b   # SHIPPED 2026-05-22 per nwrp213 (added 'acknowledged' action)
@@ -242,27 +242,42 @@ NO source file edits for Tasks 1+2. NO ACs that require code changes.
 
 ### §2.2 Task 3 write-site sweep
 
-**Method:**
-1. Grep `logActivity` calls across `src/app/api/{lien-releases,proposals,owner-portal,clients}/**/route.ts`
-2. For each route file, identify CREATE / UPDATE / state-change handlers
-3. Verify each handler calls `logActivity` with appropriate entity_type + action
-4. If gap found: add `logActivity` call inline as part of Task 3 (estimate 2-3 gaps max; ~10 lines per gap)
-5. Output: per-route coverage table in B-4-SUMMARY.md
+**Method (gap-FILL not gap-FIND per nwrp221 §5-6 + nwrp222 §3):**
 
-**Per-route check matrix** (executor populates at execute time):
+1. **CLOSE 4 confirmed proposal-route gaps** (spec-checker live grep at iter-1; nwrp221 §5):
+   - `src/app/api/proposals/[id]/commit/route.ts` — POST handler — `entity_type='proposal'`, action=`'committed'` (or `'approved'` if the existing ActivityAction union semantics map better)
+   - `src/app/api/proposals/[id]/extract/route.ts` — POST handler — `entity_type='proposal'`, action=`'updated'` (extraction is an update to proposal state with extracted lines/cost-codes)
+   - `src/app/api/proposals/[id]/extract/reject/route.ts` — POST handler — `entity_type='proposal'`, action=`'denied'` (reject = denial of an extraction attempt)
+   - `src/app/api/proposals/[id]/convert-to-po/route.ts` — POST handler — `entity_type='proposal'`, action=`'status_changed'` (with `details.to='converted_to_po'` and the resulting `purchase_order` referenced in details)
+2. **Sweep additional routes** for any other gaps in target set: `src/app/api/{lien-releases,proposals,owner-portal,clients}/**/route.ts`
+3. For each found gap: add `logActivity` call inline as part of Task 3
+4. Output: per-route coverage table in B-4-SUMMARY.md + integration-test or live-DB-probe verification per route
 
-| Route | Handler | Has logActivity? | entity_type | action | Disposition |
-|-------|---------|------------------|-------------|--------|-------------|
-| `src/app/api/lien-releases/[id]/route.ts` | POST/PATCH | YES (line 117) | `lien_release` | various | OK |
-| `src/app/api/lien-releases/[id]/upload/route.ts` | POST | YES (line 136) | `lien_release` | `uploaded` (TBD) | OK |
-| `src/app/api/lien-releases/bulk/route.ts` | POST | YES (line 119) | `lien_release` | bulk action | OK |
-| `src/app/api/proposals/*` | POST/PATCH | ??? | `proposal` | varies | Verify |
-| `src/app/api/owner-portal/admin/revoke-token/route.ts` | POST | ??? | `client_portal_access` | `revoked` | Verify (B-2a) |
-| `src/app/api/clients/*` | POST/PATCH | ??? | `client` | varies | Verify |
+**Per-route disposition matrix** (executor populates at execute time):
 
-**Falsifiability:** grep output + per-route disposition matrix in SUMMARY. AC PASS = every CREATE/UPDATE/state-change handler in the target route set either has `logActivity` OR has an explicit inline rationale comment for skip.
+| Route | Handler | Pre-B-4 logActivity? | Post-B-4 logActivity? | entity_type | action | Disposition |
+|-------|---------|----------------------|----------------------|-------------|--------|-------------|
+| `src/app/api/lien-releases/[id]/route.ts` | POST/PATCH | YES (line 117) | YES (unchanged) | `lien_release` | various | UNCHANGED |
+| `src/app/api/lien-releases/[id]/upload/route.ts` | POST | YES (line 136) | YES (unchanged) | `lien_release` | upload-adjacent | UNCHANGED |
+| `src/app/api/lien-releases/bulk/route.ts` | POST | YES (line 119) | YES (unchanged) | `lien_release` | bulk action | UNCHANGED |
+| **`src/app/api/proposals/[id]/commit/route.ts`** | POST | NO | **WIRED (Task 3)** | `proposal` | `committed` (or canonical equivalent from union) | **FILLED** |
+| **`src/app/api/proposals/[id]/extract/route.ts`** | POST | NO | **WIRED (Task 3)** | `proposal` | `updated` (extraction is state update) | **FILLED** |
+| **`src/app/api/proposals/[id]/extract/reject/route.ts`** | POST | NO | **WIRED (Task 3)** | `proposal` | `denied` | **FILLED** |
+| **`src/app/api/proposals/[id]/convert-to-po/route.ts`** | POST | NO | **WIRED (Task 3)** | `proposal` | `status_changed` | **FILLED** |
+| `src/app/api/owner-portal/admin/revoke-token/route.ts` | POST | YES (B-2a) | YES (unchanged) | `client_portal_access` | `revoked` | VERIFIED-UNCHANGED |
+| `src/app/api/clients/*` | POST/PATCH | (verify at execute) | (verify at execute) | `client` | varies | SWEEP |
 
-**Iter-1 spec-checker NOTE on Task 3 gap count:** Per live grep at iter-1 review, ALL 4 proposal routes (`commit`, `extract`, `extract/reject`, `convert-to-po`) have ZERO `logActivity` calls. Task 3 will require at minimum 4 inline fills (one per handler that does CREATE/UPDATE/state-change). Estimate per fill: ~2-3 lines. If sweep surfaces additional gaps (e.g., client_portal_access admin routes or clients routes), executor surfaces past 4-fill threshold + halt-checks $50 per-plan gate (Rule 7d).
+**Action-mapping rationale:** The 4 proposal-route actions (`committed`, `updated`, `denied`, `status_changed`) are all members of existing `ActivityAction` union (`src/lib/activity-log.ts:84-105`); NO new actions needed. If executor finds a semantic mismatch (e.g., `committed` doesn't exist + `approved` is more apt), use the canonical action from the union + document mapping in the route's logActivity call rationale comment.
+
+### Task 3 falsifiability — 3-layer verification per nwrp221 §6 + nwrp222 §3
+
+| Layer | What | Falsifiability |
+|-------|------|----------------|
+| **(a) Grep evidence** | `grep -rn "logActivity" src/app/api/proposals/` — each of the 4 named proposal routes MUST appear in output (was 0 hits pre-B-4) | If any of the 4 routes still shows 0 `logActivity` matches → AC FAIL |
+| **(b) Per-route disposition table** in B-4-SUMMARY.md §Task-3 | Per row: route path + handler verb + entity_type + action + line number of `logActivity` call | If table missing any of 4 named rows OR row has `MISSING` disposition → AC FAIL |
+| **(c) Live emit verification** (integration test OR `mcp__supabase__execute_sql` live-DB probe post-handler invocation) | For each of 4 routes: invoke handler against fixture data; assert exactly 1 new `activity_log` row with matching `entity_type='proposal'` + appropriate action + correct `entity_id` (= the proposal id) | If any route doesn't actually emit at runtime → AC FAIL |
+
+**Halt-check on scope expansion:** If the broader sweep (step 2 above) surfaces >2 additional gaps beyond the 4 proposal-route fills (i.e., total >6 fills required), executor halt-and-surface per Rule 7d $50 per-plan gate. Each fill is ~3-5 lines; ~6 fills × 4 = 24 lines stays well within lean estimate; >6 fills would expand scope.
 
 ### §2.3 Task 4 MEDIUM-1 fix
 
@@ -730,7 +745,7 @@ EXPLAIN ANALYZE SELECT id, full_name FROM public.clients
 
 **Falsifiability:** Index missing OR query plan doesn't use trgm index → FAIL.
 
-### AC-B4-07 — W.1 listener unflag env-var added (Task 7)
+### AC-B4-07 — W.1 listener unflag env-var added + 7-day Sentry observation gate (Task 7)
 
 **Verification (Vercel env list):**
 ```bash
@@ -740,9 +755,31 @@ $ vercel env ls --environment preview | grep NEXT_PUBLIC_AUTH_STATE_LISTENER
 
 **Expected:** Both environments show `NEXT_PUBLIC_AUTH_STATE_LISTENER` with value (recent timestamp).
 
-**7-day observation gate:** After Task 7 commit, observe Sentry auth-state-change error rate. Expected: no spike. PASS criterion deferred 7 days post-commit; tracked in SUMMARY post-observation.
+### Sentry alerting surface (per nwrp221 §10 + nwrp222 §6 — specified at GATE, NOT deferred to execute)
 
-**Falsifiability:** Env-var absent OR Sentry shows spike → FAIL/HALT.
+**What it alerts on:** Errors originating from the W.1 `onAuthStateChange` listener callback path. Sentry filter = events whose stack trace contains ANY of:
+- `onAuthStateChange` (listener subscription site at `src/hooks/use-current-role.ts:~38`)
+- `useCurrentRole` (downstream hook re-render triggered by listener)
+- nav-bar / invoice-detail role-display components re-rendering after listener-driven cache invalidation (React error boundary OR uncaught Sentry exception)
+
+NOT alerting on: stale-role render (silent UX defect; surfaces via user report, not Sentry).
+
+### Spike threshold (3-detector definition per nwrp221 §10 + nwrp222 §6)
+
+A spike is ANY of:
+
+1. **Burst:** >5 listener-path Sentry errors in any **1-minute** window
+2. **Sustained rate:** >1% listener-callback failure rate over any **5-minute** window (denominator = count of `onAuthStateChange` events in that window per Sentry breadcrumbs OR estimated from active-session count)
+3. **Chronic-low-rate:** >0 listener-path errors per day sustained over **3 consecutive days** (catches edge-case regressions that don't burst but accumulate)
+
+**Pre-unflag baseline:** ZERO listener-path errors (listener was env-flag gated off; never executed). Any post-unflag listener-path error is by definition "above baseline."
+
+### Observation gate (7 days post-Task-7 commit)
+
+- **PASS** = no spike detected per the 3-detector definition during the 7-day window
+- **FAIL/HALT** = any of the 3 detectors fires → surface to Jake → if real regression: rollback W.1 via `vercel env rm NEXT_PUBLIC_AUTH_STATE_LISTENER production && preview` + redeploy (Task 7 rollback path; no code revert needed) → if false-positive: refine Sentry filter + continue observation
+
+**Falsifiability:** Env-var absent in either environment OR any of the 3 detectors fires during 7-day window → FAIL/HALT.
 
 ### AC-B4-08 — F-J NaN guard in WI-013 (Task 8)
 
