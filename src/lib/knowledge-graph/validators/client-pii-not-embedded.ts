@@ -37,13 +37,22 @@ export interface ClientPiiInput {
 
 // Wildcard variants. Standalone form `clients(*)` AND aliased form
 // `homeowner:clients(*)` / `client:clients(*)` — both expose PII transitively.
-const WILDCARD_PATTERN = /\bclients?\s*\(\s*\*\s*\)/g;
-const ALIAS_WILDCARD = /:\s*clients?\s*\(\s*\*\s*\)/g;
+//
+// F1-Wave-B Slice-2 B-4 Task 10 (F-A carry-forward per nwrp172):
+// `i` flag appended to existing `g` flag so uppercase / mixed-case
+// variants (`CLIENTS(*)`, `Clients(email)`, etc.) ALSO match. `g`
+// flag PRESERVED because downstream `.matchAll()` calls require it
+// (without `g`, `String.prototype.matchAll` THROWS
+// `TypeError: String.prototype.matchAll called with a non-global
+// RegExp argument`). `\b` word-boundary anchor PRESERVED — guards
+// against false positives like `subclients(...)` matching `\bclients`.
+const WILDCARD_PATTERN = /\bclients?\s*\(\s*\*\s*\)/gi;
+const ALIAS_WILDCARD = /:\s*clients?\s*\(\s*\*\s*\)/gi;
 
 // Named-column embed references that include fenced fields. Match
 // `clients(...,email...)` and `clients(...,phone...)` permissively.
-const EMAIL_PATTERN = /\bclients?\s*\([^)]*\bemail\b[^)]*\)/g;
-const PHONE_PATTERN = /\bclients?\s*\([^)]*\bphone\b[^)]*\)/g;
+const EMAIL_PATTERN = /\bclients?\s*\([^)]*\bemail\b[^)]*\)/gi;
+const PHONE_PATTERN = /\bclients?\s*\([^)]*\bphone\b[^)]*\)/gi;
 
 export const clientPiiNotEmbedded: Validator<ClientPiiInput> = async (
   input,

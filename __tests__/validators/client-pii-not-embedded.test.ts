@@ -157,6 +157,38 @@ test("safe select on related-but-non-clients table → ok=true (no false positiv
   assert.equal(result.ok, true);
 });
 
+// ── F1-Wave-B Slice-2 B-4 Task 10 F-A carry-forward (per nwrp172) ──────
+// `i` flag appended to existing `g` flag so uppercase + mixed-case
+// PostgREST embeds also match. `g` flag PRESERVED (matchAll requires it).
+// `\b` word-boundary anchor PRESERVED (guards against subclient(...)
+// false positives).
+
+test("uppercase wildcard `CLIENTS(*)` → client-pii-embed-wildcard (i flag)", async () => {
+  const result = await clientPiiNotEmbedded(
+    { source: "id,client:CLIENTS(*)" },
+    stubCtx,
+  );
+  assert.equal(result.ok, false);
+  const codes = result.violations.map((v) => v.code);
+  assert.ok(
+    codes.includes("client-pii-embed-wildcard"),
+    `expected client-pii-embed-wildcard for uppercase CLIENTS(*) in [${codes.join(", ")}]`,
+  );
+});
+
+test("mixed-case `Clients(id,name,email)` → client-pii-embed-detected (i flag)", async () => {
+  const result = await clientPiiNotEmbedded(
+    { source: "id,homeowner:Clients(id,name,email)" },
+    stubCtx,
+  );
+  assert.equal(result.ok, false);
+  const codes = result.violations.map((v) => v.code);
+  assert.ok(
+    codes.includes("client-pii-embed-detected"),
+    `expected client-pii-embed-detected for mixed-case Clients(email) in [${codes.join(", ")}]`,
+  );
+});
+
 // ── runner ────────────────────────────────────────────────────────────
 
 (async () => {
