@@ -195,6 +195,13 @@ skills-lock.json
 # works cross-phase. Per stage-1.5c-verification-harness D-10/D-11.
 !/.planning/research/
 !/.planning/research/**
+# process/ — pipeline + workflow design documents (PLANNING-PIPELINE-TIERING.md
+# + future process artifacts). Survives /clear; informs every subsequent /np
+# dispatch. Must sync across PCs because tiering design specifies LOW/MEDIUM/HIGH
+# reviewer sets that the pipeline reads from. Per TD-PLANNING-PIPELINE-SEVERITY-
+# TIERING (nwrp233+237+238).
+!/.planning/process/
+!/.planning/process/**
 # verification/ — runs/ are gitignored (per-commit harness reports clutter
 # git history); reports/ and standards/ are tracked (per-phase final reports
 # + standards rules library). Per D-15/D-16 (stage-1.5c verification harness).
