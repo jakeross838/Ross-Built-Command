@@ -1,11 +1,12 @@
-# Planning Pipeline Severity Tiering — Design (DRAFT Rev 3)
+# Planning Pipeline Severity Tiering — Design (APPROVED)
 
-**Status:** DRAFT Rev 3 — awaiting Jake review per nwrp241. Rev 2 returned APPROVED on (1)-(5) + (a)(b) + Q10 with 2 soft-criteria items requiring Rev 3 tightening (§6.2 friction-tax watchpoint mechanical close + §2.3 architect-vs-enterprise-readiness mechanical signal table + "both = 2 base slots" path).
+**Status:** APPROVED Rev 3 per nwrp242. Implementation phase + Phase 2 dispatch follow per §12.
+**Approved by Jake:** 2026-05-27
 **Filed:** 2026-05-27 per nwrp237 directive post Phase 1 (internal-launch-hide) SHIPPED.
-**Revised:** 2026-05-27 per nwrp239 (Rev 1 review) → Rev 2; 2026-05-27 per nwrp241 (Rev 2 review) → Rev 3.
+**Revised:** 2026-05-27 per nwrp239 (Rev 1 review) → Rev 2; 2026-05-27 per nwrp241 (Rev 2 review) → Rev 3; 2026-05-27 per nwrp242 → APPROVED.
 **Origin:** TD-PLANNING-PIPELINE-SEVERITY-TIERING in MASTER-PLAN.md §11 — BLOCKING gate on 3-series dispatch per nwrp233. Phase 1 shipped the LOW-tier prototype 2026-05-27, validating feasibility; this document formalizes the design.
-**Cost cap (this design pass):** $50. Design-only — no gsd-sdk / skill changes ship from this pass.
-**Authorization chain:** nwrp231/nwrp232 PARKED → nwrp233 PROMOTED (BLOCKING on 3-series) → Phase 1 prototype shipped per nwrp236/237/238 → nwrp237 directive to draft this design → nwrp239 REVISE-DESIGN feedback applied in Rev 2 → nwrp241 APPROVED on Rev 2 substantive items + Rev 3 tightening on 2 soft-criteria items.
+**Cost cap (this design pass):** $50 nominal; actual $54k (~$5-10 marginal overrun per Rule 7a surface; cost-of-correctness for closing 2 soft-criteria gaps in Rev 3).
+**Authorization chain:** nwrp231/nwrp232 PARKED → nwrp233 PROMOTED (BLOCKING on 3-series) → Phase 1 prototype shipped per nwrp236/237/238 → nwrp237 directive to draft this design → nwrp239 REVISE-DESIGN feedback applied in Rev 2 → nwrp241 APPROVED on Rev 2 substantive items + Rev 3 tightening on 2 soft-criteria items → nwrp242 APPROVED Rev 3 with proceed-per-§12 directive.
 
 **Rev 3 changes from Rev 2 (per nwrp241):**
 
@@ -727,4 +728,4 @@ After APPROVED:
 
 ---
 
-**END OF DRAFT Rev 3 — awaiting Jake review per nwrp241.**
+**END OF DESIGN — APPROVED Rev 3 per nwrp242 (2026-05-27). Proceed to implementation phase per §12 Step 1.**
