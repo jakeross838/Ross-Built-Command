@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-05-11T22:30:00Z"
+last_updated: "2026-05-26T22:20:18.580Z"
 progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 18
-  completed_plans: 16
-  percent: 89
+  total_phases: 13
+  completed_phases: 5
+  total_plans: 50
+  completed_plans: 32
+  percent: 64
 ---
 
 # Nightwork — State
@@ -35,6 +35,7 @@ progress:
 ## 1.5c-IA outcomes shipped (on this branch)
 
 ### Plan 6 (2026-05-11) — GATE A halt-after
+
 - 13 admin routes at /admin/* (3 REAL-LOGIC: Users/Billing/Cost Codes + 10 placeholders + 1 overview Card grid)
 - /admin/page.tsx overview Card grid resolves Plan-1-introduced redirect loop (Rule 1 fix)
 - /admin/profile stubbed Custom Builder / Remodeler / Commercial GC selector (disabled per Q12=A)
@@ -48,15 +49,18 @@ progress:
 - Commits: a9f7eb9 (Task 1 — 13 admin routes), 3a9d816 (Task 2 — /platform-admin migration + middleware)
 
 ### Plans 4 + 5 (2026-05-09)
+
 - Plan 4: Pipeline + Financials + People + Reports + Sub Portal sections (50 routes shipped)
 - Plan 5: PerJobTabs sub-nav + /jobs/[id]/layout.tsx mount + 19 per-job tab placeholder routes
 
 ### Plan 3a-now (2026-05-08)
+
 - 10 portfolio prototype routes rewritten as thin wrappers
 
 ## 1.5c-IA outcomes shipped (pre-harness, on this branch)
 
 ### Plan 3 (2026-05-06)
+
 - 10 NEW props-only View components at `src/components/prototypes/`.
 - 12 production routes mounted as thin wrappers with `<div data-direction="C" data-palette="B" className="design-system-scope">`.
 - 8 inline JobTabs removed from /jobs/[id]/* pages.
@@ -65,6 +69,7 @@ progress:
 - 88/88 static pages build clean.
 
 ### Plan 2 + Amendment (2026-05-05/06)
+
 - InvoiceReviewView (442 LOC post-amendment) — Document Review pattern exemplar with collapsed-by-default Parse Confidence + Status Timeline panels (WI-015 + WI-016).
 - BudgetView (615 LOC post-amendment) — multi-fixture aggregation pattern with Committed column (WI-017 CO portion) + Available column.
 - WORKFLOW-INTELLIGENCE.md (722 LOC, 39 patterns).
@@ -72,6 +77,7 @@ progress:
 - AUDIT-LOG-STRATEGY.md + action-labels.ts helper.
 
 ### Plan 1 (2026-05-05)
+
 - 8-section top nav LIVE.
 - /today personal-home scaffold replaces /dashboard.
 - 38 legacy-path 308-redirects + middleware billing escape fix.
