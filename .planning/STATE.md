@@ -3,30 +3,26 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-05-26T22:20:18.580Z"
+last_updated: "2026-05-27T15:52:00.000Z"
 progress:
   total_phases: 13
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 50
-  completed_plans: 32
-  percent: 64
+  completed_plans: 33
+  percent: 66
 ---
 
 # Nightwork — State
 
-**Updated:** 2026-05-11 (Block N+2 in flight; Plan 6 SHIPPED — GATE A halt for Jake review of /platform-admin migration + middleware regex + iter-2 watchpoints #2/#3).
+**Updated:** 2026-05-27 (Phase 1 internal-launch-hide SHIPPED — Feature-flag HIDE phase validated LOW-severity tiering prototype; all 6 tasks landed; QA PASS; blocked on tiering design for Phase 2).
 
 ## Active phase
 
-- **Branch:** `phase/1.5-c-information-architecture`
-- **Phase:** Stage 1.5c — Information Architecture (8-section nav, Today scaffold, redirects, thin-wrapper extraction, placeholders, canonical docs).
-- **Plan position:** Plans 1, 2, 2-amend, 3, 3a-now, 4, 5, 6 shipped. Plan 7 (canonical-docs-smoke + atomic CLAUDE.md update) remains.
-- **GATE A halt:** Plan 6 has `halt_after: true` per nwrp88 GATE A. Jake reviews:
-  - iter-2 D-20 full migration (12 /platform-admin/* sub-routes + layout + index)
-  - iter-2 must-fix CRITICAL #4 (middleware.ts regex extension — Option A LOCKED)
-  - iter-2 watchpoint #2 (sub-route functional smoke) + watchpoint #3 (auth bypass test as PM)
-  - iter-2 mechanical #10 (getCurrentMembership preservation per re-mounted route)
-- **Next plan (after GATE A approval):** Plan 7 (atomic CLAUDE.md update + canonical-docs smoke).
+- **Branch:** `main`
+- **Phase:** Internal Ross Built Launch Phase 1 (internal-launch-hide) — SHIPPED 2026-05-27. Next: Phase 2 (UI-FINALIZE) pending tiering design per nwrp233 BLOCKING gate.
+- **Plan position:** 6 tasks completed (T1-T6). Phase 1 SHIPPED. Phase 2 dispatch blocked pending tiering design work.
+- **Upstream:** Wave-B Slice-1 (B-D080/B-1a/B-1a-bis/B-1b) complete + GATE 2 HALT for Jake review. Wave-B Slice-2 (B-2a/B-2b/B-3/B-4) complete; B-5..B-7 under Grounding Pass review. Grounding Pass → Phase 1 → (pending tiering design) → Phase 2 → Phase 3.
+- **Next after GATE:** Tiering design work BEFORE 3-series dispatch (3A/3B/3C/3D). Covers reviewer-set profiles, per-plan cost ceiling, authed-smoke SmokeAuthHelper primitive, escalation rules.
 
 ## Recently shipped to main
 

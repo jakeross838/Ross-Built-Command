@@ -276,3 +276,57 @@ This clarification entry is itself a doc-only commit but does NOT use `--no-veri
 - TD-NW-HOOK-EXECUTE-PHASE-DETECT (process gap surfaced at scale — calibration debt accumulating; same pattern as TD-NW-HOOK-DOC-ONLY-DETECT predecessor)
 
 ---
+
+## 2026-05-27 — Phase 1 "internal-launch-hide" SHIPPED: LOW-severity tiering prototype validation
+
+**Scope:** Internal Ross Built Launch Phase 1 (HIDE → UI-FINALIZE → BUILD → fix → TEST/dogfood). Authorization chain nwrp225 (scope-locked) → nwrp227 (Phase 1 authorized) → nwrp238 (addendum approved; ship). Execute commits `265a752..0cff0a0` (6 task commits). Reduced reviewer set per LOW-severity tiering: security + planner only (skipped nightwork-spec-checker, custodian, ai-logic-tester, ui-reviewer, design-system-reviewer, rls-auditor, database-reviewer per decision TD-PLANNING-PIPELINE-SEVERITY-TIERING). This is the first live use of the tiering gate.
+
+**What went right:**
+
+1. **LOW-severity tiering prototype validated:** $50 halt-gate ceiling held; 1 bump used (nwrp231 → nwrp232 extends to cover revision cycle); no scope-engineering; no `--no-verify` bypass; all Execute-Phase footers present; Drummond gate not triggered. The tiering discipline gate worked as designed. Reduced reviewer set (security + planner only) caught all relevant findings and did NOT miss critical defects (zero BLOCKING/CRITICAL/WARNING findings post-execute).
+
+2. **Anon + authed verification split discovered:** The phase's runtime AC required TWO complementary methods: anonymous Playwright smoke (caught Owner Portal dual gate firing before route handler per nwrp232 W-1) and authed visual walk (Jake walked 6-section nav on Vercel preview; all 6 checklist items clean). This split is now a prototype for future tiered-pipeline phases. Anon-only smoke had masked the auth-gate-fires-first behavior that the actual UX sees.
+
+3. **PerJobTabs PO clarification landed clean:** nwrp232 OQ Option (a) — added `/jobs/[id]/purchase-orders` literal entry to moreBaseItems. Route exists as 15KB real-DB UI; section overview shows 4 primary + 3 More tabs per visual walk.
+
+4. **PLAN/CONTEXT imprecision documented for future tiering:** PLAN.md + CONTEXT.md framed the new 404 gates as "auth-agnostic," which is true at gate-logic level but misleading at middleware-flow level (auth gate at line 155 fires BEFORE the new gates for non-PUBLIC paths). Documented in QA addendum (nwrp237) so future tiered phases don't inherit the imprecise framing.
+
+5. **Authed smoke infrastructure → required tiering-design deliverable:** The smoke script currently treats HTTP 307 as failure on hidden-route assertions. The QA addendum (nwrp238 approval) mandated that authed-smoke SmokeAuthHelper primitive is a REQUIRED output of the tiering design, not optional. Phase 2 dispatch is blocked pending tiering design including this primitive.
+
+**What didn't go right / adjustments needed:**
+
+1. **Dangling placeholder reference (non-blocking):** `/company/cash-flow/page.tsx:17` references `/company/overview` as if live, but Overview is now `live: false`. Page is 404'd in flag-OFF state so no user impact. Eligible for Wave 1.1-Lite cleanup (planner NOTE-2). Didn't block Phase 1 ship per nwrp238 approval.
+
+2. **Smoke numbering cosmetic divergence:** PLAN AC refers to "smoke #3" for Owner Portal admin POST; implementation numbers it as test #4 (test #3 is anon GET). Numbering divergence is cosmetic; the W-1 path correction itself is correctly applied (planner NOTE-1). Not blocking.
+
+3. **Security-reviewer NOTE-1 verified false:** Claimed "T1 commit `265a752` does not carry Execute-Phase footer." Orchestrator verified via source: footer `Execute-Phase: internal-launch-hide-task-1` IS present at commit body bottom. Per Workflow Posture Rule 9 (cross-reviewer factual disagreement halt), orchestrator resolved against source. Hook discipline intact; finding rejected.
+
+**Lessons for next phases:**
+
+1. **Anon vs authed smoke is a tiering-design choice, not a local concern.** Future LOW-severity phases cannot assume anon smoke covers the same paths as authed smoke due to middleware auth gate. Tiering design MUST ship SmokeAuthHelper primitive + guidance on when anon-tolerant vs authed-primitive applies.
+
+2. **PLAN/CONTEXT framing audits on future tiering phases.** Check for "auth-agnostic" patterns that mask middleware-flow order. If gates claim logic-level auth-agnosticism, document the middleware flow explicitly so future readers understand when the gate actually fires.
+
+3. **LOW-severity rigor holds at 2+ reviewers minimum.** This phase used security + planner (2 reviewers). Both reached PASS independently. The skipped reviewers (ui/design/db/spec/custodian) would have caught planner NOTE-1 + NOTE-2 (cosmetic + cleanup items), but neither blocked ship. If future LOW phases plan to skip even one category, surface explicitly at dispatch.
+
+4. **Cost discipline at tier level, not just per-plan.** This phase was one-phase-long, so per-plan halt gate wasn't reached. Multi-phase LOW slices will hit the per-plan gate; ensure slice-level coordination is documented (e.g., can a LOW slice's per-plan overrun bump the slice ceiling, or does that require MEDIUM escalation?).
+
+5. **TD-PLANNING-PIPELINE-SEVERITY-TIERING is NOT done.** Phase 1 validated the LOW-tier approach (2 reviewers, no-spec-checker, no-db-reviewer, no-ui-designer). The formal tiering design (BLOCKING on F2-F5 dispatch) must document:
+   - Reviewer-set profiles per severity (LOW=2 min, MEDIUM=4-6, HIGH=6+?)
+   - Per-plan cost ceiling per severity
+   - Authed-smoke SmokeAuthHelper primitive (required per nwrp238)
+   - Guidance on when anon-tolerant vs authed applies
+   - Escalation rules (LOW overrun → MEDIUM? or to ceiling bump?)
+
+**Cost discipline (Phase 1 specific):**
+- Ceiling: $50 per nwrp227+231; 1 bump used (nwrp231 → nwrp232 extends to cover revision)
+- Execute INLINE mode (no subagent dispatch) — burned inline tool-use cost only + 2 reduced QA reviewers
+- No ceiling bump requested during execute or QA
+- Hook bypass count: unchanged (4 historical; no new bypasses added by Phase 1)
+
+**Codification:**
+- Archive Phase 1 artifacts to `.planning/phases-archive/internal-launch-hide/` ✓
+- Add calibration-log entry for Phase 1 per .planning/calibration-log-schema.md (not in this lesson entry scope — separate custodian step)
+- Update MASTER-PLAN.md §9 CURRENT POSITION + §12 NEXT PLANNED WORK + §11 TD-PLANNING-PIPELINE-SEVERITY-TIERING status note (pending)
+
+---
