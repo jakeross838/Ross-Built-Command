@@ -17,8 +17,13 @@ import Link from "next/link";
 import Card from "@/components/nw/Card";
 import Eyebrow from "@/components/nw/Eyebrow";
 import Badge from "@/components/nw/Badge";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
-const FINANCIALS_SECTIONS = [
+// Static IA — full F1 + Live entries preserved for reference. Internal-Launch
+// Phase 1 (D-04 + EXPANDED-SCOPE Q3=A) filters out F1 org-wide views
+// (Purchase Orders + Change Orders) when NEXT_PUBLIC_FEATURE_FINANCIALS_F1_VIEWS
+// !== "true". Wave-F1 unhide path: flip flag + redeploy → cards reappear.
+const ALL_FINANCIALS_SECTIONS = [
   { href: "/financials/bills", label: "Bills", desc: "All bills — review + approve + assign", wave: "Live", live: true },
   { href: "/financials/pay-apps", label: "Pay Apps", desc: "AIA G702 / G703 draw applications", wave: "Live", live: true },
   { href: "/financials/payments", label: "Payments", desc: "Payment tracking — check pickup + mail", wave: "Live", live: true },
@@ -27,6 +32,12 @@ const FINANCIALS_SECTIONS = [
   { href: "/financials/purchase-orders", label: "Purchase Orders", desc: "Org-wide PO list — F1 unifies job-scoped POs", wave: "F1", live: false },
   { href: "/financials/change-orders", label: "Change Orders", desc: "Org-wide change order list — F1 unifies job-scoped COs", wave: "F1", live: false },
 ];
+
+const FINANCIALS_SECTIONS = ALL_FINANCIALS_SECTIONS.filter((s) => {
+  // Hide F1 org-wide views unless flag is on. Live entries always shown.
+  if (!s.live && !isFeatureEnabled("FINANCIALS_F1_VIEWS")) return false;
+  return true;
+});
 
 export default function FinancialsOverviewPage() {
   return (

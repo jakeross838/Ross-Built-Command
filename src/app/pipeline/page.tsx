@@ -14,14 +14,25 @@ import Link from "next/link";
 import Card from "@/components/nw/Card";
 import Eyebrow from "@/components/nw/Eyebrow";
 import Badge from "@/components/nw/Badge";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
-const PIPELINE_SECTIONS = [
-  { href: "/pipeline/leads", label: "Leads", desc: "CRM intake — track potential clients", wave: "Wave 4" },
-  { href: "/pipeline/estimates", label: "Estimates", desc: "Price Intel powered estimates", wave: "Wave 4" },
-  { href: "/pipeline/bids-out", label: "Bids out", desc: "Sub bids in flight", wave: "Wave 4" },
-  { href: "/pipeline/proposals", label: "Proposals", desc: "E-sign proposals to clients", wave: "Wave 4" },
-  { href: "/pipeline/contracts", label: "Contracts", desc: "Owner contracts + sub master agreements", wave: "Wave 4" },
+// All Pipeline sub-routes are Wave-4 placeholders (no live entries). Internal-
+// Launch Phase 1: /pipeline section middleware-404'd by middleware Task 3
+// when PIPELINE flag !== "true" — users never reach this page in normal flow.
+// Defensive filter for symmetry (if flag flips on without re-deploy of
+// Wave-4 content, grid renders empty rather than promoting placeholders).
+const ALL_PIPELINE_SECTIONS = [
+  { href: "/pipeline/leads", label: "Leads", desc: "CRM intake — track potential clients", wave: "Wave 4", live: false },
+  { href: "/pipeline/estimates", label: "Estimates", desc: "Price Intel powered estimates", wave: "Wave 4", live: false },
+  { href: "/pipeline/bids-out", label: "Bids out", desc: "Sub bids in flight", wave: "Wave 4", live: false },
+  { href: "/pipeline/proposals", label: "Proposals", desc: "E-sign proposals to clients", wave: "Wave 4", live: false },
+  { href: "/pipeline/contracts", label: "Contracts", desc: "Owner contracts + sub master agreements", wave: "Wave 4", live: false },
 ];
+
+const PIPELINE_SECTIONS = ALL_PIPELINE_SECTIONS.filter((s) => {
+  if (!s.live && !isFeatureEnabled("PIPELINE")) return false;
+  return true;
+});
 
 export default function PipelineOverviewPage() {
   return (
@@ -48,7 +59,9 @@ export default function PipelineOverviewPage() {
             <Card padding="md">
               <Eyebrow tone="default" className="mb-2">{s.label}</Eyebrow>
               <p className="text-[13px] mb-3" style={{ color: "var(--text-secondary)" }}>{s.desc}</p>
-              <Badge variant="neutral">Coming {s.wave}</Badge>
+              <Badge variant={s.live ? "success" : "neutral"}>
+                {s.live ? "Live" : `Coming ${s.wave}`}
+              </Badge>
             </Card>
           </Link>
         ))}

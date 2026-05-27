@@ -8,9 +8,20 @@ import Link from "next/link";
 import Card from "@/components/nw/Card";
 import Eyebrow from "@/components/nw/Eyebrow";
 import Badge from "@/components/nw/Badge";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
-const COMPANY_SECTIONS = [
-  { href: "/company/overview", label: "Overview", desc: "Cash Flow + Getting Started checklist", wave: "Live", live: true },
+// Static IA preserved. Internal-Launch Phase 1: /company section middleware-
+// 404'd by middleware Task 3 when COMPANY flag !== "true". Defensive filter
+// for symmetry.
+//
+// Per nwrp232 W-3: Overview marked live:false (same architectural class as
+// /people/vendors — unreachable in flag-OFF state via middleware 404;
+// un-hides at Wave-2/F4 when COMPANY flag flips + real Overview content
+// ships). With all entries now live:false, COMPANY_SECTIONS = empty array
+// in flag-OFF state — appropriate defensive posture since users can't reach
+// this page anyway via the middleware gate.
+const ALL_COMPANY_SECTIONS = [
+  { href: "/company/overview", label: "Overview", desc: "Cash Flow + Getting Started checklist", wave: "Wave-2/F4", live: false },
   { href: "/company/p-l", label: "P&L", desc: "Profit & loss across active jobs + overhead", wave: "F4", live: false },
   { href: "/company/cash-flow", label: "Cash Flow", desc: "Detailed cash-flow forecasting", wave: "F4", live: false },
   { href: "/company/expenses", label: "Expenses", desc: "Overhead expense tracking + categorization", wave: "F4", live: false },
@@ -23,6 +34,11 @@ const COMPANY_SECTIONS = [
   { href: "/company/capacity-planning", label: "Capacity planning", desc: "Active-job capacity vs PM + crew bandwidth", wave: "Wave 3", live: false },
   { href: "/company/documents", label: "Documents", desc: "Company documents — policies + templates + master agreements", wave: "Wave 2", live: false },
 ];
+
+const COMPANY_SECTIONS = ALL_COMPANY_SECTIONS.filter((s) => {
+  if (!s.live && !isFeatureEnabled("COMPANY")) return false;
+  return true;
+});
 
 export default function CompanyOverviewSectionPage() {
   return (

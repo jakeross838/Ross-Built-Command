@@ -10,13 +10,29 @@ import Card from "@/components/nw/Card";
 import Eyebrow from "@/components/nw/Eyebrow";
 import Badge from "@/components/nw/Badge";
 
-const PEOPLE_SECTIONS = [
-  { href: "/people/vendors", label: "Vendors", desc: "Subcontractor + supplier directory", wave: "Live", live: true },
+// Static IA — full directory preserved. Internal-Launch Phase 1:
+// /people section middleware-404'd unconditionally by middleware Task 3
+// hardcoded pathname check per nwrp232 OQ #3 path (b). The Card grid below
+// is defensive future-state — when /people un-hides at F2/Wave-2 (via code
+// change, NOT env-var flip), the filter renders only live entries.
+//
+// Per nwrp232 Disposition 1: Vendors marked live:false (Caldwell-fixture-
+// mount; same architectural class as schedule; un-hides at Wave-2 real-DB
+// swap). With all entries now live:false, PEOPLE_SECTIONS = empty array
+// in flag-OFF state — appropriate defensive posture since users can't
+// reach this page anyway via the middleware gate.
+const ALL_PEOPLE_SECTIONS = [
+  { href: "/people/vendors", label: "Vendors", desc: "Subcontractor + supplier directory", wave: "Wave-2", live: false },  // hidden per nwrp232 Disposition 1 — Caldwell-fixture-mount; un-hides at Wave-2 real-DB swap
   { href: "/people/clients", label: "Clients", desc: "Client directory + relationship history", wave: "F1", live: false },
   { href: "/people/team", label: "Team", desc: "Internal team — employees, roles, comp", wave: "F2", live: false },
   { href: "/people/org-chart", label: "Org chart", desc: "Reporting structure + approval routing", wave: "F2", live: false },
   { href: "/sub-portal", label: "Sub Portal", desc: "Subcontractor self-service portal entry", wave: "F3", live: false },
 ];
+
+// Defensive future-state; no flag check since PEOPLE not in FeatureFlagName
+// union per nwrp232 OQ #3 path (b); whole /people middleware-404'd hardcoded
+// so this filter is unreachable in flag-OFF state.
+const PEOPLE_SECTIONS = ALL_PEOPLE_SECTIONS.filter((s) => s.live);
 
 export default function PeopleOverviewPage() {
   return (

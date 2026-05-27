@@ -27,11 +27,25 @@ type AdminTile = {
   wave?: "F2" | "F3" | "Wave 3";
 };
 
-const ADMIN_TILES: AdminTile[] = [
+// Static IA — full 13-tile structure preserved for reference. Internal-Launch
+// Phase 1 (D-04 + locked-scope §HIDE row 2): filter to status="live" entries
+// only. The 9 placeholders remain in ALL_ADMIN_TILES for IA reference + future
+// unhide path (flip status to "live" when a placeholder gains real backing).
+// The AdminDropdown component (separate from this page) still shows all 13
+// items as a power-user shortcut per CONTEXT D-22 — that is intentional.
+//
+// REAL-LOGIC adds Owner Portal Tokens (4th live tile per phased-plan AC + iter-2
+// checker WARNING #4). Route exists at src/app/admin/owner-portal-tokens/page.tsx
+// (15KB B-2a server component; Slice-2 ship; PostgREST FK-cited embeds per
+// Workflow Posture Rule 2). Tile entry was missing pre-edit; Task 5 adds it as
+// status="live" so the section overview reflects the actual live surface
+// (4 live REAL-LOGIC + 9 placeholders = 13 total).
+const ALL_ADMIN_TILES: AdminTile[] = [
   // REAL-LOGIC (4)
   { href: "/admin/users", label: "Users", desc: "Manage team members, invites, and roles", status: "live" },
   { href: "/admin/cost-codes", label: "Cost Codes", desc: "5-digit AIA G703 line items per org", status: "live" },
   { href: "/admin/billing", label: "Billing", desc: "Subscription, payment method, invoices", status: "live" },
+  { href: "/admin/owner-portal-tokens", label: "Owner Portal Tokens", desc: "Issued client-portal tokens — revoke + status (Slice-2 B-2a)", status: "live" },
   // F2 placeholders
   { href: "/admin/roles", label: "Roles", desc: "15-role library (Owner, GM, PM, etc.) — customizable per org", status: "placeholder", wave: "F2" },
   { href: "/admin/permissions", label: "Permissions", desc: "Per-role permission matrix (Read / Write / Approve)", status: "placeholder", wave: "F2" },
@@ -47,6 +61,8 @@ const ADMIN_TILES: AdminTile[] = [
   // Wave 3 placeholders
   { href: "/admin/templates", label: "Templates", desc: "Document + email templates", status: "placeholder", wave: "Wave 3" },
 ];
+
+const ADMIN_TILES: AdminTile[] = ALL_ADMIN_TILES.filter((tile) => tile.status === "live");
 
 export default function AdminOverviewPage() {
   return (

@@ -8,14 +8,23 @@ import Link from "next/link";
 import Card from "@/components/nw/Card";
 import Eyebrow from "@/components/nw/Eyebrow";
 import Badge from "@/components/nw/Badge";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
-const REPORTS_SECTIONS = [
-  { href: "/reports/saved", label: "Saved", desc: "Your saved + shared reports", wave: "Wave 3" },
-  { href: "/reports/ai-builder", label: "AI builder", desc: "Natural-language report builder", wave: "Wave 3" },
-  { href: "/reports/custom-builder", label: "Custom builder", desc: "Drag-and-drop report builder", wave: "Wave 3" },
-  { href: "/reports/scheduled", label: "Scheduled", desc: "Auto-delivered scheduled reports", wave: "Wave 3" },
-  { href: "/reports/templates", label: "Templates", desc: "Pre-built report templates", wave: "Wave 3" },
+// All Reports sub-routes are Wave-3 placeholders (no live entries). Internal-
+// Launch Phase 1: /reports section middleware-404'd by middleware Task 3 when
+// REPORTS flag !== "true". Defensive filter for symmetry.
+const ALL_REPORTS_SECTIONS = [
+  { href: "/reports/saved", label: "Saved", desc: "Your saved + shared reports", wave: "Wave 3", live: false },
+  { href: "/reports/ai-builder", label: "AI builder", desc: "Natural-language report builder", wave: "Wave 3", live: false },
+  { href: "/reports/custom-builder", label: "Custom builder", desc: "Drag-and-drop report builder", wave: "Wave 3", live: false },
+  { href: "/reports/scheduled", label: "Scheduled", desc: "Auto-delivered scheduled reports", wave: "Wave 3", live: false },
+  { href: "/reports/templates", label: "Templates", desc: "Pre-built report templates", wave: "Wave 3", live: false },
 ];
+
+const REPORTS_SECTIONS = ALL_REPORTS_SECTIONS.filter((s) => {
+  if (!s.live && !isFeatureEnabled("REPORTS")) return false;
+  return true;
+});
 
 export default function ReportsOverviewPage() {
   return (
@@ -42,7 +51,9 @@ export default function ReportsOverviewPage() {
             <Card padding="md">
               <Eyebrow tone="default" className="mb-2">{s.label}</Eyebrow>
               <p className="text-[13px] mb-3" style={{ color: "var(--text-secondary)" }}>{s.desc}</p>
-              <Badge variant="neutral">Coming {s.wave}</Badge>
+              <Badge variant={s.live ? "success" : "neutral"}>
+                {s.live ? "Live" : `Coming ${s.wave}`}
+              </Badge>
             </Card>
           </Link>
         ))}
