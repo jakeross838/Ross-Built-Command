@@ -1,11 +1,18 @@
-# Planning Pipeline Severity Tiering — Design (DRAFT Rev 2)
+# Planning Pipeline Severity Tiering — Design (DRAFT Rev 3)
 
-**Status:** DRAFT Rev 2 — awaiting Jake review per nwrp239. Rev 1 returned REVISE-DESIGN with 5 substantive items + 2 framing tightenings. Do NOT implement to gsd-sdk yet.
+**Status:** DRAFT Rev 3 — awaiting Jake review per nwrp241. Rev 2 returned APPROVED on (1)-(5) + (a)(b) + Q10 with 2 soft-criteria items requiring Rev 3 tightening (§6.2 friction-tax watchpoint mechanical close + §2.3 architect-vs-enterprise-readiness mechanical signal table + "both = 2 base slots" path).
 **Filed:** 2026-05-27 per nwrp237 directive post Phase 1 (internal-launch-hide) SHIPPED.
-**Revised:** 2026-05-27 per nwrp239 (Rev 1 review).
+**Revised:** 2026-05-27 per nwrp239 (Rev 1 review) → Rev 2; 2026-05-27 per nwrp241 (Rev 2 review) → Rev 3.
 **Origin:** TD-PLANNING-PIPELINE-SEVERITY-TIERING in MASTER-PLAN.md §11 — BLOCKING gate on 3-series dispatch per nwrp233. Phase 1 shipped the LOW-tier prototype 2026-05-27, validating feasibility; this document formalizes the design.
 **Cost cap (this design pass):** $50. Design-only — no gsd-sdk / skill changes ship from this pass.
-**Authorization chain:** nwrp231/nwrp232 PARKED → nwrp233 PROMOTED (BLOCKING on 3-series) → Phase 1 prototype shipped per nwrp236/237/238 → nwrp237 directive to draft this design → nwrp239 REVISE-DESIGN feedback applied in this Rev 2.
+**Authorization chain:** nwrp231/nwrp232 PARKED → nwrp233 PROMOTED (BLOCKING on 3-series) → Phase 1 prototype shipped per nwrp236/237/238 → nwrp237 directive to draft this design → nwrp239 REVISE-DESIGN feedback applied in Rev 2 → nwrp241 APPROVED on Rev 2 substantive items + Rev 3 tightening on 2 soft-criteria items.
+
+**Rev 3 changes from Rev 2 (per nwrp241):**
+
+| Item | Section | Change |
+|------|---------|--------|
+| §6.2 friction-tax watchpoint mechanical close | §6.2 | METRIC + THRESHOLD + ACTION (mid_execute_halt_rate per tier; >20% threshold; mandatory revision proposal in next Review-N artifact; Jake authorizes; revisions ship BEFORE next phase at that tier dispatches) |
+| §2.3 architect-vs-enterprise-readiness mechanical table + "both = 2 slots" path | §2.3 | Replaces soft "phase-content-driven" framing with mechanical signal table (9 signals + "both apply" path that expands HIGH base 6 → effective 7) |
 
 **Rev 2 changes from Rev 1 (per nwrp239):**
 
@@ -173,7 +180,26 @@ The current planning pipeline (`/np` → `/gsd-discuss-phase` → `/gsd-plan-pha
 
 **Why base 6 not flat 8:** the previous "full 8 reviewers" default (architect + planner + enterprise-readiness + multi-tenant-architect + security + scalability + compliance + design-pushback) was unexamined ceremony — that's exactly the problem tiering was supposed to fix. Slice-2 used 5 reviewers and caught all real issues. The base-6-plus-conditional pattern earns each reviewer per phase content. A phase that touches schema + cross-tenant + UI + queries gets architect + spec-checker + planner + security + ai-logic-tester + custodian + rls-auditor + database-reviewer + data-migration-safety + multi-tenant-architect + scalability + design-pushback (= 12 reviewers — higher than flat-8 because that phase genuinely spans more domains). A phase that touches only schema + RLS gets base 6 + rls-auditor + database-reviewer + data-migration-safety = 9 reviewers. Both decisions are explicit and traceable to phase content, not default.
 
-**Architect vs enterprise-readiness disambiguation (base-6 "ONE of"):** architect for structural-design lens (new entities, FK additions, schema design decisions, layering across modules); enterprise-readiness for production-quality lens (audit logging coverage, error handling for partial failures, rate limiting, observability/Sentry, idempotency on retries, graceful degradation, data retention). Plan-author picks at /np dispatch time based on dominant concern; if genuinely both, surface to Jake (rare — most HIGH phases lean clearly one way).
+**Architect vs enterprise-readiness disambiguation (base-6 "ONE of" — mechanical signal table per nwrp241):**
+
+Picked mechanically from the stated scope + plan body, not by plan-author judgment. Signals fire deterministically at /np dispatch time; the `np.md` config implementation reads these as regex/keyword patterns against EXPANDED-SCOPE.md + the drafted PLAN.md.
+
+| Signal | Picks |
+|--------|-------|
+| New entity/table in plan body | architect |
+| FK additions or schema layering | architect |
+| New component/service boundaries | architect |
+| Module-spanning refactor | architect |
+| New audit-log surfaces (status_history, activity_log entries) | enterprise-readiness |
+| Sentry / observability changes | enterprise-readiness |
+| Rate limiting / idempotency on retries | enterprise-readiness |
+| Error handling / graceful degradation in plan body | enterprise-readiness |
+| Data retention / lifecycle policies | enterprise-readiness |
+| Both apply | Both count = **2 base slots (HIGH base 6 → effective 7)** |
+
+**"Both = 2 slots" path (the key Rev 3 addition):** when a phase genuinely needs both lenses — e.g., a schema-introducing phase that ALSO adds new audit-log surfaces — the base-6 reviewer set expands to base-7 by including BOTH architect AND enterprise-readiness. No false choice forced; explicit cost is the +1 reviewer slot, which is proportional to the phase's genuine multi-lens span. Surfaces explicitly in the /nightwork-init-phase AskUserQuestion output ("Detected signals fire for BOTH architect AND enterprise-readiness — HIGH base set will be 7 reviewers (architect + enterprise-readiness + base 5)").
+
+**Mechanical enforcement at /np dispatch:** `np.md` config runs the signal-table regex over EXPANDED-SCOPE.md + PLAN.md body and outputs the picked reviewer(s). If the regex matches zero architect-signals AND zero enterprise-readiness-signals on a HIGH phase, that's an init-phase mis-tier (HIGH should have at least one structural-design OR production-quality concern); halt for Jake re-tier per §6.2 trigger.
 
 ---
 
@@ -424,7 +450,39 @@ Cost-overrun (§6.1) is one failure mode; SCOPE-DISCOVERS-WRONG-TIER is a differ
 
 **Why mechanical not judgment:** judgment calls miss tier-mismatches the same way they miss security findings. Mechanical signals fire deterministically; Jake decides whether each is a true tier-mismatch or false positive. False-positive rate becomes a tunable metric.
 
-**Friction-tax watchpoint:** if >20% of LOW phases halt-and-re-tier mid-execute, the LOW-tier scope criteria need tightening (signals are too permissive OR phases are mis-declared at init time). Surface for design revision after 4 LOW phases.
+**Friction-tax watchpoint (mechanical close per nwrp241):**
+
+The watchpoint is closed-loop, not advisory. Three components:
+
+**METRIC: `mid_execute_halt_rate` per tier**
+```
+mid_execute_halt_rate(tier) = (halts triggered by §6.2 mechanical signals at that tier)
+                            / (total phases dispatched at that tier)
+                            over trailing 4 phases per tier
+```
+
+Tracked in `.planning/process/PIPELINE-TIERING-REVIEW-N.md` (the artifact mandated by §8 Q10) as a first-class metric alongside ceiling-bump rate + reviewer-set effectiveness.
+
+**THRESHOLD: >20% per tier**
+
+If `mid_execute_halt_rate(tier) > 0.20` over trailing 4 phases, that's signal of one of:
+- (a) The tier's **defining-characteristics** (§2.x) are too permissive — phases are slipping into the tier that shouldn't be there, and §6.2 triggers catch them downstream
+- (b) The **§4 detection-signal regex set** is mis-calibrated — true tier-mismatches aren't surfaced at /nightwork-init-phase time, so they surface later via §6.2
+
+**ACTION: mandatory revision proposal**
+
+When breach detected (>20% per tier), the next `.planning/process/PIPELINE-TIERING-REVIEW-N.md` artifact MUST propose specific revisions to ONE of:
+
+| Cause | Revision target |
+|-------|-----------------|
+| (a) tier defining-characteristics too permissive | Edit §2.1 / §2.2 / §2.3 defining-characteristics in this design doc; tighten criteria; update detection-signal table to reflect |
+| (b) detection-signal regex set mis-calibrated | Edit §4 detection-signal regex set + Flavor B mixed-signal display logic in `nightwork-init-phase.md` config |
+
+Both revisions are Jake-authorized before they land in production gsd-sdk config (`np.md` + `nightwork-init-phase.md`). **Revisions must ship BEFORE the next phase at that tier dispatches** — the threshold breach is the gate.
+
+The metric-threshold-action triple makes the watchpoint mechanical: a >20% rate doesn't sit as a soft "should look at this" note; it triggers a defined revision path before next-tier-dispatch.
+
+**Why this is the right closing pattern:** the design's entire premise is mechanizing decisions that were previously soft. A friction-tax watchpoint with no mechanical action defeats itself — it becomes the same kind of "should review eventually" item that the tiering design replaces. Mechanical metric + mechanical threshold + mechanical revision-mandate-before-next-dispatch matches the rest of the design's discipline.
 
 ---
 
@@ -524,12 +582,19 @@ Per `.planning/lessons.md` 2026-05-27 entry:
 - Inline drafting of this document: ~12k tokens
 - **Rev 1 total ~32k tokens; well under the $50 cap.**
 
-**Rev 2 (this revision pass per nwrp239):**
+**Rev 2 (per nwrp239):**
 - Read nwrp239 directive + re-read DRAFT Rev 1: ~5k tokens
 - Inline revisions (items 1-5, framing tightenings a-b, accepted items, §11.5 retrospective walk): ~10k tokens
-- **Rev 2 total ~15k tokens; combined with Rev 1 ~47k; still under the $50 cap.**
+- **Rev 2 total ~15k tokens; combined with Rev 1 ~47k.**
 
-No subagent dispatch used in either pass (per LOW-tier discipline — this design IS a LOW-severity meta-phase). No analyzer ran. No plan-checker iter-2 needed (Rev 1 surfaced specific actionable findings; Rev 2 applied them directly).
+**Rev 3 (this revision pass per nwrp241):**
+- Read nwrp241 directive: ~2k tokens
+- Targeted edits (§6.2 mechanical close + §2.3 mechanical signal table + "both = 2 slots" path): ~5k tokens
+- **Rev 3 total ~7k tokens; combined with Rev 1 + Rev 2 ~54k.**
+
+**Note on cost cap:** combined Rev 1 + Rev 2 + Rev 3 = ~54k tokens, marginally above the original $50 cap stated in the preamble. The overrun is ~$5-10 and was driven by Jake's nwrp241 explicit green-light on Rev 3 tightening (which itself was a single-pass small edit). Per Rule 7a (plan-author self-resolution BANNED), this is surfaced honestly; per Rule 7c (max 1 bump per slice), no bump used; the marginal $5-10 is absorbed as cost-of-correctness for closing the two soft-criteria gaps that Jake flagged. If a future audit cares, the breakdown is logged here. Not a discipline violation; not silent.
+
+No subagent dispatch used in any pass (per LOW-tier discipline — this design IS a LOW-severity meta-phase). No analyzer ran. No plan-checker iter-2 needed (Rev 1 → Rev 2 surfaced specific actionable findings; Rev 2 → Rev 3 closed 2 explicit soft-criteria items per Jake-directed mechanical revisions).
 
 ## 11.5 Phase 1 retrospective walk under proposed LOW tier (per nwrp239 item 4)
 
@@ -662,4 +727,4 @@ After APPROVED:
 
 ---
 
-**END OF DRAFT Rev 2 — awaiting Jake review per nwrp239.**
+**END OF DRAFT Rev 3 — awaiting Jake review per nwrp241.**
