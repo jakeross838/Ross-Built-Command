@@ -17,6 +17,7 @@ import PlatformAdminBadge from "@/components/nav/platform-admin-badge";
 import { useCurrentRole } from "@/hooks/use-current-role";
 import { NwWordmark } from "@/components/branding/Wordmark";
 import { NwIcon } from "@/components/branding/Icon";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 // Token discipline (CLAUDE.md UI rules + post-edit hook):
 // - Foreground text on the dark nav-bar uses `text-nw-white-sand`
@@ -139,7 +140,18 @@ function firstNameOf(fullName: string) {
 // The cost-intelligence and admin/platform pages each have their own
 // independent pending-count fetch logic — confirmed by grep.
 
-const PRIMARY_NAV: Array<{ key: NavItemKey; label: string; href: string }> = [
+// PRIMARY_NAV — full 8-section structure preserved for IA reference + future
+// unhide path. Per Internal-Launch Phase 1 (D-04 + D-11 of CONTEXT): filter by
+// NEXT_PUBLIC_FEATURE_* env vars at module load; both desktop nav and mobile
+// nav iterate this filtered list (single source of truth).
+// Reversibility: flip flag to "true" in Vercel + redeploy → section reappears
+// (EXCEPT people which is hardcoded HIDE per nwrp232 OQ #3 path (b); un-hides
+//  at F2/Wave-2 via code change).
+//
+// Filter ORDER: env-var filter HERE (build-time hide via NEXT_PUBLIC_*); the
+// existing role-gate `show` map applies SECOND at render time. Both filters
+// preserved; env-var precedence over role.
+const ALL_PRIMARY_NAV: Array<{ key: NavItemKey; label: string; href: string }> = [
   { key: "today",       label: "Today",       href: "/today" },
   { key: "pipeline",    label: "Pipeline",    href: "/pipeline" },
   { key: "jobs",        label: "Jobs",        href: "/jobs" },
@@ -149,6 +161,20 @@ const PRIMARY_NAV: Array<{ key: NavItemKey; label: string; href: string }> = [
   { key: "company",     label: "Company",     href: "/company" },
   { key: "reports",     label: "Reports",     href: "/reports" },
 ];
+
+// Internal-launch Phase 1 hide list — flag !== "true" → drop from nav.
+// today, jobs, financials, price_intel are always on (no flag).
+// Admin is rendered separately via <AdminDropdown />, not in PRIMARY_NAV.
+// price_intel root re-exports /cost-intelligence (working surface) so it
+// stays visible; PRICE_INTEL_F5 gates only the 7 sub-routes (middleware T3).
+// financials stays visible — only F1 org-wide CO/PO sub-views hide (T3 + T5).
+const PRIMARY_NAV = ALL_PRIMARY_NAV.filter((item) => {
+  if (item.key === "pipeline" && !isFeatureEnabled("PIPELINE")) return false;
+  if (item.key === "company"  && !isFeatureEnabled("COMPANY"))  return false;
+  if (item.key === "reports"  && !isFeatureEnabled("REPORTS"))  return false;
+  if (item.key === "people") return false;  // hardcoded HIDE per nwrp232 OQ #3 path (b)
+  return true;
+});
 
 export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => void } = {}) {
   const pathname = usePathname();
