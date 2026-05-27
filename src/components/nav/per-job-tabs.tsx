@@ -61,37 +61,35 @@ interface DropdownItem {
   label: string;
 }
 
+// Internal-Launch Phase 1 (CONTEXT D-06 / EXPANDED-SCOPE Q2=A):
+// Static array removal — Schedule + Selections dropped from PRIMARY_TABS
+// per locked-scope §HIDE. /jobs/[id]/schedule middleware-404'd by
+// FINANCIALS_F1_VIEWS flag (Wave-2 Caldwell-fixture-mount route per
+// middleware Task 3). /jobs/[id]/selections renders a placeholder card
+// directly (not middleware-gated; reachable by direct URL but not
+// promoted via this nav). Wave-2 unhide path: re-add literal entry.
 const PRIMARY_TABS = [
   { key: "overview", label: "Overview", path: "" },
-  { key: "schedule", label: "Schedule", path: "/schedule" },
   { key: "budget", label: "Budget", path: "/budget" },
-  { key: "selections", label: "Selections", path: "/selections" },
   { key: "bills", label: "Bills", path: "/bills" },
   { key: "pay_apps", label: "Pay Apps", path: "/pay-apps" },
 ];
 
+// Internal-Launch Phase 1 (CONTEXT D-06): More ▾ collapses to CO + PO +
+// Activity per EXPANDED-SCOPE §7 + GROUNDED-INVENTORY. 12 Wave-2/F2/F3/F4/F5
+// items dropped: Plans, Specs, Photos, Documents, RFIs, Submittals, Daily
+// Logs, To-Dos, Punchlist, Time Entries, Permits, Team. Wave-2 unhide path:
+// re-add literal entries.
+//
+// PO clarification resolution (CONTEXT "Surface at plan-phase" option a):
+// /jobs/[id]/purchase-orders exists as a fully-working real-DB UI (~15KB
+// page.tsx). The prior moreBaseItems list omitted it. Adding the literal
+// entry aligns the nav with EXPANDED-SCOPE §7 + GROUNDED-INVENTORY intent
+// ("More ▾ collapses to CO + PO + Activity").
 function moreBaseItems(jobId: string): DropdownItem[] {
   return [
-    // Documentation
-    { href: `/jobs/${jobId}/plans`, label: "Plans" },
-    { href: `/jobs/${jobId}/specs`, label: "Specs" },
-    { href: `/jobs/${jobId}/photos`, label: "Photos" },
-    { href: `/jobs/${jobId}/documents`, label: "Documents" },
-    // Coordination
-    { href: `/jobs/${jobId}/rfis`, label: "RFIs" },
-    { href: `/jobs/${jobId}/submittals`, label: "Submittals" },
     { href: `/jobs/${jobId}/change-orders`, label: "Change Orders" },
-    { href: `/jobs/${jobId}/daily-logs`, label: "Daily Logs" },
-    // Tasks
-    { href: `/jobs/${jobId}/to-dos`, label: "To-Dos" },
-    { href: `/jobs/${jobId}/punchlist`, label: "Punchlist" },
-    // Time
-    { href: `/jobs/${jobId}/time-entries`, label: "Time Entries" },
-    // Permits
-    { href: `/jobs/${jobId}/permits`, label: "Permits" },
-    // People
-    { href: `/jobs/${jobId}/team`, label: "Team" },
-    // Activity
+    { href: `/jobs/${jobId}/purchase-orders`, label: "Purchase Orders" },
     { href: `/jobs/${jobId}/activity`, label: "Activity" },
   ];
 }
