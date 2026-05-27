@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 // Anything a signed-out visitor can reach (marketing + auth pages).
 // "/" is the marketing landing; the root page redirects authed users
@@ -206,6 +207,132 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
     // Authorized — fall through to response.
+  }
+
+  // Internal-Launch Phase 1 — feature-flag 404 gates (HIDE per nwrp227,
+  // CONTEXT D-05). Insertion point: AFTER platform-admin block AND AFTER
+  // updateSession (line 141) so Sentry tags (user_id, org_id,
+  // impersonation_active, platform_admin) are stamped on requests that
+  // hit these 404s. Insertion BEFORE design-system block because design-
+  // system is platform-presentation (sample data; not tenant) and feature
+  // flags don't apply.
+  //
+  // Gate ordering: Owner Portal dual-gate FIRST (most sensitive — built at
+  // full external-grade security rigor but staying hidden until external
+  // launch per locked-scope §DEFERRED). Section gates next; sub-route
+  // gates last.
+  //
+  // Response shape per CONTEXT D-05:
+  //   /api/* paths → NextResponse.json({ error: "Not found" }, { status: 404 })
+  //     (matches existing /api/* JSON 401 precedent at lines 157-162)
+  //   non-API paths → NextResponse.rewrite(notFoundUrl, { status: 404 })
+  //     (matches existing design-system 404 rewrite precedent; rewrite not
+  //      redirect because a 3xx redirect leaks the route's existence)
+  //
+  // Reversibility: flip NEXT_PUBLIC_FEATURE_<NAME> to "true" in Vercel +
+  // redeploy → route re-exposes without code changes. EXCEPTION: /people
+  // is hardcoded per nwrp232 OQ #3 path (b) — un-hides at F2/Wave-2 via
+  // code change.
+  const respond404 = (): NextResponse => {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404 }
+      );
+    }
+    const notFoundUrl = request.nextUrl.clone();
+    notFoundUrl.pathname = "/_not-found";
+    notFoundUrl.search = "";
+    return NextResponse.rewrite(notFoundUrl, { status: 404 });
+  };
+
+  // OWNER PORTAL — DUAL GATE (most sensitive surface; per CONTEXT D-05).
+  // Both /owner/* AND /api/owner-portal/* must 404 when flag off, even on
+  // direct URL access (PUBLIC_PATHS enumerates 4 entries that bypass auth-
+  // redirect; this gate fires AFTER auth gate so PUBLIC_PATHS bypass
+  // already let the request through — that's expected; gate fires
+  // regardless of auth state).
+  if (!isFeatureEnabled("OWNER_PORTAL")) {
+    if (pathname === "/owner" || pathname.startsWith("/owner/")) {
+      return respond404();
+    }
+    if (pathname.startsWith("/api/owner-portal/")) {
+      return respond404();
+    }
+  }
+
+  // PIPELINE — entire section + sub-routes.
+  if (!isFeatureEnabled("PIPELINE")) {
+    if (pathname === "/pipeline" || pathname.startsWith("/pipeline/")) {
+      return respond404();
+    }
+  }
+
+  // COMPANY — entire section + sub-routes.
+  if (!isFeatureEnabled("COMPANY")) {
+    if (pathname === "/company" || pathname.startsWith("/company/")) {
+      return respond404();
+    }
+  }
+
+  // REPORTS — entire section + sub-routes.
+  if (!isFeatureEnabled("REPORTS")) {
+    if (pathname === "/reports" || pathname.startsWith("/reports/")) {
+      return respond404();
+    }
+  }
+
+  // PEOPLE — entire section + sub-routes (including /people/clients per
+  // CONTEXT D-03 + /people/vendors per nwrp232 Disposition 1).
+  // HARDCODED HIDE per nwrp232 OQ #3 path (b) — no env var; no
+  // isFeatureEnabled check. Un-hides as part of eventual /people build at
+  // F2/Wave-2 via code change (remove this block).
+  if (pathname === "/people" || pathname.startsWith("/people/")) {
+    return respond404();
+  }
+
+  // PRICE INTEL F5 — 7 placeholder sub-routes ONLY (not the /price-intel
+  // root, which re-exports /cost-intelligence — a working surface per
+  // src/app/price-intel/page.tsx:21). /price-intel/cost-lookup is a
+  // REAL-LOGIC re-export — NOT in the F5 hide list.
+  if (!isFeatureEnabled("PRICE_INTEL_F5")) {
+    const priceIntelF5Routes = [
+      "/price-intel/anomaly-review",
+      "/price-intel/bid-comparison",
+      "/price-intel/cost-database",
+      "/price-intel/material-orders",
+      "/price-intel/selections-catalog",
+      "/price-intel/vendor-performance",
+      "/price-intel/verification",
+    ];
+    for (const route of priceIntelF5Routes) {
+      if (pathname === route || pathname.startsWith(`${route}/`)) {
+        return respond404();
+      }
+    }
+  }
+
+  // FINANCIALS F1 ORG-WIDE VIEWS — 2 placeholder sub-routes (Coming F1) +
+  // 2 Caldwell-fixture-mount Wave-2 routes (/jobs/[id]/schedule +
+  // /financials/reconciliation per locked-scope §HIDE). All 4 gated by
+  // the same flag because they're conceptually "Wave-2 post-internal-
+  // launch financial UI" — re-expose together when F1 + Wave-2 ship
+  // (BUNDLE confirmed per nwrp232 OQ #1 disposition).
+  if (!isFeatureEnabled("FINANCIALS_F1_VIEWS")) {
+    if (
+      pathname === "/financials/change-orders" ||
+      pathname.startsWith("/financials/change-orders/") ||
+      pathname === "/financials/purchase-orders" ||
+      pathname.startsWith("/financials/purchase-orders/") ||
+      pathname === "/financials/reconciliation" ||
+      pathname.startsWith("/financials/reconciliation/")
+    ) {
+      return respond404();
+    }
+    // /jobs/{any-id}/schedule + sub-paths — [id] is a dynamic segment.
+    if (/^\/jobs\/[^/]+\/schedule(\/.*)?$/.test(pathname)) {
+      return respond404();
+    }
   }
 
   // Design-system playground gate (Stage 1.5a T18.5 / SPEC B7).
