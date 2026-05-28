@@ -330,3 +330,82 @@ This clarification entry is itself a doc-only commit but does NOT use `--no-veri
 - Update MASTER-PLAN.md §9 CURRENT POSITION + §12 NEXT PLANNED WORK + §11 TD-PLANNING-PIPELINE-SEVERITY-TIERING status note (pending)
 
 ---
+
+## 2026-05-28 — Phase-1 × W.1-listener production interaction debug (nwrp247-254): three lessons on verification, env-flips as deploy events, and diagnostic discipline
+
+**Scope:** Post-Phase-1 ship (internal-launch-hide SHIPPED 2026-05-27 per commit `7766d00`). Authed walk on production `https://nightwork-platform.vercel.app` was broken on the morning of 2026-05-28 — no top nav, no role badge, no PLATFORM badge, "ALL 0 JOBS" sidebar, page stuck "Loading...", zero Supabase requests fired from the browser. Initial diagnosis routed to "Phase 1 caused it" via Jake's binary test (pre-Phase-1 deploy `isuinxe7t` worked; post-Phase-1 prod `cl0ds1ths` broken).
+
+**What actually happened:** Read-only investigation across nwrp247-254 surfaced a **two-variable interaction bug, not a single-variable regression**. Truth table after the full debug:
+
+| Source | Listener env (`NEXT_PUBLIC_AUTH_STATE_LISTENER`) | Deploy | Outcome |
+|---|---|---|---|
+| pre-Phase-1 (`9b041b9`) | `true` (inlined) | `isuinxe7t` (May 26 16:14) | works |
+| pre-Phase-1 (`9b041b9`) | undefined | `r02hbraom` (May 28 09:04, D1) | works |
+| post-Phase-1 (`acbfa06`) | `true` (inlined) | `cl0ds1ths` (May 27 17:54) | **broken** |
+| post-Phase-1 (`acbfa06`) | undefined | `ljdtfrt5b` (May 28 08:41) | works |
+
+Both halves were required to trigger the deadlock. Listener-alone (isuinxe7t) works; Phase-1-alone (ljdtfrt5b) works; both together (cl0ds1ths) deadlocks. Mitigation: listener-off on Production (`vercel env rm NEXT_PUBLIC_AUTH_STATE_LISTENER production`). Mechanism not yet identified — deferred to `TD-WB-LISTENER-PHASE1-INTERACTION.md` for D2 bisect + D3 bundle diff + real fix.
+
+**Why it matters:** Three independent process gaps surfaced during this debug, each requiring its own reinforcement.
+
+### Lesson 1 — Preview ≠ Production when env vars drive code paths
+
+The W.1 listener was unflagged on 2026-05-26 via commit `aa3a5a4` (env-var operation, no source change). The unflag added `NEXT_PUBLIC_AUTH_STATE_LISTENER=true` to BOTH Production and Preview Vercel environments, but the only smoke/QA verification that ran against the change was the harness running on Preview, which uses the `src/lib/verification/_browser.ts` `setSession()` bridge to bypass the normal cookie-load path. Real-user behavior in Preview also reads through that same `client.ts` block (the outer if-gate `process.env.NEXT_PUBLIC_VERCEL_ENV !== "production"` is true on Preview), and even though the inner block is a no-op for real users (the harness global isn't set), the structural divergence means Preview's verification surface NEVER exercises Production's exact code path.
+
+Phase 1's QA report (`.planning/qa-runs/2026-05-27-1536-internal-launch-hide-qa-report.md`) walked Vercel Preview deploys — which inherit listener-on AND the harness-bridge gate that no real-user Production build has. The bug surfaced only in the Production build's code path; Preview verification could not have caught it.
+
+**Reinforcement:** Per `.planning/process/PLANNING-PIPELINE-TIERING.md` §3 + §10 (extended here), the tiered pipeline's verification standard MUST require: (a) per-phase enumeration of any Preview/Production env-var divergence as an explicit coverage gap, and (b) at least one authed verification step against an actual Production-target deploy, not just Preview. Rule 1 in CLAUDE.md ("Schema verification ≠ runtime verification") is generalized: **Preview verification ≠ Production verification when env vars drive code paths.**
+
+### Lesson 2 — Env-var flips are deploy events needing post-flip authed verification
+
+`aa3a5a4` (the W.1 listener unflag) was framed as "operations-only; no source change." The commit body documented the env-var add + the `vercel --prod` redeploy step. The post-flip prod deploy (a non-Phase-1 commit) was therefore the LAST chance to catch this bug in isolation — listener-on + pre-Phase-1 source — before Phase 1 confounded the signal. Nobody walked that post-flip prod build with an authed visual check because the unflag was framed as low-risk infrastructure work.
+
+When the user's binary test ran on 2026-05-28, it compared `isuinxe7t` (pre-Phase-1 + listener-on by 16:14 May 26, post-aa3a5a4) to `cl0ds1ths` (post-Phase-1 + listener-on May 27) — both listener-on, so the binary test could only attribute the regression to source changes. The actual interaction bug lay dormant for ~26h between aa3a5a4 prod deploy and cl0ds1ths prod deploy.
+
+**Reinforcement:** Treat every env-var change (Vercel/Supabase/any deploy-tier secret store) as a deploy event in its own right. Required post-flip checks:
+
+1. Authed visual walk on the post-flip Production-target deploy (not Preview) — same authed-walk protocol used at phase-ship.
+2. Disk-evidence trail: the change-event entry in custodian-tracked artifacts (e.g., MASTER-PLAN §10 or a dedicated env-flip log).
+3. Observation window documented in the change-event entry — what specifically would surface a regression if it existed (e.g., "watch nav-bar role-load on authed pages; null-role posture = listener-deadlock smoke").
+4. If the flip enables behavior that wasn't previously exercised in Production at all (W.1 listener subscription path in this case), the walk MUST exercise that specific behavior path, not just "look at the homepage."
+
+The `aa3a5a4` commit body documented Sentry alerting thresholds (the 3-detector Spike threshold from AC-B4-07). The detector worked — but a silent client-side deadlock with no thrown error never reached Sentry. The detector's coverage of "listener-path errors" missed "listener-path hangs." That coverage gap is also worth capturing in the unflag plan template.
+
+### Lesson 3 — Runtime truth-table over inference; verify experiment PREMISES, not just results
+
+This session generated THREE confident root-cause determinations that were ALL confounded:
+
+1. Jake's initial binary test → "Phase 1 did it." Confounded by env-var divergence between the two deploys tested.
+2. Executor's "listener-only is the root cause" via timestamp analysis. Confounded by misreading `isuinxe7t` as a Preview deploy when `vercel inspect` showed `target=production` — the per-deploy URL format with the hash (`nightwork-platform-{hash}-jakeross838s-projects.vercel.app`) is identical for Preview and Production targets, and the `target` field in `vercel inspect` is the only canonical signal.
+3. Executor's first D1 deploy ("pre-Phase-1 source + listener-off cell"). The deploy restored build cache from the prior `ljdtfrt5b` (post-Phase-1) deploy. Chunk hashes partially differed (so SOME rebuild happened), but the rendered behavior was still Phase-1's 4-section nav. Jake's screenshot showed 4-section nav — the experiment's PREMISE (this deploy serves pre-Phase-1 source) was wrong, even though the local working tree was confirmed at `9b041b9`. Required `vercel --prod --force` to bust the cache and produce a genuinely clean build. Only the Incognito retest on the cache-busted `r02hbraom` showed 8-section nav, confirming D1.
+
+**Reinforcement:** Codified as CLAUDE.md Workflow-posture Rule 10. Key discipline:
+
+- **Truth table FIRST.** When multiple variables changed between working and broken states, enumerate cells (source × env × runtime cache) and fill them with isolated experiments. Do not propose mechanism until every cell is filled or explicitly marked deferred with reasoning.
+- **Verify experiment PREMISES.** Before interpreting an experiment's result, verify the experiment ran what you think it ran:
+  - `vercel inspect <canonical URL>` → confirm the alias resolves to the deploy ID you expected + `target` field is what you think.
+  - `git log -1 HEAD` + spot-check specific files claimed changed/unchanged.
+  - `vercel env ls <env>` → confirm env var state.
+  - `vercel inspect --logs <deploy-id>` → search for "Restored build cache" vs "Skipping build cache."
+  - For isolation experiments where source-state is the variable being tested, always use `vercel --prod --force` to bust Webpack's persistent build cache; partial-rebuild behavior can preserve stale compiled chunks even after source file changes.
+- **Verify rendered behavior matches claimed source.** Grep the deployed chunks for source-specific string literals (feature-flag keys, route literals, env-var names) to confirm the bundle contains what the source state should produce. Minified identifiers won't survive grep; quoted string literals will.
+- **Browser-side cache busting for visual verification.** Hard refresh (`Ctrl+Shift+R`) may not bust the prior bundle on the same canonical alias. Use Incognito + fresh sign-in OR DevTools Application tab → Clear site data → reload. The nwrp253 first D1 attempt failed this — only the Incognito retest gave the correct observation.
+
+**Three-pattern collision:** the nwrp247-254 debug found a pattern where the runtime truth-table discipline catches issues that source-diff-inference would have missed AND that env-var-flip-without-walk surfaces masked AND that Preview-only verification structurally cannot cover. All three reinforcements feed the same upstream gap: **the verification pipeline needs Production-deploy runtime evidence, not just inference or Preview-build evidence.** This is exactly the gap PLANNING-PIPELINE-TIERING is designed to close at the tiering-implementation phase.
+
+**Codification:**
+
+- **CLAUDE.md Rule 10** — Runtime truth-table over inference; verify experiment premises. Added in same commit as this lesson entry.
+- **`.planning/process/PLANNING-PIPELINE-TIERING.md` §10** — extend "Lessons captured from Phase 1" with L1 + L2 (verification pipeline gaps surfaced during Phase-1 × listener debug); these inform the tiering-implementation phase's design requirements for SmokeAuthHelper + Production-target verification step + env-var-flip protocol.
+- **`.planning/tech-debt/TD-WB-LISTENER-PHASE1-INTERACTION.md`** — NEW TD entry stubbed for the mechanism investigation (D2 bisect + D3 bundle diff + real fix options). HIGH-ish severity (auth + unknown mechanism). Runs under the tiered pipeline once `tiering-implementation` ships — good real test case for HIGH-tier.
+- **Phase 1 QA report addendum** — append "necessary co-factor in interaction bug, validated working in isolation via `ljdtfrt5b` listener-off deploy, mechanism deferred to TD-WB-LISTENER-PHASE1-INTERACTION" language. NO change to substance: Phase 1 shipped what it intended to ship; the 4-section HIDE nav renders correctly when the interaction is broken. Custodian sweep / SHIPPED marking STANDS.
+- **Open ordering question for next session** — three queued phases: (a) interaction-bug root-cause follow-up, (b) tiering-implementation resume from `acbfa06`, (c) Ground-Truth-Verification phase. Don't resolve tonight; sequencing is the first decision next session.
+
+**Production state at lesson capture time (2026-05-28 ~09:15 EDT):**
+
+- `https://nightwork-platform.vercel.app` aliased to deploy `dpl_EW1JKqFcKZVJxAZsozPbXNqLLhY8` (`x14j6jhg5`) — current HEAD (`acbfa06`, post-Phase-1) + listener OFF (env-var removed). Force-cache-bust used at deploy time.
+- 4-section Phase 1 nav renders correctly; Jake/OWNER badge + PLATFORM badge + ALL 25 JOBS sidebar all functional.
+- Listener env-var absent on Production; remains `true` on Preview (left intact per Jake's nwrp251 direction to preserve future bisect comparison).
+- Phase 1 HIDE work is intact and serving the locked-scope §HIDE deliverables.
+
+---

@@ -3,6 +3,7 @@
 **Origin:** F1-Wave-B Plan B-1b (nwrp153 Q5 amendment + nwrp152 dispatch)
 **Captured:** 2026-05-15
 **Scheduled:** Slice-2 follow-up after observation window
+**Status (2026-05-28):** `ROLLED-BACK-INVESTIGATING` per the Reverse-rollback section of this doc. The W.1 listener was unflagged on Production via commit `aa3a5a4` 2026-05-26; an interaction with Phase 1 source (internal-launch-hide, shipped 2026-05-27) caused a silent client-side auth deadlock on the post-Phase-1 + listener-on combination (deploy `cl0ds1ths`). Mitigation deployed 2026-05-28 — `NEXT_PUBLIC_AUTH_STATE_LISTENER` env-var removed from Production. Preview retains the flag for future bisect comparison. **This TD is subsumed by `TD-WB-LISTENER-PHASE1-INTERACTION.md`** for the mechanism investigation (D2 bisect + D3 bundle diff + D4 real fix). See `.planning/lessons.md` 2026-05-28 entry + `.planning/qa-runs/2026-05-27-1536-internal-launch-hide-qa-report.md` Post-ship addendum (2026-05-28) for the full debug narrative.
 
 ## What ships in B-1b
 

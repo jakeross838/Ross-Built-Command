@@ -940,6 +940,90 @@ Default posture absent specific orchestrator directive: **halt-and-surface on di
   reviewer alignment on something that wasn't in the plan-author's surface
   gets explicit orchestrator disposition.
 
+- **Rule 10 — Runtime truth-table over inference; verify experiment
+  premises (per Phase-1 × W.1-listener interaction debug, nwrp247-254,
+  2026-05-28).** When diagnosing a production regression with multiple
+  changed variables, do not reason about "what must have happened" from
+  source diffs alone. Build a truth table of real deployed configurations
+  (source × env × runtime state) and fill the cells with isolated
+  experiments. The nwrp247 debug session generated THREE confident
+  root-cause determinations and ALL THREE were confounded:
+
+  (a) Jake's binary test ("isuinxe7t Preview works → current prod broken
+      → Phase 1 did it") — confounded by env-var divergence between
+      Preview and Production builds (the W.1 listener was unflagged on
+      both Prod + Preview at aa3a5a4, but the deploy timestamps Jake
+      tested against weren't isolated to a single variable).
+
+  (b) Executor's "listener-only is root cause" via timestamp analysis —
+      confounded by reading `target=production` as `target=preview` on
+      the Vercel inspect output (I assumed isuinxe7t was a Preview
+      deploy because of the per-deploy URL format; `vercel inspect`
+      showed `target=production` and I missed it). The whole "Preview
+      ≠ Production init path" hypothesis was built on a wrong premise.
+
+  (c) Executor's first D1 deploy "(pre-Phase-1 + listener-off) cell" —
+      confounded by Webpack build-cache pollution. The `vercel --prod`
+      deploy restored build cache from the prior `ljdtfrt5b` deploy
+      (post-Phase-1); chunk hashes partially differed but the rendered
+      behavior was still Phase-1's 4-section nav despite the local
+      working tree being at pre-Phase-1 source `9b041b9`. Re-deploy
+      with `vercel --prod --force` (cache-bust) was required.
+
+  Diagnostic discipline that actually worked, vs. discipline that
+  failed:
+
+  | Failed | Worked |
+  |---|---|
+  | "Read source diffs, infer mechanism" | "Deploy each cell; verify runtime behavior" |
+  | "Trust the URL format" | "`vercel inspect` → `target` field is canonical" |
+  | "Trust `vercel --prod` did a clean build" | "Check `vercel inspect --logs` for cache-restoration line; use `--force` when cell isolation matters" |
+
+  Codified discipline:
+
+  (i) **Truth table FIRST.** When multiple variables changed between
+      working-state and broken-state, enumerate cells (e.g., source ×
+      env-var × runtime state) and identify which cells are filled and
+      which need experiments. Do not propose a fix until every cell is
+      either filled with real evidence or explicitly marked "untestable
+      / deferred" with reasoning.
+
+  (ii) **Verify experiment PREMISES, not just results.** Before
+       interpreting an experiment's outcome, verify the experiment ran
+       what you think it ran. Specifically:
+       - Confirm the deploy alias resolution (`vercel inspect <canonical
+         URL>` → which deploy ID, when created, which target).
+       - Confirm the source state at deploy time (`git log -1 HEAD` +
+         spot-check for the specific files claimed changed/unchanged).
+       - Confirm env-var state (`vercel env ls <env>`).
+       - Confirm build cache state (`vercel inspect --logs <id>` →
+         search for "Restored build cache" / "Skipping build cache").
+       - For D1-style isolation experiments, use `vercel --prod --force`
+         to guarantee a clean build; the partial-rebuild behavior of
+         Webpack's persistent cache can preserve stale compiled chunks
+         even when source files change.
+
+  (iii) **Verify rendered behavior matches claimed source.** Grep the
+        deployed chunks for source-specific string literals (feature-
+        flag names, route literals, env-var names) to confirm the
+        bundle contains what the source state should produce. Minified
+        identifiers won't survive grep; quoted string literals will.
+
+  (iv) **Browser-side cache busting for visual verification.** When
+       an authed walk is the verification step, the user's browser
+       may serve cached chunks from a prior deploy of the same alias
+       even after a hard refresh. Use Incognito + sign-in-fresh OR
+       Application tab → Clear site data → reload. The nwrp253 first
+       D1 attempt failed this check; only the Incognito retest after
+       cache-busted redeploy gave the correct 8-section observation.
+
+  This rule applies to any post-ship production-regression debug,
+  cross-cutting change propagation verification, or any diagnostic
+  task where source + env + runtime cache state can vary
+  independently. Pairs with Rule 1 (schema verification ≠ runtime
+  verification) — Rule 10 generalizes the principle to all multi-
+  variable diagnostic surfaces, not just schema/UI.
+
 ## Deployment
 
 Vercel + Next.js 14. Single region: **iad1** (N. Virginia). Full runbook in `.planning/deployment.md`.
