@@ -163,6 +163,17 @@ skills-lock.json
 # (nwrp169 Q-W9 Option a precedent) + tech-debt/ (nwrp129 TD-WD-01 precedent).
 !/.planning/grounding-pass/
 !/.planning/grounding-pass/**
+# ground-truth/ — Ground-Truth-Verification phase artifacts (per nwrp255-256,
+# 2026-05-29). PART-1-INVENTORY.md + future PART-2 / PART-3 / consolidated
+# GROUND-TRUTH-VERIFICATION.md. Successor inventory to grounding-pass/ (which
+# was authored pre-Phase-1 and is now superseded by this phase per the drift
+# tracked in MASTER-PLAN §12 GTV sequencing). Must sync across PCs because
+# this becomes the authoritative "where we are" doc that the finish-line plan
+# is built from. Same whitelist pattern as grounding-pass/ + launch/. Content
+# sensitivity scan: architectural inventory + flow verification findings + row
+# counts; no credentials, no PII, no customer data beyond table-level counts.
+!/.planning/ground-truth/
+!/.planning/ground-truth/**
 # launch/ — authoritative scope-lock + (forthcoming) launch plan artifacts for
 # the first internal Ross Built deployment (per nwrp225). Must sync across PCs
 # because the scope-lock survives /clear + grounds subsequent launch-plan
