@@ -409,3 +409,51 @@ This session generated THREE confident root-cause determinations that were ALL c
 - Phase 1 HIDE work is intact and serving the locked-scope §HIDE deliverables.
 
 ---
+
+## 2026-06-01 — GTV Stage 1.5 caught Owner Portal page-gate leak (nwrp258-260): two lessons on hide-coverage testing + external-access route heuristic
+
+**Scope:** Day 1 of GTV Stage 1.5 incognito authed walk on the post-Phase-1 + listener-off Production baseline (`x14j6jhg5`). Jake's first walk target was Q1.1.1A surfaced by PART-1-INVENTORY.md §1.1.1: visit `/owner-portal` and verify whether it's hidden. Result: `/owner-portal` RENDERED — sanitized Caldwell fixture (Welcome banner, $4.31M total budget, 5 pay apps with full payment history, pending Pay App #5 with REVIEW action button) — to any authed Nightwork user. The Owner Portal was the locked launch scope's highest-priority hide target and Phase 1's smoke had certified it ship-clean.
+
+**Root cause (read-only investigation):** Phase 1 T3 middleware gate at `src/middleware.ts:255-262` (commit `e0cbfa8`) matched three path predicates: `pathname === "/owner"`, `pathname.startsWith("/owner/")`, and `pathname.startsWith("/api/owner-portal/")`. None of these match `/owner-portal` because the next character after `/owner` is `-`, not `/` — `startsWith("/owner/")` is false. The Owner Portal HIDE was implemented for `/owner/*` (the anon homeowner token-addressed route family) but NOT for `/owner-portal/*` (the internal Stage 1.5c thin-wrapper route family that mounts the Caldwell fixture). Both were intended to be hidden per the locked launch scope; only one was actually gated. The page file `src/app/owner-portal/page.tsx:17` carried a stale comment claiming the route "currently sits behind authenticated-org-member middleware" — that text described intent but was incorrect about the actual gate state.
+
+**Data-exposure scope:** the Caldwell fixture is sanitized via `scripts/sanitize-drummond.ts`, which substitutes names + addresses (per `.planning/fixtures/drummond/SUBSTITUTION-MAP.md`, gitignored) and halts on real-Drummond-identifier survival or substring collision. Names + addresses ARE sanitized. **Dollar amounts are NOT** — `dollarsToCents(n) = Math.round(n * 100)` (line 340) passes values through verbatim to job contract amounts (lines 576-580), change-order amounts (line 1270), and invoice totals (line 824). The Caldwell fixture exposes Drummond's actual contract sum + change-order amounts + invoice totals under fake names + fake addresses. Anyone with Drummond insider knowledge could correlate the financial shape to identify the client. Original severity assessed MEDIUM (F5 in surface report); escalated to HIGH on dollar-handling verification before fix landed.
+
+**Anon path was always safe.** Anon users hitting `/owner-portal` got 307→/login via the existing auth-redirect at `middleware.ts:156-167` because `/owner-portal` isn't in PUBLIC_PATHS. Google + crawlers cannot reach. The leak window was: authed Nightwork user (any tenant member) → `GET /owner-portal` → fixture render.
+
+**Fix:** commit `882bf24` extended the OWNER_PORTAL gate to a triple-path family by adding `pathname === "/owner-portal" || pathname.startsWith("/owner-portal/")` as a new predicate inside the same `!isFeatureEnabled("OWNER_PORTAL")` block. Deployed via `vercel --prod --force` (cache-bust per Rule 10) → `dpl_41ywg1ZpuLJ2HsnHTtBMU8tEk19J` (`7pnxv4cul`). Verification triple-pass (anon-curl + 2× authed-incognito) all confirmed 404 post-fix; no collateral damage to `/today` or other working surfaces.
+
+**Three process gaps surfaced; two new lessons codified.**
+
+### Lesson 4 — API gate ≠ page gate. Both must be smoke-tested in both anon AND authed sessions.
+
+Phase 1's smoke runner at `scripts/smoke-internal-launch-hide.mjs` exercised `POST /api/owner-portal/admin/revoke-token` and confirmed 404. The first post-ship QA addendum framed Owner Portal as "the one gate proven by automated smoke." That was correct for the API gate ONLY. The page gate (`GET /owner-portal`) was untested by any smoke / QA walk during Phase 1 ship verification. Two distinct gates protect two distinct surfaces; testing one does not test the other.
+
+**Reinforcement:** any HIDE-phase smoke MUST include **four assertions per hidden surface**:
+1. `anon-API` — `curl -X <method> <api-path>` → expected 404 (or 401 if auth-gate-precedes).
+2. `anon-page` — `curl <page-path>` → expected 404 (or 307→/login if not in PUBLIC_PATHS and auth-gate-precedes).
+3. `authed-API` — same as 1 but with an authenticated session cookie → expected 404 (proves the gate fires for authed users, not just because the auth gate did).
+4. `authed-page` — same as 2 but with authenticated session cookie → expected 404 (the critical assertion that catches the path-mismatch pattern; Phase 1 had this gap).
+
+All four must 404 (or the appropriate "this is hidden" status code per surface) for the hide to certify. Smoke that runs only 1-3 of these MUST explicitly call out the uncovered assertion in its report.
+
+### Lesson 5 — External-party-access route-name heuristic: HIGH pre-everything blocker, not Stage-1.5 walk item.
+
+PART-1-INVENTORY.md Q1.1.1A correctly flagged the structural gap ("possible Owner Portal leak via direct URL") but mis-weighted it as a Stage 1.5 walk surface ("HIGH if leakable; LOW if internal admin staging — surface for Stage 1.5"). The walk caught the leak, but the default classification should have been HIGH-pre-Stage-2 from the moment the structural mismatch was identified.
+
+**Reinforcement:** any route whose name suggests external-party access — including but not limited to `portal`, `public`, `share`, `embed`, `invite`, `owner`, `client`, `tenant`, `customer`, `vendor`, `sub`, `partner`, `guest`, `magic`, `token` — that lacks an explicit middleware path-match gate is a **pre-everything HIGH blocker, not a Stage 1.5 walk item**. The default reading is "this could leak" until proven otherwise via direct path-match verification in middleware source. Generalize beyond just `*-portal` / `*-admin` to the full pattern of "this URL name implies someone outside the org might see this surface." Apply at GTV inventory time (or any system-spanning audit) — fast-track these to fix-before-anything-else.
+
+### Codification
+
+- **`scripts/smoke-internal-launch-hide.mjs`** — does NOT currently implement the 4-assertion standard. Future HIDE-phase smoke scripts inherit it from a new shared primitive (proposed: extending the SmokeAuthHelper from tiering-implementation §3 with a `assertHidden(surface, paths)` helper that mechanically generates the 4 assertions). Tracked as a tiering-implementation requirement add.
+- **`.planning/process/PLANNING-PIPELINE-TIERING.md` §6.2 mechanical re-tier triggers** — add: "any route whose name suggests external-party access (portal / public / share / embed / invite / owner / client / tenant / customer / vendor / sub / partner / guest / magic / token / etc.) that lacks an explicit middleware path-match gate" → HIGH pre-everything blocker. Generalizes L5 into the tiering design.
+- **`.planning/process/PLANNING-PIPELINE-TIERING.md` §3 / verification standard** — extend to require the 4-assertion-per-hidden-surface smoke pattern (L4). Any HIDE phase that produces a smoke certifying less than 4 assertions per hidden surface MUST document the uncovered assertion as a coverage gap in the QA report.
+- **`.planning/qa-runs/2026-05-27-1536-internal-launch-hide-qa-report.md`** — second addendum appended documenting the page-gate gap, the fix, and the verification triple-pass.
+- **`.planning/tech-debt/TD-NW-HIDE-4-ASSERTION-SMOKE.md`** (proposed for next session) — captures L4 as a follow-up phase tech-debt entry. Implementation lands in tiering-implementation phase's SmokeAuthHelper design.
+
+**Production state at lesson capture (2026-06-01 ~15:35 EDT):**
+
+- `https://nightwork-platform.vercel.app` aliased to `dpl_41ywg1ZpuLJ2HsnHTtBMU8tEk19J` (`7pnxv4cul`). Source: HEAD `882bf24` (post-fix). Listener still OFF on Production. All 6 NEXT_PUBLIC_FEATURE_* flags still empty.
+- `/owner-portal` returns 404 for authed users; 307→/login for anon. `/owner-portal/pay-apps/d-caldwell-01` returns 404. Working surfaces (`/today`, `/jobs`, `/financials`, `/price-intel`, `/admin`) unaffected.
+- Phase 1 HIDE work + post-Phase-1 listener-off mitigation + owner-portal page-gate fix all in place. GTV Stage 1.5 walk unblocked for resumption (routes 1-21 list from prior surface still applies; Q1.1.1A closed).
+
+---
