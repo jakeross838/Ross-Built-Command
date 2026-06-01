@@ -246,14 +246,36 @@ export async function middleware(request: NextRequest) {
     return NextResponse.rewrite(notFoundUrl, { status: 404 });
   };
 
-  // OWNER PORTAL — DUAL GATE (most sensitive surface; per CONTEXT D-05).
-  // Both /owner/* AND /api/owner-portal/* must 404 when flag off, even on
-  // direct URL access (PUBLIC_PATHS enumerates 4 entries that bypass auth-
-  // redirect; this gate fires AFTER auth gate so PUBLIC_PATHS bypass
+  // OWNER PORTAL — TRIPLE GATE (most sensitive surface; per CONTEXT D-05
+  // + nwrp258-259 path-mismatch close, 2026-06-01).
+  //
+  // Three distinct path families must 404 when the flag is off:
+  //   1. `/owner` + `/owner/*` — anon homeowner pay-app routes (token-
+  //      addressed at `/owner/{token}`).
+  //   2. `/owner-portal` + `/owner-portal/*` — internal staging routes
+  //      that mount the Caldwell fixture (Stage 1.5c Plan 3 thin wrapper
+  //      per `src/app/owner-portal/page.tsx`). Originally NOT in the
+  //      Phase 1 T3 gate at e0cbfa8 because the gate matched only
+  //      `/owner/*` (path-string mismatch — `/owner-portal` starts with
+  //      `/owner-`, NOT `/owner/`, so `startsWith("/owner/")` was false).
+  //      GTV Stage 1.5 (nwrp258) caught this with an authed-incognito walk
+  //      that rendered the Caldwell fixture (sanitized names + addresses
+  //      but VERBATIM dollar amounts per scripts/sanitize-drummond.ts:340
+  //      `dollarsToCents = Math.round(n*100)` — no obscuring step).
+  //      Gate added 2026-06-01 to close the HIDE gap.
+  //   3. `/api/owner-portal/*` — API surface for owner-portal admin
+  //      operations.
+  //
+  // Order: gate fires AFTER auth gate, so PUBLIC_PATHS bypass (line 17-50)
   // already let the request through — that's expected; gate fires
-  // regardless of auth state).
+  // regardless of auth state. Anon users hit the auth gate first and
+  // get 307→/login; authed users hit this gate and get 404. Both
+  // outcomes hide the surface.
   if (!isFeatureEnabled("OWNER_PORTAL")) {
     if (pathname === "/owner" || pathname.startsWith("/owner/")) {
+      return respond404();
+    }
+    if (pathname === "/owner-portal" || pathname.startsWith("/owner-portal/")) {
       return respond404();
     }
     if (pathname.startsWith("/api/owner-portal/")) {

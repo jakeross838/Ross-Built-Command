@@ -13,9 +13,20 @@
 //             scoped reads
 //   - Plan 7 ARCHITECTURE.md / OWNER-PORTAL-CUTOVER.md documents this
 //     constraint so F1 inherits it.
-//   - 1.5c does NOT modify middleware; existing auth + role gate posture
-//     applies (this route currently sits behind authenticated-org-member
-//     middleware; F1 commits to either Path A or Path B above).
+//
+// HIDE STATUS — middleware gate (post-nwrp258-259, 2026-06-01):
+//   `/owner-portal` + `/owner-portal/*` are middleware-404'd when
+//   `NEXT_PUBLIC_FEATURE_OWNER_PORTAL` !== "true" (i.e. flag empty or
+//   unset). See `src/middleware.ts:255-285` OWNER PORTAL triple gate.
+//   Prior comment text in this header (pre-nwrp258) claimed the route
+//   "currently sits behind authenticated-org-member middleware" — that
+//   was incorrect; the Phase 1 T3 gate at e0cbfa8 matched `/owner` +
+//   `/api/owner-portal/` but not `/owner-portal` (path-string mismatch:
+//   `startsWith("/owner/")` is false for `/owner-portal`). GTV Stage 1.5
+//   caught the leak and the middleware gate was extended in this commit
+//   to close it. Re-enabling the flag (set to "true" in Vercel) un-hides
+//   this route again — F1 commits to either Path A or Path B above
+//   before that flip.
 //
 // Architect W-5 status: PLACEHOLDER.
 //
