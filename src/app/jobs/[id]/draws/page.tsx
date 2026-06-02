@@ -116,7 +116,7 @@ export default function JobDrawsPage({ params }: { params: { id: string } }) {
             </p>
           </div>
           <Link
-            href={`/draws/new?jobId=${job.id}`}
+            href={`/financials/pay-apps/new?jobId=${job.id}`}
             className="inline-flex items-center justify-center h-9 px-4 text-[11px] uppercase font-medium border transition-colors"
             style={{
               fontFamily: "var(--font-jetbrains-mono)",
@@ -138,7 +138,7 @@ export default function JobDrawsPage({ params }: { params: { id: string } }) {
             icon={<EmptyIcons.Document />}
             title="No draws created for this job yet"
             message="Create a draw to compile approved invoices into an AIA G702/G703 pay application."
-            primaryAction={{ label: "+ Create Draw", href: `/draws/new?jobId=${job.id}` }}
+            primaryAction={{ label: "+ Create Draw", href: `/financials/pay-apps/new?jobId=${job.id}` }}
           />
         ) : (
           <div className="bg-[var(--bg-card)] border border-[var(--border-default)] overflow-x-auto">

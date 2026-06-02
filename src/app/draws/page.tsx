@@ -84,7 +84,7 @@ export default function DrawsPage() {
  AIA G702/G703 pay applications
  </p>
  </div>
- <Link href="/draws/new"
+ <Link href="/financials/pay-apps/new"
  className="inline-flex items-center justify-center h-9 px-4 text-[11px] uppercase font-medium border transition-colors"
  style={{
  fontFamily: "var(--font-jetbrains-mono)",
@@ -105,7 +105,7 @@ export default function DrawsPage() {
  icon={<EmptyIcons.Document />}
  title="No draws created for this job yet"
  message="Create your first draw to generate an AIA G702/G703 pay application from approved invoices."
- primaryAction={{ label: "+ Create Draw", href: "/draws/new" }}
+ primaryAction={{ label: "+ Create Draw", href: "/financials/pay-apps/new" }}
  />
  ) : (
  <div className="space-y-8 animate-fade-up">
