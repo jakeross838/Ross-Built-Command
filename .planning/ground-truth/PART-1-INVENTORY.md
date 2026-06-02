@@ -253,16 +253,16 @@ Query against Ross Built org_id `00000000-0000-0000-0000-000000000001`:
 | `budget_lines` | 288 | ✅ Populated | ~19 lines/job avg |
 | `cost_codes` | 218 | ✅ Populated | Canonical 5-digit Ross Built set per CLAUDE.md Data Model |
 | `org_cost_codes` | 12 | ✅ Sparse | Per-org custom codes; mostly using canonical |
-| `change_orders` | 88 | ✅ Heavily populated | Real PCCO history (sample: PCCO #72 -$557, #71 +$2600, #70 +$2485.65 — Drummond Pay App 8 lineage) |
+| `change_orders` | 88 total / **73 active / 15 soft-deleted** | ✅ Heavily populated | Real PCCO history. **Distribution-by-job (per-2026-06-02 pre-walk verification):** 72 active on Fish Residence (`92a38296-9ad0-4fce-9a84-ca19e2bcf3fb`), 1 active on Dewberry, **0 active on Drummond**, 0 on all 12 other Ross Built jobs, 0 in fixture org. **Retraction (2026-06-02, nwrp263):** the earlier comment in this row "(sample: PCCO #72 / #71 / #70 — Drummond Pay App 8 lineage)" was MIS-ATTRIBUTED. Those PCCO records belong to Fish Residence, not Drummond. The inventory author assumed Drummond from CLAUDE.md framing without running a `SELECT job_id FROM change_orders WHERE id = ...` premise-check — Rule 10 violation. The actual Drummond Pay App 8 reference is still the external PDF for G702/G703 layout truth (per CLAUDE.md); in-database CO records are on Fish. |
 | `change_order_lines` | 0 | ⚠️ EMPTY | Header-only; COs don't decompose into line items in Ross Built workflow. **NOT a bug** — `change_orders.amount + gc_fee_amount + total_with_fee` is the source of truth. |
 | `invoices` | 57 | ✅ Populated | Real invoice history; mix of statuses |
 | `invoice_line_items` | 119 | ✅ Populated | ~2 lines/invoice avg |
 | `invoice_allocations` | 52 | ✅ Populated | Per F1-Wave-A Plan A-4 (org-scoped child table per Q10b) |
 | `document_extractions` | 133 | ✅ Populated | AI parsing run more times than invoices created (extractions outnumber invoices — some don't become invoice records; expected for unmatched/duplicate/rejected parses) |
-| `draws` | 3 | ✅ Sparse | The "Draw in Draft 41d / 39d" Action Items reference these |
+| `draws` | 3 total / **2 active / 1 soft-deleted** | ✅ Sparse | The "Draw in Draft 41d / 39d" Action Items reference these. Per nwrp263 inventory drift correction: 1 of the 3 is soft-deleted; only 2 active. |
 | `draw_line_items` | 16 | ✅ Sparse | ~5-6 lines/draw |
 | `draw_adjustments` | 0 | ⚠️ EMPTY | No adjustments made yet. May indicate the adjustment feature is built but unused, or not used because no draws are revised. Stage 2E verifies. |
-| `lien_releases` | 0 | 🚨 **EMPTY — launch-blocker candidate** | Per AIA workflow lien releases are MANDATORY at every draw. Ross Built has 3 draws and 0 lien releases. Either (a) the feature isn't built, (b) the feature exists but isn't wired, (c) Ross Built tracks them outside Nightwork still. **Finding — Q1.3.2A: lien_releases is the most surprising empty in the launch-critical set. Needs Stage 2E investigation.** |
+| `lien_releases` | 0 | 🚨 **EMPTY — launch-blocker candidate** | Per AIA workflow lien releases are MANDATORY at every draw. Ross Built has 3 draws (2 active / 1 soft-deleted) and 0 lien releases. Per Jake nwrp257: Ross Built currently handles lien releases as physical/PDF documents collected from subs per draw — managed via Buildertrend Documents + signed paper. Zero in Nightwork because Nightwork's lien_releases table isn't being populated yet. **Finding — Q1.3.2A:** lien_releases is BOTH a feature-readiness check (does the table+UI actually work) AND a data-ingestion question (how do historical lien releases get in for active jobs). Routed to BOTH Stage 2E (feature test) AND PART 3 (ingestion path). |
 | `purchase_orders` | 0 | 🚨 **EMPTY** | Ross Built has 0 POs. PO functionality may not be in use in Ross Built workflow (the PO table + FKs exist, but no records). **Finding — Q1.3.2B: PO surface in launch scope was marked HIDE for org-wide views (FINANCIALS_F1_VIEWS gate) but per-job PO UI is visible. With 0 POs, what does the per-job PO surface show? Empty state? Stage 2D investigates.** |
 | `po_line_items` | 0 | ⚠️ EMPTY | Follows from purchase_orders = 0 |
 | `proposals` | 1 | ✅ Sparse | One proposal — single test record or genuine first proposal. |
@@ -289,8 +289,25 @@ Empty doesn't always mean broken. Categorization:
 |---|---|---|
 | Expected empty (HIDE / future wave) | `email_inbox`, `job_milestones`, `selections`, `org_invites`, `draw_adjustments` | Features are HIDE in launch scope OR genuinely unused |
 | Header-only by design | `change_order_lines` | COs don't decompose; not a bug |
-| **Launch-critical empty (Q1.3.2A)** | `lien_releases` | Per AIA workflow MANDATORY at every draw. 0 with 3 draws = workflow gap. |
-| **Surprising empty (Q1.3.2B)** | `purchase_orders`, `po_line_items` | PO feature exists in code but not used. Workflow choice or PO UI broken? |
+| **Launch-critical empty (Q1.3.2A)** | `lien_releases` | Per AIA workflow MANDATORY at every draw. Per nwrp257 disposition: Ross Built handles lien releases on physical PDFs via Buildertrend Documents today — feature-readiness + data-ingestion BOTH apply. Routed to Stage 2E + Part 3. |
+| **Surprising empty (Q1.3.2B)** | `purchase_orders`, `po_line_items` | Per nwrp257 disposition: Ross Built uses subcontract agreements (not formal POs) for most subs; POs used selectively for materials/equipment. Non-standard for custom builders. PO feature exists in code; both feature-test + ingestion-path apply. Routed to Stage 2D + Part 3. |
+
+### 1.3.4 Per-job distribution of launch-critical entities (added 2026-06-02 per nwrp263)
+
+The 1.3.2 row counts are org-wide totals. For GTV walk targeting, the per-job distribution matters:
+
+| Job | budget_lines | change_orders (active) | draws (active) | invoices (active) | purchase_orders |
+|---|---|---|---|---|---|
+| **Fish Residence** (`92a38296-9ad0-4fce-9a84-ca19e2bcf3fb`) | **144** | **72** | 1 | **45** | 0 |
+| Dewberry Residence (`efec8c85-...`) | ? | 1 | ? | ? | ? |
+| **Drummond Residence** (`a1bb4d28-103d-40d8-98fd-2dc449bf5d1c`) | **0** | **0** | **0** | **1** | **0** |
+| All 12 other Ross Built jobs | varies | 0 | varies | varies | 0 |
+
+**Fish is the data-heavy operational job.** Drummond is named-canonical but functionally empty in active records (per CLAUDE.md amendment 2026-06-02: "Drummond is the canonical reference job in documentation; Fish is where the operational test volume lives").
+
+**Implication for GTV Stage 1.5 walk:** route 5-11 (per-job sub-pages) walked on **Fish**, not Drummond, to test populated UI renders. Walking Drummond would produce empty-state across every per-job tab and not test data-heavy rendering paths.
+
+**Implication for future Claude sessions reading this inventory:** when CLAUDE.md or other docs say "Drummond is the reference job," that's the *naming* reference for docs/examples. For *data-heavy* verification or testing of populated UI surfaces, use Fish. The Drummond-vs-Fish distinction is a discipline split between canonical-name and operational-data-host.
 
 ---
 

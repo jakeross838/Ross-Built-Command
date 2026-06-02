@@ -681,7 +681,17 @@ These rules are non-negotiable. Custom Nightwork agents, hooks, and orchestrator
 
 ### Domain rules
 
-- **Drummond is the reference job.** Every fixture, seed, end-to-end test, screenshot, and prototype uses Drummond data. When `nightwork-end-to-end-test` walks "create vendor → PO → invoice → approve → draw → G702/G703 → lien release → paid," it walks it on Drummond. Reference Drummond Pay App 8 for AIA G702/G703 layout truth.
+- **Drummond is the canonical reference job in documentation and examples.** Every fixture, seed, end-to-end test, screenshot, and prototype that needs a *named* example uses Drummond. When `nightwork-end-to-end-test` walks "create vendor → PO → invoice → approve → draw → G702/G703 → lien release → paid," it walks it on Drummond. Reference Drummond Pay App 8 for AIA G702/G703 layout truth.
+
+  **BUT for data-heavy verification or testing of populated UI surfaces in the Ross Built tenant, use Fish Residence** (job_id `92a38296-9ad0-4fce-9a84-ca19e2bcf3fb`) — Fish carries the active operational volume (144 budget_lines, 72 active change_orders, 45 invoices, 1 draw) vs Drummond's near-empty active records (0 budget_lines, 0 change_orders, 0 draws, 1 invoice, 0 POs). Walking a populated UI on Drummond produces empty-state across every per-job tab and tests nothing about render-with-volume. Per GTV pre-walk discovery 2026-06-01 (nwrp262-263).
+
+  **The "Drummond Pay App 8 lineage" claim that appeared in earlier docs (PART-1-INVENTORY 2026-05-29) was mis-attributed — that PCCO data is Fish's, not Drummond's.** CLAUDE.md framing led the inventory author to assume the CO-heavy job MUST be Drummond without verifying via `SELECT job_id FROM change_orders` — Rule 10 violation (verify experiment premises, don't infer from canonical framing). The actual G702/G703 layout reference is still Drummond's Pay App 8 PDF (external doc, not in-DB data); the IN-DATABASE CO records are on Fish.
+
+  Practical guidance going forward:
+  - **Naming reference / docs / "imagine a job called X" prose** → Drummond.
+  - **Data-heavy UI verification / walk testing of populated surfaces / Stage 1.5 GTV walks** → Fish.
+  - **Empty-state UX testing** → Drummond (genuinely empty in active records; tests the empty-state branch).
+  - **Smoke scripts + harness fixtures** → fixture-org smoke jobs (see below + `scripts/fixtures/smoke-seed.sql`), NOT Drummond and NOT Fish.
 - **Field mistakes become permanent QC entries.** When a PM or supt records a mistake during a daily log, walk-through, or punchlist, the system creates a permanent QC entry tied to the job. Mistakes are not deleted on resolution — they are closed with a resolution note. Historical QC density is a metric the system surfaces.
 - **Draw requests link to punchlist.** Once schedules and punchlists ship (Wave 2), a draw request that includes a line item with an open punchlist item against it is flagged for the PM. Owner-facing draw approval shows the punchlist linkage. This relationship is stored in the draw schema from day one — not retrofitted.
 - **Drummond is the reference job for production-facing artifacts ONLY** — E2E
