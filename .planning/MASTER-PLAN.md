@@ -376,6 +376,17 @@ Updated continuously by `nightwork-custodian` after each `/gsd-ship`. Order is a
 - TD-WB-LISTENER-UNFLAG.md status → `ROLLED-BACK-INVESTIGATING` per its own Reverse-rollback section; subsumed by TD-WB-LISTENER-PHASE1-INTERACTION.
 - Three new artifacts authored this session: CLAUDE.md Rule 10 (runtime truth-table), `.planning/lessons.md` 2026-05-28 entry (3 lessons), TD-WB-LISTENER-PHASE1-INTERACTION.md (stubbed for follow-up phase).
 
+**POST-PHASE-1 OWNER-PORTAL HIDE-GAP FIX (2026-06-01, nwrp258-260):** GTV Stage 1.5 incognito walk caught `/owner-portal` rendering sanitized Caldwell fixture to authed Nightwork users. Phase 1 T3 middleware OWNER_PORTAL gate matched `/owner` + `/api/owner-portal/*` but NOT `/owner-portal/*` (path-string mismatch: `startsWith("/owner/")` false for `/owner-portal`). Fixed in commit `882bf24` — extended gate to triple-path family. Lessons L4 + L5 codified at `.planning/lessons.md` 2026-06-01 entry (API gate ≠ page gate; external-party-access route-name heuristic).
+
+**GTV STAGE 1.5 WALK COMPLETE + F5/F1 FIXES SHIPPED (2026-06-02, nwrp261-267):** Walk verdict 14 PASS / 5 FAIL / 4 FLAG-resolved + 2 Extras PASS. PART-1.5-WALK.md at `.planning/ground-truth/PART-1.5-WALK.md`. Critical findings:
+- **F5 (HIGH, FIXED 2026-06-02 commit `1d49103`):** `/draws/new` 404 — next.config.mjs:101 redirect `/draws/:id` → `/financials/pay-apps/:id` caught `/draws/new` but destination page didn't exist. Fix path (b): added `src/app/financials/pay-apps/new/page.tsx` re-export wrapper + updated button hrefs in `/draws/page.tsx` + `/jobs/[id]/draws/page.tsx`. Verified authed-incognito post-deploy.
+- **F1-F4 (HIGH/MEDIUM, scoped to TD-NW-PER-JOB-TAB-WIRING):** four per-job tabs scaffolded (`/jobs/[id]/{budget,bills,pay-apps,activity}`). F1 (budget) was a CALDWELL fixture-wrapper that 404'd; reframed in this session to `NwPlaceholderCard` for consistency with F2/F3/F4. **Wire-up is its own post-GTV phase per nwrp266 §6.**
+- **F6-F9:** false-positive / clarified / no-defect (see PART-1.5-WALK.md).
+- **F-Inv-1:** PART-1-INVENTORY methodology gap — `(a)-CANDIDATE` overclassified. Concrete tightening proposal in PART-1.5-WALK.md §F-Inv-1 awaiting Jake approval; retroactive sweep of remaining 52 unwalked (a)-CANDIDATEs queued.
+
+**NEW TD entries (this session):**
+- **TD-NW-PER-JOB-TAB-WIRING** (`.planning/tech-debt/TD-NW-PER-JOB-TAB-WIRING.md`) — wire per-job budget + bills + pay-apps + activity tabs to existing org-wide data layer with job_id filter. MEDIUM-HIGH severity. **MUST SHIP before Diane dogfood.** ~4 days work (~1/surface) since data layers + view components already exist. OWN PHASE post-GTV, not batched into Stage 2F. Sequencing: F1 + F6 waves (budget/bills/pay-apps) + Wave 1.1-Lite (activity).
+
 **NEXT PHASE GATE:**
 - **Pending GATE 2 HALT (Jake review).** Per nwrp152/nwrp171, validator interface shape + Layer 2 standards architecture + W.1 env-flag posture require substantive review before Slice-2 dispatch. Jake call per:
   - How satisfied with the locked validator interface contract (async uniform Promise<ValidatorResult>) for F2-F5 inheritance?

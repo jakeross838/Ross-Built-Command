@@ -1,100 +1,58 @@
 // src/app/jobs/[id]/budget/page.tsx
 //
-// Production route — Job budget (Stage 1.5c Plan 3 thin wrapper).
-// REPLACES the prior 1514-LOC client-side rendered page.tsx (Plan 3
-// architect W-5 status: REAL → REPLACED with Caldwell fixture mount;
-// F1 swaps fixtures for real Supabase queries on this wrapper side,
-// View unchanged).
+// Stage 1.5c Plan 3 → reframed 2026-06-02 per GTV Stage 1.5 walk
+// (nwrp264-267).
 //
-// BACKUP — F1 SWAP REFERENCE (per iter-2 architect W-5):
-// The prior implementation used client-side Supabase auth + load:
+// PRIOR IMPLEMENTATION — Caldwell fixture thin-wrapper:
+//   Imported CALDWELL_* fixtures from @/app/design-system/_fixtures/drummond,
+//   ran CALDWELL_JOBS.find(j => j.id === params.id), and notFound()'d
+//   when the lookup missed (real Ross Built job UUIDs don't match the
+//   caldwell-* fixture IDs). The 404 lied about the cause — implied
+//   error / route-missing, not scope-deferred-pending-F1-wire-up. GTV
+//   Stage 1.5 walk caught this on /jobs/{fish}/budget where 144
+//   budget_lines exist in the DB but the page 404'd.
 //
-//   "use client";
-//   import { supabase } from "@/lib/supabase/client";
-//   import JobTabs from "@/components/job-tabs";
-//   ...
-//   useEffect(() => {
-//     (async () => {
-//       const { data: { user } } = await supabase.auth.getUser();
-//       if (!user) {
-//         router.replace(`/login?redirect=/jobs/${params.id}/budget`);
-//         return;
-//       }
-//       await loadBudget();
-//     })();
-//   }, [params.id, router, loadBudget]);
+// NOW — NwPlaceholderCard placeholder, consistent with peer per-job
+// tabs (/jobs/[id]/bills, /pay-apps, /activity). Honest "Coming F1"
+// messaging communicates scope-deferred status. F1 wave wires this
+// surface by replacing the placeholder with the existing BudgetView
+// reading budget_lines filtered by job_id (scope path defined in
+// the prior version's comment header and preserved as TD scope below).
 //
-//   // Inline JobTabs at line 710:
-//   <JobTabs jobId={job.id} active="budget" />
+// WIRED-REPLACEMENT SCOPE (tracked):
+//   `.planning/tech-debt/TD-NW-PER-JOB-TAB-WIRING.md` — must ship
+//   before Diane dogfood. F1 swap path:
+//     - Replace this placeholder with server-side
+//       getCurrentMembership() + supabase.from("budget_lines")
+//         .select(...)
+//         .eq("job_id", params.id)
+//         .eq("org_id", membership.org_id)
+//         .is("deleted_at", null)
+//     - Mount existing <BudgetView /> with real data + currentDraw +
+//       drawLineItems + changeOrders + costCodes (all already typed
+//       in @/components/prototypes/BudgetView).
 //
-// F1 swap path: replace fixture imports with server-side
-// getCurrentMembership() + supabase.from('budget_lines').select(...)
-// scoped by membership.org_id. Auth becomes server-side (middleware
-// handles redirect). JobTabs is REMOVED in this rewrite per iter-2
-// must-fix CRITICAL #2 — Plan 5's PerJobTabs in /jobs/[id]/layout.tsx
-// is the sole tab surface.
-//
-// Per CONTEXT D-19 + iter-3 Q-iter2-1=a: outer container wraps in
-// data-direction="C" data-palette="B" className="design-system-scope".
-//
-// Per CONTEXT D-14 (Q8=A): no real-backend wiring promotion in 1.5c.
-// Production routes mount Caldwell fixtures for IA structural
-// validation; F1 wires real data.
-//
-// Hook T10c — fixture import silent in production paths per Plan 2
-// architect Option A finding.
+// PEER PATTERN: matches /jobs/[id]/bills/page.tsx + /pay-apps/page.tsx
+// + /activity/page.tsx — all NwPlaceholderCard mounts; F1 / Wave 1.1-Lite
+// scope.
 
-import { notFound } from "next/navigation";
-import {
-  CALDWELL_BUDGET_LINES,
-  CALDWELL_INVOICES,
-  CALDWELL_COST_CODES,
-  CALDWELL_JOBS,
-  CALDWELL_CHANGE_ORDERS,
-  CALDWELL_DRAWS,
-  CALDWELL_DRAW_LINE_ITEMS,
-} from "@/app/design-system/_fixtures/drummond";
-import BudgetView from "@/components/prototypes/BudgetView";
+import NwPlaceholderCard from "@/components/nw/NwPlaceholderCard";
 
 export default function JobBudgetPage({
-  params,
+  params: _params,
 }: {
   params: { id: string };
 }) {
-  const job = CALDWELL_JOBS.find((j) => j.id === params.id);
-  if (!job) return notFound();
-
-  // Identify "current draw" = the draw being prepared. For Caldwell the
-  // canonical surface is Pay App 5 (per EXPANDED-SCOPE deliverable #3).
-  // Falls back to the latest draw if the canonical id is ever renamed.
-  const currentDraw =
-    CALDWELL_DRAWS.find((d) => d.id === "d-caldwell-05") ??
-    CALDWELL_DRAWS[CALDWELL_DRAWS.length - 1];
-  if (!currentDraw) return notFound();
-
-  // Filter to this job's budget lines + draw line items + change orders.
-  const budgetLines = CALDWELL_BUDGET_LINES.filter(
-    (bl) => bl.job_id === job.id,
-  );
-  const drawLineItems = CALDWELL_DRAW_LINE_ITEMS.filter((dli) =>
-    budgetLines.some((bl) => bl.id === dli.budget_line_id),
-  );
-  const changeOrders = CALDWELL_CHANGE_ORDERS.filter(
-    (co) => co.job_id === job.id,
-  );
-
   return (
-    <div data-direction="C" data-palette="B" className="design-system-scope">
-      <BudgetView
-        job={job}
-        budgetLines={budgetLines}
-        invoices={CALDWELL_INVOICES}
-        costCodes={CALDWELL_COST_CODES}
-        currentDraw={currentDraw}
-        drawLineItems={drawLineItems}
-        changeOrders={changeOrders}
-        breadcrumbRoot={{ href: `/jobs/${job.id}`, label: job.name }}
-      />
+    <div className="px-6 py-8 max-w-[800px] mx-auto">
+      <div data-direction="C" data-palette="B" className="design-system-scope">
+        <NwPlaceholderCard
+          eyebrow="Job · Budget"
+          headline="Budget"
+          body="Job-scoped budget table — cost-code rows + revised estimates + previous applications + this-period + balance to finish (the G703-style view per AIA workflow). F1 wires the BudgetView with real budget_lines filtered by job_id."
+          wave="F1"
+        />
+      </div>
     </div>
   );
 }
