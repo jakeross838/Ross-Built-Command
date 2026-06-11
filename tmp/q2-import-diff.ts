@@ -11,7 +11,7 @@ async function main() {
   await wb.xlsx.readFile(path);
   console.log("isPayAppWorkbook:", isPayAppWorkbook(wb));
   const result = parsePayApp(wb);
-  const lines = result.g703Lines as Array<Record<string, unknown>>;
+  const lines = result.g703Lines as unknown as Array<Record<string, unknown>>;
   console.log("g702:", JSON.stringify(result.g702));
   console.log("previousCoCompletedAmount:", result.previousCoCompletedAmount);
   console.log("warnings:", JSON.stringify(result.warnings));

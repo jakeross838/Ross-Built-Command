@@ -261,10 +261,32 @@ function parseG703(sheet: ExcelJS.Worksheet, warnings: string[]): {
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     const colA = extractText(row.getCell(1).value);
 
+    // Blank ITEM cell — usually spacer/footer/totals rows, but BT exports
+    // can carry VALUE-BEARING scope rows with no cost code (Fish Pay App
+    // #21 G703 rows 217-220: four uncoded scope rows totaling $479,900.00
+    // were silently dropped pre-fix — PART-2C-BUDGETS.md Q2, nwrp274 §1).
+    // Warn when dollars are present so the import result surfaces the
+    // drop; totals/footer rows (description contains "total") and stray
+    // number-only cells (empty description) stay silent. Mirrors the
+    // duplicate-code warning pattern below.
+    if (!colA) {
+      const colBText = extractText(row.getCell(2).value);
+      if (colBText.trim().length > 0 && !/total/i.test(colBText)) {
+        const sched = extractNumber(row.getCell(3).value) ?? 0;
+        const prevApps = extractNumber(row.getCell(4).value) ?? 0;
+        const thisPer = extractNumber(row.getCell(5).value) ?? 0;
+        if (sched !== 0 || prevApps !== 0 || thisPer !== 0) {
+          warnings.push(
+            `G703 row ${rowNumber}: skipped value-bearing row with no cost code — "${colBText.trim()}" (scheduled $${sched.toFixed(2)}, previous $${prevApps.toFixed(2)}, this period $${thisPer.toFixed(2)})`
+          );
+        }
+      }
+      return;
+    }
+
     // Skip header/page-break/total rows
     const lower = colA.toLowerCase();
     if (
-      !colA ||
       lower === "a" ||
       lower === "item" ||
       lower === "no." ||

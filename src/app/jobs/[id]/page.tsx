@@ -387,8 +387,12 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                 <Detail label="Client" value={job.client?.full_name ?? null} />
                 <Detail label="Contract Date" value={formatDate(job.contract_date)} />
                 <Detail label="Contract Type" value={job.contract_type} />
-                <Detail label="Deposit %" value={`${job.deposit_percentage.toFixed(1)}%`} />
-                <Detail label="GC Fee %" value={`${job.gc_fee_percentage.toFixed(1)}%`} />
+                {/* deposit_percentage + gc_fee_percentage are FRACTION-scale
+                    (0.10/0.20 per schema) — ×100 for display. retainage_percent
+                    below is 0-100 scale and must NOT be ×100. Mixed column
+                    conventions tracked for unification (PART-2C N3, nwrp274). */}
+                <Detail label="Deposit %" value={`${(job.deposit_percentage * 100).toFixed(1)}%`} />
+                <Detail label="GC Fee %" value={`${(job.gc_fee_percentage * 100).toFixed(1)}%`} />
                 <Detail
                   label="Retainage %"
                   value={`${Number(job.retainage_percent ?? 0).toFixed(1)}%`}
@@ -457,6 +461,11 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
               <EditField label="Current Contract (cents)">
                 <input type="number" className="input" value={form.current_contract_amount ?? 0} onChange={(e) => setForm({ ...form, current_contract_amount: Number(e.target.value) })} />
               </EditField>
+              {/* HAZARD (inert today): these two fields collect 0-100 values but
+                  the DB columns are FRACTION-scale (0.10/0.20). The jobs PATCH
+                  route currently ignores both fields, so nothing corrupts — but
+                  wiring them without a /100 conversion would poison draw math.
+                  See PART-2C N3 (nwrp274); convention unification TD pending. */}
               <EditField label="Deposit % (0–100)">
                 <input type="number" step="0.5" min={0} max={100} className="input" value={form.deposit_percentage ?? 10} onChange={(e) => setForm({ ...form, deposit_percentage: Number(e.target.value) })} />
               </EditField>

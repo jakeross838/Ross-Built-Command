@@ -290,7 +290,13 @@ export default function DrawApprovalView({
                         className="leading-snug"
                         style={{ color: "var(--text-primary)" }}
                       >
-                        {co.description.split(".")[0]}
+                        {/* Length-truncate only — splitting on "." broke
+                            descriptions containing periods ("plan revision
+                            #3 7.14" → "...#3 7"; "Ext. Column Wraps" →
+                            "Ext"). Bank-facing copy; N1 per nwrp274. */}
+                        {co.description.length > 160
+                          ? `${co.description.slice(0, 160).trimEnd()}…`
+                          : co.description}
                       </div>
                     </div>
                     <Money cents={co.total_with_fee} size="sm" signColor />
