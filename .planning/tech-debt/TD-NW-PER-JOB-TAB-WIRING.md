@@ -94,6 +94,30 @@ Same pattern (with the appropriate data layer) for `/bills` (mount existing invo
 - `@/components/prototypes/BudgetView` — existing wired-view component, ready for real-data props.
 - `src/app/api/jobs/health/route.ts` — pattern reference for org-scoped queries (`.eq("org_id", membership.org_id)`).
 
+## Disposition items folded into this TD
+
+### Per-job header metric redundancy (filed 2026-06-11 per nwrp270)
+
+`/jobs/[id]/change-orders` stacks TWO summary rows that repeat 3 of 4 metrics:
+`JobFinancialBar` (`page.tsx:201` — Original Contract / Approved COs / Revised
+Contract / Billed to Date / % Complete / Remaining) directly above the page's
+own 4-stat grid (`page.tsx:203-208` — Original Contract / Approved COs /
+Revised Contract / Pending-Draft). Both render once — this is NOT the
+nwrp268-270 AppShell double-mount bug (investigation cleared it) — but the
+visual effect reads as a duplicate render (Jake flagged it during the GTV
+Stage 1.5 walk screenshot review). Same `JobFinancialBar` + local-stats
+pattern exists on the other 7 per-job pages that mount the bar
+(`overview / draws / purchase-orders / lien-releases / invoices /
+internal-billings / activity` — see `grep -l JobFinancialBar src/app/jobs/`).
+
+**Disposition (per nwrp270 §23):** UX-redundancy rationalization, NOT a bug
+fix now. When budget/bills/pay-apps get wired under this TD, rationalize the
+per-job header metrics in the same pass: either de-dupe each page's local
+stat grid down to page-specific metrics only (e.g., change-orders keeps
+Pending/Draft count, drops the three contract figures the bar already
+shows), or slim `JobFinancialBar` per-page via props. Resolve against
+PATTERNS.md page-pattern guidance at wiring time.
+
 ## TD lifecycle / sequencing
 
 - **STAYS BLOCKING on Diane-dogfood gate.** The launch-readiness check before any Ross Built operational use must confirm all 4 surfaces wired.

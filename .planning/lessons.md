@@ -457,3 +457,33 @@ PART-1-INVENTORY.md Q1.1.1A correctly flagged the structural gap ("possible Owne
 - Phase 1 HIDE work + post-Phase-1 listener-off mitigation + owner-portal page-gate fix all in place. GTV Stage 1.5 walk unblocked for resumption (routes 1-21 list from prior surface still applies; Q1.1.1A closed).
 
 ---
+
+## 2026-06-11 — AppShell double-chrome close (nwrp268-270): verify-checklist chrome gap + re-export grep-invisibility
+
+**Scope:** AppShell ownership investigation + 5-route double-chrome fix (commit `34ac517`, deploy `dpl_ESHeRsSYy7jJhUxA4ArUxx2m5eh6`). Jake caught double chrome on /price-intel during the F5 verification walk (nwrp268); investigation found 5 user-reachable doubles with one root cause (section layout mounts AppShell + page/re-export target mounts it again). Full findings: `.planning/ground-truth/APPSHELL-OWNERSHIP-INVESTIGATION.md`. Two lessons per nwrp270 §17-21.
+
+### Lesson 6 — UI-fix verify checklists need an explicit "chrome renders ONCE" line item
+
+The F5 verify (nwrp267) PASSED on "wizard renders + 4-step flow visible" while the wizard was rendering inside DOUBLE chrome — the F5 fix commit (`1d49103`) itself shipped the `/financials/pay-apps/new` double-mount (financials/layout.tsx AppShell + re-exported draws/new page's own AppShell). The verify checklist asked "does the destination work?" and the destination DID work; nobody asked "does the chrome render exactly once?" Same coverage-gap shape as L4 (API gate ≠ page gate): a verify that checks the functional assertion can pass while a structural assertion fails on the same screen.
+
+**Reinforcement:** every UI-fix verify checklist (walk protocol + future SmokeAuthHelper assertions) gains a standing line item: **"chrome renders ONCE — exactly one top nav, one sidebar, one trial banner."** Mechanically: count NavBar instances in the DOM (`document.querySelectorAll('nav')` or the brand-mark link) during any authed walk that certifies a route. For re-export wrapper fixes specifically (the 1d49103 pattern), the wrapper's chrome context is DIFFERENT from the original route's — re-verifying the original route's render tells you nothing about the wrapper's. Feeds tiering-implementation's verification standard alongside L4's 4-assertion pattern.
+
+### Lesson 7 — Re-export routes are grep-invisible for component-mount auditing
+
+`/price-intel/page.tsx` is `export { default } from "@/app/cost-intelligence/page"` — a grep for `<AppShell` over `src/app/price-intel/` returns ONLY the layout mount and misses that the re-exported page brings its own AppShell. All 3 price-intel doubles + the pay-apps/new double were invisible to route-directory grep; only resolving the re-export target exposed them. Any future "which routes mount X" inventory (GTV inventories, blast-radius reports, propagate sweeps) MUST resolve `export { default } from` indirection before classifying a route — the route's effective component tree is target-file + every layout on the URL path, not the route directory's files.
+
+**Reinforcement:** component-mount inventories use a two-step mechanical pass: (1) `grep -rn "export { default } from" src/app/` to build the re-export map; (2) classify each route against its RESOLVED target file + layout chain. Feeds F-Inv-1's tightened classification rules (PART-1.5-WALK.md §F-Inv-1) — sub-rule 6's per-file grep self-check inherits the same resolution requirement: grep the re-export TARGET, not the route stub.
+
+### Codification
+
+- **Verify-protocol chrome assertion (L6):** added to the combined-verify checklist for this fix (nwrp270 §9-15: Jake walks /jobs/{fish}/budget + /price-intel + /financials/pay-apps/new + /owner-portal, each with single-chrome check). Standing item for all future UI-fix walks; lands mechanically in tiering-implementation's SmokeAuthHelper.
+- **Re-export resolution rule (L7):** applied retroactively in the F-Inv-1 Step 3 sweep (52 (a)-CANDIDATE disposition pass, same session). PART-1.5-WALK.md §F-Inv-1 sub-rules extended at application time.
+- **Change-orders "two summary rows":** cleared as NOT-the-AppShell-bug (JobFinancialBar + page stat grid each render once; 3 of 4 metrics repeat). Filed as UX-redundancy disposition under `TD-NW-PER-JOB-TAB-WIRING.md` per nwrp270 §23 — rationalize per-job header metrics when the tabs get wired.
+
+**Production state at lesson capture (2026-06-11 ~14:00 EDT):**
+
+- `https://nightwork-platform.vercel.app` aliased to `dpl_ESHeRsSYy7jJhUxA4ArUxx2m5eh6` (`erobry5h3`) — HEAD `34ac517`, force-cache-bust build ("Skipping build cache" confirmed in deploy logs), promoted over the cache-restored git auto-deploy `dpl_GAf2VWJnCS7DFEV78AmDsmYjdep6` per Rule 10(c).
+- Anon-curl triple-pass post-promote: /owner-portal 307→/login ✓, /price-intel 307→/login ✓, /financials/pay-apps/new 307→/login ✓ (routes exist; auth gate fires; no 404/500).
+- Awaiting Jake's combined 4-check incognito verify (nwrp270 §9-15). F1 budget placeholder verified clean at source level (no AppShell mount; single chrome from jobs/layout.tsx:8).
+
+---
