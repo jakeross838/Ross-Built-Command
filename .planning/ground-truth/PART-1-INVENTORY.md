@@ -8,6 +8,18 @@
 **Scope this stage:** Stage 1 inventory only. Stages 2 + 3 (per-flow verification + synthesis) re-authorized after this stage's halt-gate.
 **Stage 1 ceiling:** $60. Estimated mid-stage spend at draft: ~$22-25 (well within ceiling).
 
+> **CORRECTION BLOCK (2026-06-11, F-Inv-1 retro sweep per nwrp270 Step 3).**
+> §1.1.4 corrected by `.planning/ground-truth/F-INV-1-RETRO-SWEEP.md`:
+> candidate count 73 → **90** (re-export resolution + multiline-chain pattern +
+> second-hop Manager components — proposed sub-rules 6b/6c/6e); `financials/page.tsx`
+> + `admin/page.tsx` downgraded to (c)-static (data calls removed at HEAD);
+> `invoices/[id]/qa` is a redirect stub, not a candidate; **NEW F10:**
+> `/financials/pay-apps/[id]` + `/print` are Caldwell fixture thin-wrappers that
+> 404 real draw UUIDs while the REAL legacy `/draws/[id]` implementation
+> 308-redirects into them — launch-critical-FIX-required; 7 orphaned-by-redirect
+> real surfaces added to the Q1.1.2A/Q1.1.4A dead-code queue. F1-F4
+> reclassification per PART-1.5-WALK.md §F-Inv-1 stands.
+
 ---
 
 ## Stage 0 — preconditions (verified before inventory work)
