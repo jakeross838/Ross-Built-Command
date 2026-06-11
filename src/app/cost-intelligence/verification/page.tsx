@@ -3,7 +3,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import AppShell from "@/components/app-shell";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import { supabase } from "@/lib/supabase/client";
 import { toast } from "@/lib/utils/toast";
@@ -314,7 +313,7 @@ function VerificationPageInner() {
   void NATURE_BY_TAB;
 
   return (
-    <AppShell>
+    <>
       <main className="max-w-[1600px] mx-auto px-6 py-6">
         <Link
           href="/cost-intelligence"
@@ -381,7 +380,7 @@ function VerificationPageInner() {
           </div>
         </div>
       </main>
-    </AppShell>
+    </>
   );
 }
 

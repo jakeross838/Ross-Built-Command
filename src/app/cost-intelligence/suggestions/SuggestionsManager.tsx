@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import AppShell from "@/components/app-shell";
 import NwButton from "@/components/nw/Button";
 import NwBadge from "@/components/nw/Badge";
 import NwEyebrow from "@/components/nw/Eyebrow";
@@ -64,7 +63,7 @@ export default function SuggestionsManager({ pending, canonical, role }: Props) 
   }
 
   return (
-    <AppShell>
+    <>
       <div className="space-y-6 px-6 py-8">
         <header className="space-y-2">
           <NwEyebrow tone="accent">Cost Intelligence · Suggestions</NwEyebrow>
@@ -216,6 +215,6 @@ export default function SuggestionsManager({ pending, canonical, role }: Props) 
           </div>
         )}
       </div>
-    </AppShell>
+    </>
   );
 }

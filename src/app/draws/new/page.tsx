@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import AppShell from "@/components/app-shell";
 import { supabase } from "@/lib/supabase/client";
 import { formatCents, formatDate } from "@/lib/utils/format";
 
@@ -515,7 +514,7 @@ export default function NewDrawWizardPage() {
   }
 
   return (
-    <AppShell>
+    <>
       <main className="max-w-6xl mx-auto px-4 md:px-6 py-8">
         <span
           className="block mb-2 text-[10px] uppercase"
@@ -983,7 +982,7 @@ export default function NewDrawWizardPage() {
           border-color: var(--nw-gulf-blue);
         }
       `}</style>
-    </AppShell>
+    </>
   );
 }
 

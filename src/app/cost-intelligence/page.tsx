@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import AppShell from "@/components/app-shell";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import NwBadge from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
@@ -250,7 +249,7 @@ export default function CostIntelligenceHubPage() {
   }, [state]);
 
   return (
-    <AppShell>
+    <>
       <main className="max-w-[1400px] mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
@@ -424,7 +423,7 @@ export default function CostIntelligenceHubPage() {
           ) : null}
         </section>
       </main>
-    </AppShell>
+    </>
   );
 }
 

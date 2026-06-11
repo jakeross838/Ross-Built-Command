@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import AppShell from "@/components/app-shell";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import NwBadge from "@/components/nw/Badge";
 import NwButton from "@/components/nw/Button";
@@ -148,7 +147,7 @@ export default function UnitConversionsPage() {
   );
 
   return (
-    <AppShell>
+    <>
       <main className="max-w-[1400px] mx-auto px-6 py-8">
         <Link
           href="/cost-intelligence"
@@ -373,7 +372,7 @@ export default function UnitConversionsPage() {
           </table>
         </div>
       </main>
-    </AppShell>
+    </>
   );
 }
 

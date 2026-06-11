@@ -2,7 +2,6 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import AppShell from "@/components/app-shell";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import NwBadge from "@/components/nw/Badge";
 import NwButton from "@/components/nw/Button";
@@ -267,7 +266,7 @@ export default function CodesManager({ initial, canonical }: Props) {
   }
 
   return (
-    <AppShell>
+    <>
       <div className="max-w-6xl mx-auto py-8 space-y-6">
         <div className="flex items-end justify-between gap-4">
           <div>
@@ -426,7 +425,7 @@ export default function CodesManager({ initial, canonical }: Props) {
           />
         )}
       </div>
-    </AppShell>
+    </>
   );
 }
 

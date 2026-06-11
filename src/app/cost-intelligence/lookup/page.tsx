@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import AppShell from "@/components/app-shell";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import NwBadge from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
@@ -192,7 +191,7 @@ export default function CostLookupWorkspacePage() {
   }, [detail]);
 
   return (
-    <AppShell>
+    <>
       <main className="max-w-[1600px] mx-auto px-6 py-8">
         <div className="mb-5">
           <Link
@@ -523,7 +522,7 @@ export default function CostLookupWorkspacePage() {
           </div>
         )}
       </main>
-    </AppShell>
+    </>
   );
 }
 

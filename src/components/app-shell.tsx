@@ -10,9 +10,16 @@ import JobSidebar from "./job-sidebar";
  * pathname — order doesn't matter, first match wins.
  */
 const NO_SIDEBAR: RegExp[] = [
-  /^\/invoices\/[a-f0-9-]+/,         // invoice detail drill-down
-  /^\/draws\/[a-f0-9-]+/,            // draw detail drill-down
-  /^\/draws\/new/,                    // draw wizard
+  /^\/invoices\/[a-f0-9-]+/,         // invoice detail drill-down (legacy path)
+  /^\/draws\/[a-f0-9-]+/,            // draw detail drill-down (legacy path)
+  /^\/draws\/new/,                    // draw wizard (legacy path)
+  // Canonical post-1.5c IA-rename paths — the legacy entries above can no
+  // longer fire (308-redirected in next.config.mjs) but the design intent
+  // (drill-downs + wizard render sidebar-less) follows the rename.
+  // Per nwrp270 NO_SIDEBAR rider on the AppShell ownership fix.
+  /^\/financials\/bills\/[a-f0-9-]+/,    // bill detail drill-down
+  /^\/financials\/pay-apps\/[a-f0-9-]+/, // pay-app detail drill-down (+ /print)
+  /^\/financials\/pay-apps\/new/,        // draw wizard
   /^\/change-orders\/[a-f0-9-]+/,    // CO detail drill-down
   /^\/admin/,                         // admin section (has its own sidebar)
   /^\/settings/,

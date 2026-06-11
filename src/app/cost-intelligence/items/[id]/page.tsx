@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import AppShell from "@/components/app-shell";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import NwBadge from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
@@ -195,17 +194,17 @@ export default function CostIntelligenceItemDetailPage() {
 
   if (loading) {
     return (
-      <AppShell>
+      <>
         <main className="max-w-[1400px] mx-auto px-6 py-8">
           <p className="text-[13px] text-[var(--text-tertiary)]">Loading…</p>
         </main>
-      </AppShell>
+      </>
     );
   }
 
   if (error || !data) {
     return (
-      <AppShell>
+      <>
         <main className="max-w-[1400px] mx-auto px-6 py-8">
           <div className="border border-nw-danger/40 p-4 text-[13px] text-nw-danger">
             Load failed: {error ?? "Unknown error"}
@@ -216,7 +215,7 @@ export default function CostIntelligenceItemDetailPage() {
             </Link>
           </div>
         </main>
-      </AppShell>
+      </>
     );
   }
 
@@ -226,7 +225,7 @@ export default function CostIntelligenceItemDetailPage() {
   >;
 
   return (
-    <AppShell>
+    <>
       <main className="max-w-[1400px] mx-auto px-6 py-8">
         <Link
           href="/cost-intelligence/items"
@@ -623,6 +622,6 @@ export default function CostIntelligenceItemDetailPage() {
           </div>
         )}
       </main>
-    </AppShell>
+    </>
   );
 }

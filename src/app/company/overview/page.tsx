@@ -28,7 +28,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import AppShell from "@/components/app-shell";
 import GettingStartedChecklist from "@/components/getting-started-checklist";
 import { SkeletonBlock } from "@/components/loading-skeleton";
 import NwCard from "@/components/nw/Card";
@@ -97,7 +96,7 @@ export default function CompanyOverviewPage() {
   const isAdminLike = role === "admin" || role === "owner";
 
   return (
-    <AppShell>
+    <>
       <main className="flex-1 max-w-[1200px] w-full mx-auto px-6 py-8">
         {/* Header band */}
         <div className="mb-6 animate-fade-up">
@@ -148,7 +147,7 @@ export default function CompanyOverviewPage() {
           </section>
         )}
       </main>
-    </AppShell>
+    </>
   );
 }
 
