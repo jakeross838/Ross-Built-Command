@@ -1,57 +1,45 @@
 // src/app/financials/pay-apps/[id]/print/page.tsx
 //
 // Production route — Pay App print preview (Stage 1.5c Plan 3 thin
-// wrapper). Mounts DrawPrintView with Caldwell fixtures.
+// wrapper, F10-wired to public.draws per nwrp271, 2026-06-11).
+//
+// PRIOR IMPLEMENTATION: Caldwell fixture thin-wrapper (same F10 defect
+// as the sibling detail route — see F-INV-1-RETRO-SWEEP.md Part C). Now
+// mounts DrawPrintView with REAL recomputed G702/G703 data via the
+// shared loader (_data.ts — E-3 pattern, full posture + FK citations
+// documented there).
 //
 // Per CONTEXT D-15 (Q7 override): print fidelity is tiered (G702 cover
-// pixel-perfect attempt against AIA G702-1992; G703 detail at 80% fidelity).
-// Per CONTEXT D-19: outer wraps in .design-system-scope so Site Office
-// CSS activates for the chrome (back link, action button). Print
-// stylesheet (in DrawPrintView's scoped <style jsx global>) overrides
-// body styling at @media print regardless.
+// pixel-perfect attempt against AIA G702-1992; G703 detail at 80%
+// fidelity). Per CONTEXT D-19: outer wraps in .design-system-scope for
+// the chrome (back link, action button); DrawPrintView's scoped
+// <style jsx global> overrides body styling at @media print regardless.
 //
-// Hook T10c — fixture import silent in production paths.
+// Owner block PII posture: job shim carries client full_name + job
+// address only (client email/phone intentionally empty per D-078/D-079
+// fence — the G702 owner block renders name + address).
 
 import { notFound } from "next/navigation";
-import {
-  CALDWELL_DRAWS,
-  CALDWELL_DRAW_LINE_ITEMS,
-  CALDWELL_COST_CODES,
-  CALDWELL_CHANGE_ORDERS,
-  CALDWELL_JOBS,
-} from "@/app/design-system/_fixtures/drummond";
 import DrawPrintView from "@/components/prototypes/DrawPrintView";
+import { loadPayAppViewData } from "../_data";
 
-export default function PayAppPrintPage({
+export default async function PayAppPrintPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const draw = CALDWELL_DRAWS.find((d) => d.id === params.id);
-  if (!draw) return notFound();
-
-  const job = CALDWELL_JOBS.find((j) => j.id === draw.job_id);
-  if (!job) return notFound();
-
-  const lineItems = CALDWELL_DRAW_LINE_ITEMS.filter(
-    (li) => li.draw_id === draw.id,
-  );
-
-  const changeOrdersThroughThisDraw = CALDWELL_CHANGE_ORDERS.filter(
-    (co) =>
-      co.job_id === draw.job_id &&
-      (co.status === "approved" || co.status === "executed"),
-  );
+  const data = await loadPayAppViewData(params.id);
+  if (!data) return notFound();
 
   return (
     <div data-direction="C" data-palette="B" className="design-system-scope">
       <DrawPrintView
-        draw={draw}
-        job={job}
-        lineItems={lineItems}
-        costCodes={CALDWELL_COST_CODES}
-        changeOrdersThroughThisDraw={changeOrdersThroughThisDraw}
-        backHref={`/financials/pay-apps/${draw.id}`}
+        draw={data.draw}
+        job={data.job}
+        lineItems={data.lineItems}
+        costCodes={data.costCodes}
+        changeOrdersThroughThisDraw={data.changeOrdersThroughThisDraw}
+        backHref={`/financials/pay-apps/${data.draw.id}`}
       />
     </div>
   );
