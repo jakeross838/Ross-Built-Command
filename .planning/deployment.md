@@ -102,6 +102,34 @@ vercel promote <previous-deploy-url> --prod
 
 For schema migrations specifically, follow `nightwork-rollback-planner` agent's plan template — code revert alone does not undo a destructive migration.
 
+## Deploy verification standing checks (per nwrp271 + Rule 10)
+
+**git-push auto-deploy and manual force-deploy can RACE; always confirm the
+domain's deploy ID matches the intended build before any verify.** Third
+cache-related deploy hazard of the week of 2026-06-08 (after the Rule 10
+cache-restoration confound and the browser-side stale-chunk confound) —
+this is a standing check, not a vigilance item. Mechanics: pushing to
+`main` triggers a git auto-deploy (build-cache RESTORED) while
+`vercel --prod --force` builds cache-busted; whichever finishes LAST owns
+the production domain. On 2026-06-11 the auto-deploy landed 20s after the
+force deploy and silently took the domain with a cache-restored build.
+
+Before declaring any deploy verify-ready, run BOTH checks:
+
+```
+# 1. Domain resolves to the deploy you intend (id + target + created):
+vercel inspect nightwork-platform.vercel.app
+
+# 2. That deploy built clean (expect "Skipping build cache"):
+vercel inspect <dpl_id> --logs | grep -iE "skipping build cache|restored build cache"
+```
+
+If the domain shows the auto-deploy instead of the force-built deploy:
+`vercel promote <dpl_id>` the intended one. When landing doc commits after
+a verified deploy, either re-run the force deploy from final HEAD (one
+canonical deploy ID covering everything) or re-confirm both checks after
+the last push.
+
 ## Smoke test post-deploy
 
 After every prod deploy, run:
