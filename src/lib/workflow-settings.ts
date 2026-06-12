@@ -61,7 +61,12 @@ export const DEFAULT_WORKFLOW_SETTINGS: Omit<
   duplicate_detection_sensitivity: "moderate",
   auto_route_high_confidence: true,
   auto_route_confidence_threshold: 85,
-  require_lien_release_for_draw: true,
+  // Default FALSE per nwrp281 §C2 (F2E-2 interim honesty): this gate has
+  // ZERO consumers — nothing enforces it anywhere — so default-true implied
+  // an enforcement that doesn't exist. TD-NW-LIEN-CREATE wires the real
+  // gate (against draw_submit_rpc's per-vendor generation) and flips this
+  // back deliberately. Existing org rows were set false in the same wave.
+  require_lien_release_for_draw: false,
   co_approval_required: true,
   payment_auto_scheduling: true,
   cover_letter_template: null,

@@ -392,7 +392,10 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                     below is 0-100 scale and must NOT be ×100. Mixed column
                     conventions tracked for unification (PART-2C N3, nwrp274). */}
                 <Detail label="Deposit %" value={`${(job.deposit_percentage * 100).toFixed(1)}%`} />
-                <Detail label="GC Fee %" value={`${(job.gc_fee_percentage * 100).toFixed(1)}%`} />
+                {/* "Contract Fee %" per nwrp281 A(3): this is the job-level
+                    CONTRACT fee (Fish = 11%, two components 9+2), NOT the
+                    per-CO rate — COs carry their own gc_fee_rate. */}
+                <Detail label="Contract Fee %" value={`${(job.gc_fee_percentage * 100).toFixed(1)}%`} />
                 <Detail
                   label="Retainage %"
                   value={`${Number(job.retainage_percent ?? 0).toFixed(1)}%`}
@@ -469,7 +472,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
               <EditField label="Deposit % (0–100)">
                 <input type="number" step="0.5" min={0} max={100} className="input" value={form.deposit_percentage ?? 10} onChange={(e) => setForm({ ...form, deposit_percentage: Number(e.target.value) })} />
               </EditField>
-              <EditField label="GC Fee % (0–100)">
+              <EditField label="Contract Fee % (0–100)">
                 <input type="number" step="0.5" min={0} max={100} className="input" value={form.gc_fee_percentage ?? 20} onChange={(e) => setForm({ ...form, gc_fee_percentage: Number(e.target.value) })} />
               </EditField>
               <EditField label="Retainage % (0–100)">
