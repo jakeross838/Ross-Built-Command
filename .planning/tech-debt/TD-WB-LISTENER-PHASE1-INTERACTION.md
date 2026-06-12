@@ -1,5 +1,7 @@
 # RESOLVED 2026-06-12 (nwrp283 interaction-bug phase) — deadlock ABSENT at HEAD; listener RE-ENABLED in Production
 
+> **L9 amendment (2026-06-12, nwrp284):** the May-28 'necessary co-factor' framing below is CORRECTED — the truth table never controlled session freshness (a STATE variable; SIGNED_IN paths only run on fresh sign-ins), so the Phase-1 attribution was confounded. See lessons.md L9. **Archaeology:** package-lock.json has zero commits May 27→HEAD — no supabase-js bump; the deadlock's absence at HEAD is app-source change or the original confound, NOT a dependency fix.
+
 **Outcome:** D2/D3 cells found the deadlock unreproducible at current HEAD in BOTH build flavors (Preview deploy + true production bundle via local NEXT_PUBLIC_VERCEL_ENV=production build), each with FRESH sign-ins. The prime mechanism suspect (supabase-js await-inside-onAuthStateChange lock deadlock) was REFUTED in two cells (bare Node + raw-client Chromium, v2.103). The May-28 truth table carried an uncontrolled variable: session freshness (SIGNED_IN-event paths only run on fresh sign-ins). Line-level mechanism never named; nothing left at HEAD to fix (nwrp283 condition 3 honored — no fix compressed to fit).
 
 **Config decision landed:** NEXT_PUBLIC_AUTH_STATE_LISTENER=true restored to Production; deploy dpl_7HDBz3NoeCSbfV6x3FmJfskbxndk; anon-curl + automated authed production cell HEALTHY; Jake 2-min incognito spot-check surfaced as the human confirmation.

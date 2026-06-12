@@ -1,5 +1,7 @@
 # TD-WB-LISTENER-UNFLAG — W.1 listener production unflag
 
+> **L9 amendment (2026-06-12, nwrp284):** the May-28 'necessary co-factor' framing below is CORRECTED — the truth table never controlled session freshness (a STATE variable; SIGNED_IN paths only run on fresh sign-ins), so the Phase-1 attribution was confounded. See lessons.md L9. **Archaeology:** package-lock.json has zero commits May 27→HEAD — no supabase-js bump; the deadlock's absence at HEAD is app-source change or the original confound, NOT a dependency fix.
+
 **Origin:** F1-Wave-B Plan B-1b (nwrp153 Q5 amendment + nwrp152 dispatch)
 **Captured:** 2026-05-15
 **Scheduled:** Slice-2 follow-up after observation window

@@ -119,9 +119,20 @@ Critical-path item 4 is DONE (`10bba5f`, deploy `dpl_GUonZ7AGGTw3CHp6s4XRBscErYG
 9. One qa_review bill at `/financials/bills/[id]` → gold-standard render (2A-8).
 10. Chrome renders ONCE on every stop (L6 standing item).
 
-### Dogfood-start checklist (operational items remaining)
+### Dogfood gates — SPLIT per nwrp284 (two gates, not one list)
 
-Backfills (72-CO + 13-invoice + 6 uncoded rows — items 2-4) → settings flip (item 5) → item 8 adjudication (brief ready: ITEM-8-ADJUDICATION-BRIEF.md) → 14-job fee collection (item 9) → Diane's $126,927.25 reconciliation (item 6) → the walk above. Wiring no longer blocks any of it.
+**START gates (all human; dogfood begins when these clear):**
+1. The combined walk (10 stops above + the 2-minute listener spot-check from the interaction-bug close).
+2. Diane sitting with the item-8 brief (ITEM-8-ADJUDICATION-BRIEF.md).
+3. **13-invoice + $11,300.23 uncoded allocation backfill** (the invoice-side slice of items 2-4).
+4. `require_budget_allocation` flip for ross-built — **AFTER gate 3**.
+5. 14-job fee collection — trickles (display-only; doesn't block the start).
+
+**FIRST-DRAW gates (clear before Diane's first real draw, ~2-4 weeks after start):**
+1. Item-8 resolution APPLIED (starting_application_number + previous-certificates baseline per the adjudication branch).
+2. **F6 allocation authoring + the 72-CO backfill** (TD-NW-CO-LINE-ALLOCATION both workstreams; trigger validated 2D-1).
+3. Diane's $126,927.25 billed-ahead reconciliation.
+4. TD-NW-LIEN-CREATE — before the first BANK-SUBMITTED package (upload path + generator validation at first real submit).
 
 ### Interaction-bug phase — CLOSED with the CONFIG DECISION (2026-06-12, nwrp283)
 
