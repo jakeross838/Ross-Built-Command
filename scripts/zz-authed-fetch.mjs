@@ -9,6 +9,15 @@
 //          PATCH /api/change-orders/<id> '{"status":"approved"}'
 //
 // Credentials per the smoke-seed lifecycle file; never printed (nwrp139).
+//
+// ⚠ GIT-BASH USERS (per nwrp279 / PART-2D tooling lesson): the <path>
+// argument starts with "/" — MSYS path conversion will rewrite it into a
+// Windows path and the resulting URL fails with a bogus ENOTFOUND.
+// ALWAYS invoke with MSYS_NO_PATHCONV=1 under Git-bash:
+//
+//   MSYS_NO_PATHCONV=1 node scripts/zz-authed-fetch.mjs <email> GET /api/...
+//
+// (This script's original "persistent fetch failure" was exactly that.)
 
 import { readFileSync } from "node:fs";
 import { createServerClient } from "@supabase/ssr";

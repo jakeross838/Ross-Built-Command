@@ -14,6 +14,18 @@
 //
 // Target invoice is fixed: Smoke Invoice Beta (fixture-harness-org).
 // Credentials from the smoke-seed lifecycle file; never printed (nwrp139).
+//
+// ⚠ GIT-BASH USERS (per nwrp279 / PART-2D tooling lesson): MSYS path
+// conversion rewrites leading-slash arguments AND env values into Windows
+// paths ("/api/x" → "C:/Program Files/Git/api/x"), which surfaces as a
+// bogus per-process ENOTFOUND when the mangled path is glued onto a URL.
+// ALWAYS prefix invocations that pass URL paths (the ZZ_PATH override
+// below, or any future path argument) with MSYS_NO_PATHCONV=1:
+//
+//   MSYS_NO_PATHCONV=1 ZZ_PATH="/api/..." ZZ_METHOD=PATCH \
+//     node scripts/zz-2a-flow-driver.mjs <email> x '<json>'
+//
+// Don't re-chase this ghost — it is not DNS.
 
 import { readFileSync } from "node:fs";
 import { createServerClient } from "@supabase/ssr";

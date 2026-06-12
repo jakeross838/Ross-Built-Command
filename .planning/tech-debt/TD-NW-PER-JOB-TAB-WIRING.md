@@ -118,6 +118,10 @@ Pending/Draft count, drops the three contract figures the bar already
 shows), or slim `JobFinancialBar` per-page via props. Resolve against
 PATTERNS.md page-pattern guidance at wiring time.
 
+### PM-facing "+ New Change Order" affordance (F2D-2, folded per nwrp279)
+
+`/jobs/[id]/change-orders` renders "+ New Change Order" for PM viewers while BOTH enforcement layers deny PM creation (route role gate + RLS write policy — verified PART-2D 2D-3; CLAUDE.md's role table backs the policy: PM scope is invoice approval / budget views / draw review, not CO authoring). A PM clicking through lands in F2D-1's raw 500. Fix at wiring time: hide-by-role (or convert to a request-flow affordance) when this page family gets its F1 treatment.
+
 ## TD lifecycle / sequencing
 
 - **STAYS BLOCKING on Diane-dogfood gate.** The launch-readiness check before any Ross Built operational use must confirm all 4 surfaces wired.
