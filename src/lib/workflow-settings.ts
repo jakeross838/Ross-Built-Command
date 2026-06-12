@@ -49,7 +49,12 @@ export const DEFAULT_WORKFLOW_SETTINGS: Omit<
   quick_approve_enabled: true,
   quick_approve_min_confidence: 95,
   require_invoice_date: true,
-  require_budget_allocation: false,
+  // Default TRUE per nwrp276 / PART-2A F2A-3: silent-off is how Ross Built
+  // accumulated $95K of spend invisible to budget rollups. New orgs start
+  // gated; column default flipped in migration 00109. RB's own row stays
+  // FALSE until the D2 backfill completes (TD-NW-CO-LINE-ALLOCATION
+  // companion workstream — backfill FIRST, flip SECOND, both pre-dogfood).
+  require_budget_allocation: true,
   require_po_linkage: false,
   over_budget_requires_note: true,
   duplicate_detection_enabled: true,
@@ -100,47 +105,91 @@ function fallback(orgId: string): WorkflowSettings {
  * org_workflow_settings directly from component code.
  */
 export async function getWorkflowSettings(
-  orgId: string
+  orgId: string,
+  opts?: {
+    /**
+     * F2A-2 (nwrp276): when TRUE, a settings READ FAILURE (db error /
+     * client-construction failure with no service-role recovery) THROWS
+     * instead of returning code defaults — the caller cannot know the
+     * org's real gate configuration, so gate evaluation must not proceed
+     * on guesses. A genuinely-MISSING row still self-heals with column
+     * defaults (that IS the org's configuration). Only the invoice action
+     * route passes this today; all other callers keep the legacy
+     * fall-through-to-defaults behavior.
+     */
+    failClosed?: boolean;
+  }
 ): Promise<WorkflowSettings> {
   if (!orgId) return fallback(orgId);
 
   const cached = cache.get(orgId);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
 
-  const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("org_workflow_settings")
-    .select(COLUMNS)
-    .eq("org_id", orgId)
-    .maybeSingle();
+  try {
+    const supabase = createServerClient();
+    const { data, error } = await supabase
+      .from("org_workflow_settings")
+      .select(COLUMNS)
+      .eq("org_id", orgId)
+      .maybeSingle();
 
-  if (error || !data) {
-    // Either RLS is blocking the caller (unusual — the "members read" policy
-    // covers all authenticated org members) or the row just doesn't exist yet.
-    // Try to self-heal with the service-role client; if that's unavailable we
-    // fall through to defaults so features don't break.
-    const service = tryCreateServiceRoleClient();
-    if (service) {
-      await service
-        .from("org_workflow_settings")
-        .upsert({ org_id: orgId }, { onConflict: "org_id" });
-      const { data: retryData } = await service
-        .from("org_workflow_settings")
-        .select(COLUMNS)
-        .eq("org_id", orgId)
-        .maybeSingle();
-      if (retryData) {
-        const value = retryData as unknown as WorkflowSettings;
-        cache.set(orgId, { at: Date.now(), value });
-        return value;
+    if (error) {
+      // READ ERROR (RLS misfire / db error) — the row may exist with org-
+      // configured values we cannot see. Retry via service role; if that
+      // also fails, this is the fail-open/fail-closed fork.
+      const service = tryCreateServiceRoleClient();
+      if (service) {
+        const { data: retryData } = await service
+          .from("org_workflow_settings")
+          .select(COLUMNS)
+          .eq("org_id", orgId)
+          .maybeSingle();
+        if (retryData) {
+          const value = retryData as unknown as WorkflowSettings;
+          cache.set(orgId, { at: Date.now(), value });
+          return value;
+        }
       }
+      if (opts?.failClosed) {
+        throw new Error(
+          `workflow settings unavailable for org ${orgId}: ${error.message}`
+        );
+      }
+      return fallback(orgId);
     }
+
+    if (!data) {
+      // Row genuinely missing (no error) — self-heal: create with COLUMN
+      // defaults (migration 00109 makes require_budget_allocation default
+      // TRUE for new orgs) and read back.
+      const service = tryCreateServiceRoleClient();
+      if (service) {
+        await service
+          .from("org_workflow_settings")
+          .upsert({ org_id: orgId }, { onConflict: "org_id" });
+        const { data: retryData } = await service
+          .from("org_workflow_settings")
+          .select(COLUMNS)
+          .eq("org_id", orgId)
+          .maybeSingle();
+        if (retryData) {
+          const value = retryData as unknown as WorkflowSettings;
+          cache.set(orgId, { at: Date.now(), value });
+          return value;
+        }
+      }
+      return fallback(orgId);
+    }
+
+    const value = data as unknown as WorkflowSettings;
+    cache.set(orgId, { at: Date.now(), value });
+    return value;
+  } catch (err) {
+    // Client construction itself can throw (e.g. no request scope). Same
+    // fork: fail closed for gate-evaluating callers, defaults for the rest.
+    if (opts?.failClosed) throw err;
     return fallback(orgId);
   }
-
-  const value = data as unknown as WorkflowSettings;
-  cache.set(orgId, { at: Date.now(), value });
-  return value;
 }
 
 /**

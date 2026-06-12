@@ -70,6 +70,22 @@ export async function POST(
  return NextResponse.json({ error: "Invalid action" }, { status: 400 });
  }
 
+ // F2A-1 (per nwrp276 / PART-2A 2A-6): QA approves or kicks back — QA does
+ // NOT edit. Server-side enforcement of the CLAUDE.md edit rule: the QA
+ // step cannot modify PM-approved amounts or cost codes. Route changes
+ // through kick_back so the PM re-approves them. The 2A flow drive proved
+ // the API previously accepted a total_amount change on qa_approve.
+ if (
+ action === "qa_approve" &&
+ updates &&
+ ("total_amount" in updates || "cost_code_id" in updates)
+ ) {
+ return NextResponse.json(
+ { error: "QA cannot change PM-approved amounts or cost codes — kick back to the PM instead" },
+ { status: 422 }
+ );
+ }
+
  if ((action === "hold" || action === "deny" || action === "kick_back" || action === "request_info") && !note) {
  return NextResponse.json(
  { error: `${action} requires a note` },
@@ -111,7 +127,7 @@ export async function POST(
  try {
  const orgId = (invoice.org_id as string | null) ?? null;
  if (orgId) {
- const settings = await getWorkflowSettings(orgId);
+ const settings = await getWorkflowSettings(orgId, { failClosed: true });
  const effectiveInvoiceDate =
  (typeof updates?.invoice_date === "string" ? updates.invoice_date : invoice.invoice_date) as string | null;
 
@@ -172,9 +188,17 @@ export async function POST(
  }
  }
  } catch (err) {
- // Don't block on workflow-settings read error — just log.
- console.warn(
- `[invoice action workflow] ${err instanceof Error ? err.message : err}`
+ // F2A-2 (per nwrp276): FAIL CLOSED. If workflow settings can't be read,
+ // the org-configured gates (invoice date / duplicate / PO linkage /
+ // budget allocation) cannot be evaluated — approving anyway would
+ // silently skip whatever the org turned on (Rule 8 doctrine). Approve-
+ // only block, so deny/hold/kick_back are unaffected.
+ console.error(
+ `[invoice action workflow] settings unavailable — failing closed: ${err instanceof Error ? err.message : err}`
+ );
+ return NextResponse.json(
+ { error: "Workflow settings unavailable — cannot evaluate approval gates. Retry shortly." },
+ { status: 422 }
  );
  }
 
