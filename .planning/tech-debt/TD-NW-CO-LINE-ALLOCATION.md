@@ -23,6 +23,15 @@ Mechanism of the >100% lines: invoice line-items allocate real billings to base 
 
 `recompute_budget_line_co_adjustments` has **never executed against real data** (zero `change_order_lines` rows since inception). The first F6 allocation test MUST be a **runtime check of that trigger chain** — author one allocation row, approve the CO, verify `budget_lines.co_adjustments` + revised math move correctly — before bulk backfill. Do not infer correctness from the migration text (the Wave-C anti-pattern).
 
+## D2 companion workstream (added per nwrp276 §9 — ORDERING IS LOAD-BEARING)
+
+The invoice-side allocation gap (PART-2C D2 + PART-2A F2A-3) resolves operationally in TWO ORDERED STEPS:
+
+1. **Backfill FIRST:** author `invoice_line_items` allocations for the 13 unallocated spent invoices (IDs tabled in PART-2C) + resolve the 4 uncoded-draw scope rows (Q2) + this TD's 72-CO backfill. Operational data work, Jake/Andrew source the mappings.
+2. **Flip SECOND:** set `require_budget_allocation = TRUE` on the ross-built org row (manual, one UPDATE). Flipping before the backfill would 422-block Diane's live approval work on invoices that predate allocation authoring.
+
+Both steps complete **before Diane dogfood** (same deadline as the parent TD). The gate itself shipped enforced-able in `804f80e`: new orgs default TRUE (migration 00109 + code default), the action route fails closed on unreadable settings (F2A-2), and QA cannot edit amounts at qa_approve (F2A-1) — RB's flip is the only remaining switch, deliberately manual pending step 1.
+
 ## Related (same allocation-gap family)
 
 - **D2 (PART-2C):** 13 spent Fish invoices with no `invoice_line_items` allocations — $76,970.00 fully unallocated + $18,096.64 partial-allocation shortfall = $95,066.64 invisible to budget rollups. Same before-dogfood backfill class; invoice IDs enumerated in PART-2C. 2A tests whether approval can complete with zero allocation (the hole that produced them).
