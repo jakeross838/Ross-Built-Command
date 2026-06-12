@@ -80,27 +80,39 @@ test(`${PATCH_ROUTE} docstring mentions the waived_at stamp`, () => {
 
 // ── bulk route ────────────────────────────────────────────────────────
 
+// Re-pinned 2026-06-12 per nwrp280 2E-1 adjudication (PART-2E): the bulk
+// route refactored to a TABLE-DRIVEN shape (action → newStatus +
+// timestampField, then one `.update({ status: newStatus, [timestampField]:
+// nowIso, ... })`). Behavior is unchanged — the old guards' literal
+// `updates.received_at = new Date` regexes were STALE, not catching a
+// regression. These guards pin the mapping AND the assignment.
+
 test(`${BULK_ROUTE} stamps received_at on bulk mark_received (regression guard)`, () => {
   const src = readFileSync(BULK_ROUTE, "utf8");
   assert.ok(
-    /action\s*===\s*["']mark_received["'][\s\S]{0,200}updates\.received_at\s*=\s*new Date/.test(src),
-    "bulk route must stamp received_at on action='mark_received'"
+    /action\s*===\s*["']mark_received["'][\s\S]{0,120}timestampField\s*=\s*["']received_at["']/.test(src),
+    "bulk route must map action='mark_received' to timestampField='received_at'"
+  );
+  assert.ok(
+    /\[timestampField\]\s*:\s*nowIso/.test(src),
+    "bulk route must stamp the mapped timestamp field ([timestampField]: nowIso)"
   );
 });
 
 test(`${BULK_ROUTE} stamps waived_at on bulk waive`, () => {
   const src = readFileSync(BULK_ROUTE, "utf8");
   assert.ok(
-    /action\s*===\s*["']waive["'][\s\S]{0,200}updates\.waived_at\s*=\s*new Date/.test(src),
-    "bulk route must stamp waived_at on action='waive'"
+    /action\s*===\s*["']waive["'][\s\S]{0,120}timestampField\s*=\s*["']waived_at["']/.test(src),
+    "bulk route must map action='waive' to timestampField='waived_at'"
   );
 });
 
 test(`${BULK_ROUTE} still sets status='waived' on bulk waive (regression guard)`, () => {
   const src = readFileSync(BULK_ROUTE, "utf8");
   assert.ok(
-    /action\s*===\s*["']waive["'][\s\S]{0,200}updates\.status\s*=\s*["']waived["']/.test(src),
-    "bulk route must still set status='waived' on action='waive'"
+    /action\s*===\s*["']waive["'][\s\S]{0,80}newStatus\s*=\s*["']waived["']/.test(src) &&
+      /status\s*:\s*newStatus/.test(src),
+    "bulk route must map waive→status 'waived' and apply it in the update"
   );
 });
 
