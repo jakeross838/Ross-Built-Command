@@ -1,6 +1,6 @@
 ---
 name: nightwork-qa
-description: Orchestrate code-level QA across the changes in the active phase — spec-check, custodian, security review, AI-logic test, plus UI/DB/API/financial-specific reviewers depending on what changed. Auto-runs at end of /gsd-execute-phase. Each reviewer in a fresh Task context. Critical findings from any reviewer block the phase.
+description: Orchestrate code-level QA across the changes in the active phase. TIER-AWARE per .planning/process/tier-config.json (LOW=2, MEDIUM=4, HIGH=base-6+earned-conditionals; mirrors plan-review's reviewer choice; severity from EXPANDED-SCOPE frontmatter — aborts if undeclared). Auto-runs at end of /gsd-execute-phase. Each reviewer in a fresh Task context. Critical findings from any reviewer block the phase. §6.2 uncovered-domain triggers halt-and-surface.
 argument-hint: "[<phase-number>] [--scope=quick|full] [--skip-block]"
 allowed-tools:
   - Read
@@ -16,11 +16,10 @@ Run code-level QA on the active (or specified) phase. This is the gate between `
 
 Logic:
 1. Detect what changed via `git diff` (against the phase's base) and the phase manifest.
-2. ALWAYS run: nightwork-spec-checker, nightwork-custodian, security-reviewer, nightwork-ai-logic-tester.
-3. IF UI changed: + nightwork-ui-reviewer + nightwork-design-system-reviewer.
-4. IF DB changed: + nightwork-rls-auditor + database-reviewer (parallel with postgres-patterns skill) + nightwork-data-migration-safety.
+2. Resolve the TIER reviewer set from `.planning/process/tier-config.json` per the phase's `severity:` (EXPANDED-SCOPE frontmatter; ABORT if undeclared — closed seam): LOW=2, MEDIUM=4 (mirrored conditional), HIGH=base 6 + conditionals EARNED by the change set (UI → ui-reviewer + design-system-reviewer; DB → rls-auditor + database-reviewer + data-migration-safety; cross-org → multi-tenant; queries → scalability; PII/financial/external → compliance).
 5. IF API routes changed: + api-design and backend-patterns skills (read by reviewers above).
-6. IF financial logic changed: nightwork-ai-logic-tester does a deeper Drummond fixture pass.
+6. IF financial logic changed (HIGH tier): nightwork-ai-logic-tester does a deeper Drummond fixture pass.
+6b. §6.2: change set reveals an uncovered domain for the dispatched tier → HALT-and-surface + jsonl append (never complete QA under the wrong tier).
 7. Each reviewer in a fresh context window via Task tool — independent thinking, no cross-contamination.
 8. Synthesize results: critical from any = BLOCKING; flagged by 2+ = BLOCKING; single non-critical = WARNING.
 9. Write `.planning/qa-runs/<YYYY-MM-DD-HHMM>-qa-report.md`.
@@ -50,25 +49,17 @@ Categorize the changed paths:
 - Logic: `src/lib/**` (especially math, status transitions, aggregations).
 - Tests: `__tests__/**`, `*.test.ts`.
 
-### Step 2 — Build reviewer plan
+### Step 2 — Resolve the TIER reviewer set (from .planning/process/tier-config.json)
 
-Always:
-- nightwork-spec-checker (read-only, compares spec to code).
-- nightwork-custodian (cleans planning tree, surfaces drift).
-- security-reviewer (ECC agent, security review of changed files).
-- nightwork-ai-logic-tester (logic correctness against Drummond).
+Read `severity:` from `.planning/expansions/<phase>-EXPANDED-SCOPE.md` frontmatter. **Missing/invalid → ABORT** ("Re-run /nightwork-init-phase to declare tier") — closed seam per tiering-implementation/nwrp285: there is NO untiered QA path, no --legacy mode. Load tier-config.json (missing/malformed → ABORT with pointer to PLANNING-PIPELINE-TIERING.md). The set MIRRORS plan-review's tier choice (same domain expert reviews plan + execute):
 
-Add if UI changed:
-- nightwork-ui-reviewer.
-- nightwork-design-system-reviewer.
+**LOW (2):** security-reviewer + planner. (Custodian still fires post-ship via /nightwork-cleanup.)
 
-Add if DB changed:
-- nightwork-rls-auditor.
-- database-reviewer (ECC agent, runs with postgres-patterns skill).
-- nightwork-data-migration-safety.
+**MEDIUM (4):** security-reviewer + nightwork-spec-checker + planner + the SAME ONE conditional plan-review picked (mirror).
 
-Add if API changed:
-- (api-design and backend-patterns skills are read by the agents above; no separate reviewer.)
+**HIGH (base 6 + earned conditionals):** nightwork-spec-checker + nightwork-custodian + security-reviewer + nightwork-ai-logic-tester + planner + the SAME ONE-of {architect | enterprise-readiness} plan-review resolved (both fired there → both here). Conditional adds, earned by the change set from Step 1: UI changed → nightwork-ui-reviewer + nightwork-design-system-reviewer; DB/migrations changed → nightwork-rls-auditor + database-reviewer + nightwork-data-migration-safety; cross-org → multi-tenant-architect; queries/aggregations → scalability; PII/financial/audit/external → compliance. (api-design and backend-patterns skills are read by the agents above; no separate reviewer.)
+
+**§6.2 re-tier trigger at QA (mechanical):** if the CHANGE SET reveals a domain the dispatched tier didn't cover (e.g., a LOW phase's diff contains a migration or new aggregation), **HALT — do not complete QA under the wrong tier.** Surface to Jake (detected trigger, dispatched tier, recommended tier; work-done-so-far becomes a precursor for retroactive review) AND append the event to `.planning/process/mid-execute-halts.jsonl` (append-only, committed): `{"when":"<ISO>","phase":"<name>","tier_at_dispatch":"<tier>","trigger":"qa-uncovered-domain:<which>","recommended_tier":"<tier>","disposition":"pending","synthetic":false}`.
 
 ### Step 3 — Spawn reviewers in parallel via Task tool
 

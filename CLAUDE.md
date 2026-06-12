@@ -1034,6 +1034,34 @@ Default posture absent specific orchestrator directive: **halt-and-surface on di
   verification) — Rule 10 generalizes the principle to all multi-
   variable diagnostic surfaces, not just schema/UI.
 
+- **Rule 11 — Severity tiering (per tiering-implementation, nwrp285;
+  design: `.planning/process/PLANNING-PIPELINE-TIERING.md` APPROVED
+  Rev 3; config: `.planning/process/tier-config.json` — committed,
+  never gitignored).** Every phase declares `severity: LOW | MEDIUM |
+  HIGH` in EXPANDED-SCOPE.md frontmatter at `/nightwork-init-phase`
+  time, with a `severity_rationale` that RENDERS the fired detection
+  signals (not just the verdict). The tier drives everything
+  downstream: pipeline depth (LOW skips the assumptions-analyzer;
+  iter-2s only on findings), reviewer sets (`/nightwork-plan-review` +
+  `/nightwork-qa`: LOW=2, MEDIUM=4 with one conditional, HIGH=base 6 +
+  earned conditionals, architect-vs-enterprise picked by the mechanical
+  signal table — both fire = both), and cost ceilings (LOW $50/$50,
+  MEDIUM $100/$75, HIGH $200/$100; one bump per slice per Rule 7c).
+  `/np` ABORTS on a missing/invalid severity — there is NO untiered
+  path, no `--legacy` mode (closed seam; the old fixed reviewer sets
+  were deleted at cutover). §6.2 re-tier triggers fire MECHANICALLY at
+  plan-author, plan-review, and QA time (schema on LOW/MEDIUM,
+  cross-tenant on LOW/MEDIUM, financial logic on LOW, external
+  integration on any, reviewer/QA tier-mismatch flags): the response is
+  HALT-and-surface for Jake's re-tier — never auto-re-tier, never
+  scope-trim to dodge (Rule 7a/7e symmetry). Every §6.2 halt appends to
+  `.planning/process/mid-execute-halts.jsonl` (append-only, committed);
+  `PIPELINE-TIERING-REVIEW-N.md` cites that file as its data source,
+  computes `mid_execute_halt_rate` per tier over trailing 4 phases, and
+  a >20% rate MANDATES a revision proposal (tier characteristics or
+  signal regex) shipped before the next phase at that tier dispatches.
+  Tier is cited in every commit body, QA report, and plan-review report.
+
 ## Deployment
 
 Vercel + Next.js 14. Single region: **iad1** (N. Virginia). Full runbook in `.planning/deployment.md`.

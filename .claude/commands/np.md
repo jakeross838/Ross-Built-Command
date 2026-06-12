@@ -25,7 +25,7 @@ $1 = phase name. Required.
 
 <algorithm>
 
-## Pre-step — Verify EXPANDED-SCOPE.md exists
+## Pre-step — Verify EXPANDED-SCOPE.md exists + severity declared (tiering per nwrp285)
 
 Read `.planning/expansions/<phase-name>-EXPANDED-SCOPE.md`.
 
@@ -33,7 +33,16 @@ Read `.planning/expansions/<phase-name>-EXPANDED-SCOPE.md`.
   > "EXPANDED-SCOPE.md missing for phase `<phase-name>`. Run `/nightwork-init-phase <phase-name>` first to capture stated scope, run requirements expansion, and complete auto-setup."
 - **If file exists with status DRAFT:** abort with message:
   > "EXPANDED-SCOPE.md is DRAFT — not approved yet. Re-run `/nightwork-init-phase <phase-name>` to walk through approval, or edit the Status line manually if you've already reviewed."
-- **If file exists with status APPROVED:** proceed.
+- **If `severity:` field missing from frontmatter OR not in {LOW, MEDIUM, HIGH}:** abort with message:
+  > "EXPANDED-SCOPE.md missing severity: field. Re-run /nightwork-init-phase to declare tier."
+- **Load `.planning/process/tier-config.json`.** If missing OR malformed JSON: abort with message:
+  > "tier-config.json missing/malformed at .planning/process/ — see .planning/process/PLANNING-PIPELINE-TIERING.md. Restore the committed config before dispatching."
+- **If file exists with status APPROVED + valid severity + config loads:** proceed. The tier drives every downstream stage:
+  - **LOW:** SKIP gsd-assumptions-analyzer (EXPANDED-SCOPE is the analysis); planner 1 iter; plan-checker 1 iter (cap 2 cycles on findings).
+  - **MEDIUM:** analyzer one pass auto; planner/checker 1 iter default, 2 on findings.
+  - **HIGH:** analyzer full pass; iter-2 ONLY on iter-1 findings (no forced re-author).
+  Pass `severity` to /nightwork-plan-review (it resolves the reviewer set from tier-config). Cite the tier in every commit + report this dispatch produces.
+- **§6.2 re-tier watch (mechanical, per tier-config `retier_triggers`):** if the drafted PLAN.md surfaces a trigger condition for the declared tier (schema change on LOW/MEDIUM, cross-tenant on LOW/MEDIUM, financial logic on LOW, external integration on any), HALT — do NOT auto-re-tier. Surface trigger + current tier + recommended tier to Jake, and append the event to `.planning/process/mid-execute-halts.jsonl` (append-only, committed): `{"when":"<ISO>","phase":"<name>","tier_at_dispatch":"<tier>","trigger":"<which>","recommended_tier":"<tier>","disposition":"pending","synthetic":false}`.
 
 ## Step 1 — Discuss
 
@@ -55,7 +64,7 @@ The planner produces PLAN.md with task breakdown, dependency graph, acceptance c
 
 Run `/nightwork-plan-review <phase-name>`.
 
-Spawns architect + planner + enterprise-readiness + multi-tenant-architect + scalability + compliance + security-reviewer + design-pushback (where applicable) in fresh contexts via Task tool. Critical findings block execute (per D-007 enterprise readiness gate).
+Spawns the TIER-RESOLVED reviewer set (from `.planning/process/tier-config.json` — LOW: 2; MEDIUM: 4 with one conditional; HIGH: base 6 + conditional adds, architect-vs-enterprise-readiness picked by the mechanical signal table, both-fire = both) in fresh contexts via Task tool. Critical findings block execute (per D-007 enterprise readiness gate).
 
 ## Step 4 — Report
 
@@ -64,20 +73,14 @@ Return a single message ≤250 words:
 ```
 ✓ Phase <phase-name> planned
 
-EXPANDED-SCOPE.md      Status: APPROVED (loaded as input context)
+EXPANDED-SCOPE.md      Status: APPROVED · Severity: <LOW|MEDIUM|HIGH> (ceiling $<N> per tier-config)
 DISCUSSION.md          Sections: <N>; ambiguities resolved: <N>
 SPEC.md                Acceptance criteria: <N falsifiable items>
 PLAN.md                Tasks: <N>; estimated waves: <N>; parallelizable: <N>
 PLAN-REVIEW.md         Verdict: <PASS | NEEDS WORK | BLOCKING>
-                       Reviews:
-                         architect:           <PASS | findings>
-                         planner:             <PASS | findings>
-                         enterprise-readiness: <PASS | findings>
-                         multi-tenant:        <PASS | findings>
-                         scalability:         <PASS | findings>
-                         compliance:          <PASS | findings>
-                         security:            <PASS | findings>
-                         design-pushback:     <PASS | findings | N-A>
+                       Tier reviewer set (<N> reviewers per tier-config):
+                         <reviewer>: <PASS | findings>
+                         … (one line per tier-resolved reviewer; conditionals labeled)
 
 Next:
   /nx <phase-name>      — preflight + execute + qa
@@ -91,6 +94,9 @@ If plan-review verdict is BLOCKING:
 <error-handling>
 - **EXPANDED-SCOPE.md missing**: abort, tell Jake to run `/nightwork-init-phase`.
 - **EXPANDED-SCOPE.md is DRAFT**: abort, tell Jake to approve or re-run init.
+- **`severity:` missing/invalid**: abort — "Re-run /nightwork-init-phase to declare tier." (No default tier. No legacy untiered path — closed seam per tiering-implementation.)
+- **tier-config.json missing/malformed**: abort with pointer to PLANNING-PIPELINE-TIERING.md.
+- **§6.2 trigger fires mid-plan**: HALT + surface + jsonl append. Never auto-re-tier (Rule 7a symmetry).
 - **/gsd-discuss-phase fails**: surface the failure; don't auto-retry.
 - **/gsd-plan-phase fails**: same.
 - **Plan-review BLOCKING**: don't auto-fix. Surface findings to Jake. He decides whether to revise plan, revise EXPANDED-SCOPE, or override.

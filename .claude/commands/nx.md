@@ -38,6 +38,10 @@ args: phase=<phase-name>
 
 The skill runs 10 checks (EXPANDED-SCOPE approved / SETUP-COMPLETE exists / prereq phases shipped / Vercel env vars / Supabase tables+RLS / third-party accounts / Drummond fixtures / last QA verdict / working tree clean / branch matches phase) and writes either PREFLIGHT-PASS.md or PREFLIGHT-FAIL.md.
 
+**Check 11 — tier alignment (tiering per nwrp285):** read `severity:` from BOTH `.planning/expansions/<phase-name>-EXPANDED-SCOPE.md` frontmatter AND the phase's PLAN.md frontmatter. If either is missing or they differ → **FAIL** with:
+> "Tier mismatch: EXPANDED-SCOPE severity=<A> vs PLAN.md severity=<B>. The tier is locked at /nightwork-init-phase time; if the plan legitimately re-tiered (§6.2 Jake-authorized), update BOTH files to the new tier before /nx."
+Also confirm `.planning/process/tier-config.json` parses; malformed/missing → FAIL with pointer to PLANNING-PIPELINE-TIERING.md. The tier's `per_plan_halt` + `halt_gate_ceiling` (from tier-config) govern execute per Rule 7.
+
 ### If PASS
 
 Proceed to step 2.

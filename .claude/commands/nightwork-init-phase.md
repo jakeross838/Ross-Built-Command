@@ -61,9 +61,37 @@ The agent runs read-only investigation and produces EXPANDED-SCOPE.md with all 9
 
 Wait for the agent to return.
 
+## Step 2.5 — Severity declaration (tiering per nwrp285 — REQUIRED before Jake review)
+
+Run the `init_detection_signals` regex set from `.planning/process/tier-config.json` against the STATED SCOPE + the drafted EXPANDED-SCOPE body. Then AskUserQuestion in one of three flavors per signal posture (design §4):
+
+**Flavor A — clean signals (all one direction):** list every fired signal with its matched quote, recommend the tier, show that tier's reviewer set + ceiling + pipeline depth from tier-config. Options: LOW / MEDIUM / HIGH / Override-with-rationale.
+
+**Flavor B — mixed signals:** display the CONFLICT explicitly — each fired signal grouped by the tier it suggests, with the stated-scope quote that fired it, then the dominant-weighting recommendation WITH its reasoning. Never a black-box verdict. Same options.
+
+**Flavor C — sparse signals:** say so; infer from estimated wall-clock; offer "Add more stated scope first" as a fourth option.
+
+After Jake selects, write into the EXPANDED-SCOPE.md frontmatter:
+
+```yaml
+severity: <LOW|MEDIUM|HIGH>
+severity_rationale: |
+  <PA-1 CONDITION (nwrp285): the rationale RENDERS THE SIGNALS, not just
+  the verdict — e.g. "3 HIGH signals: schema/migration ('migration 00111'
+  quote), financial logic ('G703 line math'), cross-tenant ('org_id in
+  mutation path'); 1 LOW: docs touch → HIGH." Auto-populate from the
+  fired signals; offer Jake edit-before-confirm. A rationale that names
+  only the tier is a black box with extra steps — rejected at review.>
+estimated_wall_clock: <Nh>
+halt_gate_ceiling: <auto from tier-config: LOW=50, MEDIUM=100, HIGH=200>
+per_plan_halt: <auto from tier-config: LOW=50, MEDIUM=75, HIGH=100>
+```
+
+**Override path:** Jake may downgrade below the signal recommendation — warn + require explicit confirm (the warning text names the fired signals being overridden). Upgrades need no warning. HIGH phases where ZERO architect/enterprise signals fire → flag as probable mis-tier before accepting.
+
 ## Step 3 — Show Jake EXPANDED-SCOPE.md
 
-Tell Jake the path. Display the §6 "Targeted questions" and §7 "Recommended scope expansion" sections inline (the most decision-relevant parts).
+Tell Jake the path. Display the §6 "Targeted questions" and §7 "Recommended scope expansion" sections inline (the most decision-relevant parts), plus the declared `severity:` + rendered signal rationale.
 
 Ask:
 

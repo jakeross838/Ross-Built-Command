@@ -1,0 +1,116 @@
+{
+  "$comment": "Severity-tiering config — SINGLE SOURCE OF TRUTH for /np, /nightwork-init-phase, /nightwork-plan-review, /nightwork-qa, /nx. Derived from .planning/process/PLANNING-PIPELINE-TIERING.md (APPROVED Rev 3, commit 462e2a3); implemented per tiering-implementation phase (nwrp285). PA-2 condition: this file is COMMITTED, never gitignored — rigor parameters change only via reviewable commits. REVIEW-N tuning lands as diffs to this file.",
+  "version": 1,
+  "tiers": {
+    "LOW": {
+      "halt_gate_ceiling": 50,
+      "per_plan_halt": 50,
+      "bump_path": [50, 75],
+      "pipeline": {
+        "assumptions_analyzer": "SKIP",
+        "planner_iters": "1 (iter-2 only on plan-checker BLOCKING)",
+        "plan_checker_iters": "1 (cap 2 cycles)",
+        "execute_mode": "INLINE"
+      },
+      "plan_review_reviewers": ["security-reviewer", "planner"],
+      "qa_reviewers": ["security-reviewer", "planner"],
+      "smoke": "anon-tolerant; authed REQUIRED for non-PUBLIC paths; Owner Portal critical",
+      "e2e": false
+    },
+    "MEDIUM": {
+      "halt_gate_ceiling": 100,
+      "per_plan_halt": 75,
+      "bump_path": [100, 150],
+      "pipeline": {
+        "assumptions_analyzer": "RUN (one pass, auto mode)",
+        "planner_iters": "1 default, 2 if plan-checker findings",
+        "plan_checker_iters": "1 default, 2 if findings",
+        "execute_mode": "subagent dispatch OK (Rule 5 files_modified disjointness)"
+      },
+      "plan_review_reviewers": ["architect", "planner", "security-reviewer", "<ONE conditional>"],
+      "qa_reviewers": ["security-reviewer", "spec-checker", "planner", "<ONE conditional (mirror plan-review)>"],
+      "conditional_pool": {
+        "enterprise-readiness": "new APIs / audit logs",
+        "scalability": "queries / aggregations",
+        "compliance": "PII / financial / audit",
+        "design-pushback": "UI surfaces",
+        "multi-tenant-architect": "cross-org concern"
+      },
+      "conditional_rule": "pick the dominant axis; if genuinely 2 apply, surface at /np dispatch and add the second",
+      "smoke": "authed primitive REQUIRED for UI surfaces; anon OK for PUBLIC-path gates",
+      "e2e": false
+    },
+    "HIGH": {
+      "halt_gate_ceiling": 200,
+      "per_plan_halt": 100,
+      "bump_path": [200, 300],
+      "pipeline": {
+        "assumptions_analyzer": "RUN (full pass)",
+        "planner_iters": "1 default; iter-2 ONLY on iter-1 findings (Rev 2 — no forced re-author)",
+        "plan_checker_iters": "1 default, 2 on findings",
+        "execute_mode": "subagent dispatch (Rule 5 disjointness)"
+      },
+      "plan_review_reviewers_base6": ["spec-checker", "planner", "security-reviewer", "ai-logic-tester", "custodian", "<ONE-of architect|enterprise-readiness (signal table; both fire = BOTH, base 7)>"],
+      "qa_reviewers_base6": ["spec-checker", "custodian", "security-reviewer", "ai-logic-tester", "planner", "<ONE-of architect|enterprise-readiness (mirror)>"],
+      "conditional_adds": {
+        "rls-auditor+database-reviewer+data-migration-safety": "DB / migration work",
+        "multi-tenant-architect": "cross-org concern",
+        "scalability": "queries / aggregations / hot paths",
+        "design-pushback (plan-review) / ui-reviewer+design-system-reviewer (QA)": "UI changed",
+        "compliance": "PII / financial / audit / external integration"
+      },
+      "smoke": "SmokeAuthHelper REQUIRED; financial phases run ai-logic-tester against Drummond fixtures e2e",
+      "e2e": true
+    }
+  },
+  "architect_vs_enterprise_signals": {
+    "$comment": "HIGH base-6 'ONE of' picked mechanically (design §2.3). Both-fire => BOTH (base 7). Zero-fire on a HIGH phase => init mis-tier, halt for re-tier per §6.2.",
+    "architect": [
+      "new entity/table in plan body",
+      "FK additions or schema layering",
+      "new component/service boundaries",
+      "module-spanning refactor"
+    ],
+    "enterprise_readiness": [
+      "new audit-log surfaces (status_history, activity_log entries)",
+      "Sentry / observability changes",
+      "rate limiting / idempotency on retries",
+      "error handling / graceful degradation in plan body",
+      "data retention / lifecycle policies"
+    ]
+  },
+  "init_detection_signals": {
+    "$comment": "Informational hints at /nightwork-init-phase — NOT auto-tier. Rendered IN the severity_rationale per nwrp285 PA-1 condition: the rationale must name the SIGNALS, not just the verdict.",
+    "signals": [
+      { "pattern": "supabase/migrations|\\bmigrations?\\b|CREATE TABLE|ALTER TABLE|CREATE POLICY|schema change", "suggests": "HIGH", "label": "schema/migration" },
+      { "pattern": "new (entity|table)", "suggests": "HIGH", "label": "new entity" },
+      { "pattern": "invoice|draw|payment|lien|change.?order|cents|G70[23]", "suggests": "MEDIUM-HIGH", "label": "financial logic" },
+      { "pattern": "impersonat|platform.?admin|cross.?org|org_id", "suggests": "HIGH", "label": "cross-tenant" },
+      { "pattern": "quickbooks|qbo|buildertrend|procore|stripe|email.?in|resend", "suggests": "HIGH", "label": "external integration" },
+      { "pattern": "\\bUI\\b|nav|placeholder|config|hide|flag|label", "suggests": "LOW-MEDIUM", "label": "UI/config" },
+      { "pattern": "hook calibration|doc.?only|\\.planning/", "suggests": "LOW", "label": "docs/hooks" },
+      { "pattern": "wall.?clock.*(≤|<=?)\\s*4h", "suggests": "LOW", "label": "small wall-clock (not dispositive)" },
+      { "pattern": "wall.?clock.*(≥|>=?)\\s*16h", "suggests": "HIGH", "label": "large wall-clock (not dispositive)" }
+    ]
+  },
+  "retier_triggers": {
+    "$comment": "§6.2 mechanical halt-and-re-tier. Fire at plan-author, plan-review iter-1, or QA time. Executor HALTS — never auto-re-tiers. Every firing appends to mid_execute_halts.jsonl (PA-3).",
+    "triggers": [
+      { "at_tier": "LOW", "condition": "schema change (migrations in files_modified OR CREATE/ALTER TABLE / CREATE POLICY in plan body)", "action": "HALT → re-tier HIGH" },
+      { "at_tier": "LOW", "condition": "cross-tenant concern (platform_admins rows, impersonation, cross-org joins, RLS posture)", "action": "HALT → re-tier HIGH" },
+      { "at_tier": "LOW", "condition": "financial logic / cents math (financial-entity status transitions, new aggregation, payment math, G702/G703 logic)", "action": "HALT → re-tier MEDIUM minimum (HIGH if also schema/cross-tenant)" },
+      { "at_tier": "MEDIUM", "condition": "new schema (any supabase/migrations/*)", "action": "HALT → re-tier HIGH" },
+      { "at_tier": "MEDIUM", "condition": "cross-tenant data flow (cross-org joins, new platform-admin surface, new RLS)", "action": "HALT → re-tier HIGH" },
+      { "at_tier": "ANY", "condition": "new external integration", "action": "HALT → re-tier HIGH" },
+      { "at_tier": "ANY", "condition": "reviewer flags tier-mismatch at plan-review iter-1", "action": "HALT → re-tier per reviewer flag" },
+      { "at_tier": "ANY", "condition": "QA surfaces an uncovered domain", "action": "HALT → re-tier to discovered tier; work-done = precursor for retroactive review" }
+    ]
+  },
+  "friction_tax": {
+    "metric": "mid_execute_halt_rate(tier) = §6.2 halts / phases dispatched, trailing 4 per tier",
+    "threshold": 0.2,
+    "capture_file": ".planning/process/mid-execute-halts.jsonl",
+    "capture_contract": "APPEND-ONLY and COMMITTED (nwrp285 PA-3). One JSON object per halt event: {when, phase, tier_at_dispatch, trigger, recommended_tier, disposition, synthetic}. PIPELINE-TIERING-REVIEW-N.md MUST cite this file as its data source; an EMPTY file at REVIEW-1 is itself a finding — distinguish nothing-halted from nothing-logged.",
+    "breach_action": "next PIPELINE-TIERING-REVIEW-N.md MUST propose revisions (tier characteristics OR signal regex set), Jake-authorized, shipped BEFORE the next phase at that tier dispatches"
+  }
+}

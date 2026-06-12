@@ -1,6 +1,6 @@
 ---
 name: nightwork-plan-review
-description: Plan-level architectural review. Auto-runs at the end of /gsd-plan-phase. Spawns architect + planner + enterprise-readiness + multi-tenant-architect + scalability + compliance + security-reviewer + design-pushback (when applicable) in fresh contexts via Task tool. Critical findings block execute.
+description: Plan-level architectural review. Auto-runs at the end of /gsd-plan-phase. TIER-AWARE per .planning/process/tier-config.json (LOW=2 reviewers, MEDIUM=4, HIGH=base-6+earned-conditionals; severity from EXPANDED-SCOPE frontmatter — aborts if undeclared). Spawns the tier-resolved set in fresh contexts via Task tool. Critical findings block execute. §6.2 re-tier triggers halt-and-surface.
 argument-hint: "[<phase-number>] [--skip=architect,security,...] [--skip-block]"
 allowed-tools:
   - Read
@@ -17,15 +17,7 @@ Run plan-level architectural review on the active (or specified) phase. This is 
 Logic:
 1. Read PLAN.md, SPEC.md (if present), and phase metadata.
 2. Skip review entirely if phase metadata says `complexity: trivial` (and surface that).
-3. Spawn the following in parallel via Task tool, each in a fresh context:
-   - architect (ECC agent)
-   - planner (ECC agent)
-   - nightwork-enterprise-readiness-reviewer
-   - nightwork-multi-tenant-architect
-   - nightwork-scalability-reviewer (if plan touches queries / hot paths)
-   - nightwork-compliance-reviewer (if plan touches PII / financial / audit)
-   - security-reviewer (ECC agent)
-   - nightwork-design-pushback-agent (if plan touches UI)
+3. Resolve the TIER reviewer set from `.planning/process/tier-config.json` per the phase's `severity:` (EXPANDED-SCOPE frontmatter; ABORT if undeclared — closed seam, no untiered path) and spawn it in parallel via Task tool, each in a fresh context: LOW=2 (security-reviewer + planner); MEDIUM=4 (architect + planner + security-reviewer + ONE dominant-axis conditional); HIGH=base 6 (spec-checker + planner + security-reviewer + ai-logic-tester + custodian + ONE-of architect|enterprise-readiness via the mechanical signal table, both-fire = both) + conditionals earned by plan content. §6.2 re-tier triggers HALT-and-surface + jsonl append.
 4. Synthesize results: critical from any = REVISE-PLAN; single non-critical = warning.
 5. Write `.planning/plan-reviews/<phase>-plan-review.md`.
 6. Return blocking-or-clean verdict.
@@ -44,23 +36,21 @@ Logic:
 - `.planning/phases/<N>/PLAN.md` — required. Abort if missing.
 - `.planning/phases/<N>/SPEC.md` — optional but strongly preferred.
 - `.planning/phases/<N>/RESEARCH.md` — if present.
+- `.planning/expansions/<phase>-EXPANDED-SCOPE.md` frontmatter — read `severity:`. **Missing/invalid → ABORT**: "EXPANDED-SCOPE.md missing severity: field. Re-run /nightwork-init-phase to declare tier." (Closed seam per tiering-implementation/nwrp285 — there is NO untiered review path, no --legacy mode, no fallback.)
+- `.planning/process/tier-config.json` — load. Missing/malformed → ABORT with pointer to PLANNING-PIPELINE-TIERING.md.
 - Phase metadata in PLAN.md frontmatter — check for `complexity: trivial` and exit if so.
 
-### Step 2 — Decide reviewer plan
+### Step 2 — Resolve the TIER reviewer set (from tier-config.json — the single source of truth)
 
-Always:
-- architect, planner, nightwork-enterprise-readiness-reviewer, nightwork-multi-tenant-architect, security-reviewer.
+**LOW (2 reviewers):** security-reviewer + planner. Nothing else unless the EXPANDED-SCOPE explicitly justifies an add.
 
-Add if PLAN.md mentions queries / aggregations / dashboards / list views / hot paths:
-- nightwork-scalability-reviewer.
+**MEDIUM (4 reviewers):** architect + planner + security-reviewer + ONE conditional picked by dominant axis from the tier-config `conditional_pool` (enterprise-readiness ↔ new APIs/audit logs; scalability ↔ queries/aggregations; compliance ↔ PII/financial/audit; design-pushback ↔ UI surfaces; multi-tenant-architect ↔ cross-org). If two axes genuinely dominate, surface at dispatch and add the second.
 
-Add if PLAN.md mentions PII / financial / audit trails / external integrations / encryption / auth flows:
-- nightwork-compliance-reviewer.
+**HIGH (base 6 + earned conditionals):** spec-checker + planner + security-reviewer + ai-logic-tester + custodian + ONE-of {architect | enterprise-readiness} picked MECHANICALLY by the tier-config `architect_vs_enterprise_signals` table against EXPANDED-SCOPE + PLAN body — **both fire → BOTH (base 7)**; **zero fire on a HIGH phase → that's an init mis-tier: HALT for Jake re-tier per §6.2.** Conditional adds, each earned by phase content: rls-auditor + database-reviewer + data-migration-safety (DB/migrations); multi-tenant-architect (cross-org); scalability (queries/aggregations/hot paths); design-pushback (UI); compliance (PII/financial/audit/external).
 
-Add if PLAN.md mentions UI / components / screens / routes / pages:
-- nightwork-design-pushback-agent.
+**§6.2 re-tier triggers (mechanical, all tiers):** while reading PLAN.md, run the tier-config `retier_triggers` conditions for the declared tier (schema on LOW/MEDIUM, cross-tenant on LOW/MEDIUM, financial logic on LOW, external integration on any, reviewer tier-mismatch flags). Any firing → **HALT, do NOT auto-re-tier**; surface trigger + recommended tier to Jake AND append the event to `.planning/process/mid-execute-halts.jsonl` (append-only, committed): `{"when":"<ISO>","phase":"<name>","tier_at_dispatch":"<tier>","trigger":"<which>","recommended_tier":"<tier>","disposition":"pending","synthetic":false}`.
 
-Honor `--skip=` overrides.
+Honor `--skip=` overrides (logged; a skip never substitutes for a re-tier).
 
 ### Step 3 — Spawn reviewers in parallel
 
