@@ -79,6 +79,24 @@ async function main() {
     .map(([n, v]) => `${n}=${encodeURIComponent(v)}`)
     .join("; ");
 
+  // Generic override (2D probes): ZZ_PATH + ZZ_METHOD env vars redirect the
+  // authed fetch to any route; [json-body] arg becomes the raw body. The
+  // standalone generic script hit persistent per-process ENOTFOUND on this
+  // box; this proven auth+fetch path is the workaround.
+  if (process.env.ZZ_PATH) {
+    const res2 = await fetch(`${APP}${process.env.ZZ_PATH}`, {
+      method: (process.env.ZZ_METHOD ?? "GET").toUpperCase(),
+      headers: { cookie: cookieHeader, "content-type": "application/json" },
+      body: bodyJson ?? undefined,
+    });
+    const text2 = await res2.text();
+    console.log(
+      `${res2.status} ${(process.env.ZZ_METHOD ?? "GET").toUpperCase()} ${process.env.ZZ_PATH} as ${email}`
+    );
+    console.log(text2.slice(0, 500));
+    process.exit(res2.status < 500 ? 0 : 1);
+  }
+
   let res;
   if (action === "get") {
     res = await fetch(`${APP}/api/invoices/${INVOICE_ID}`, {
