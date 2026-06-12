@@ -830,6 +830,19 @@ export async function extractInvoice(
   let autoCommitReason: string | null = null;
   if (settings.auto_commit_enabled && invoice.vendor_id) {
     const threshold = settings.auto_commit_threshold;
+    // Ingestion validation (per nwrp278 / PART-2B data-quality notes): a
+    // suspect observation NEVER auto-commits — zero/negative amounts and
+    // future-dated transactions stay `pending` so the verification queue
+    // (the human eye) adjudicates them. Not a rejection: the line still
+    // stages, it just doesn't ride the auto path into vendor_item_pricing.
+    // Origin: the 2B sweep found one 2027-dated and two $0.00 spine rows
+    // that auto-committed unflagged. The auto path's spine transaction
+    // date comes from invoice.invoice_date (or today), so the date check
+    // is invoice-level here.
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const invoiceDateIso = (invoice.invoice_date as string | null) ?? todayIso;
+    const futureDated = invoiceDateIso > todayIso;
+    let linesSuspectHeld = 0;
     for (const staged of insertedLines) {
       const tier = staged.match.created_via;
       const shouldAutoCommit =
@@ -838,6 +851,15 @@ export async function extractInvoice(
         (tier === "ai_semantic_match" && staged.match.confidence >= threshold);
 
       if (!shouldAutoCommit) continue;
+
+      if (staged.rawTotalCents <= 0 || futureDated) {
+        linesSuspectHeld++;
+        console.warn(
+          `[extract] line ${staged.id} held for verification (suspect observation: ` +
+            `${staged.rawTotalCents <= 0 ? `amount ${staged.rawTotalCents}c` : `future date ${invoiceDateIso}`})`
+        );
+        continue;
+      }
 
       try {
         await commitLineToSpine(supabase, staged.id, {
@@ -852,7 +874,7 @@ export async function extractInvoice(
       }
     }
     if (linesAutoCommitted > 0) {
-      autoCommitReason = `Auto-committed ${linesAutoCommitted}/${insertedLines.length} lines (alias/trigram always; ai_semantic >= ${threshold})`;
+      autoCommitReason = `Auto-committed ${linesAutoCommitted}/${insertedLines.length} lines (alias/trigram always; ai_semantic >= ${threshold})${linesSuspectHeld > 0 ? `; ${linesSuspectHeld} suspect line(s) held for verification (zero amount / future date)` : ""}`;
       await supabase
         .from("document_extractions")
         .update({

@@ -62,8 +62,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Workflow settings gate the whole operation.
-    const settings = await getWorkflowSettings(membership.org_id);
+    // Workflow settings gate the whole operation — fail CLOSED (F2B-1 per
+    // nwrp278, same Rule 8 posture as the single-action route's F2A-2): if
+    // settings can't be read, the org's gate configuration (batch
+    // kill-switch + the five per-invoice gates below) is unknown and no
+    // batch mutation may proceed on guessed code defaults.
+    let settings: Awaited<ReturnType<typeof getWorkflowSettings>>;
+    try {
+      settings = await getWorkflowSettings(membership.org_id, {
+        failClosed: true,
+      });
+    } catch (err) {
+      console.error(
+        `[batch-action] settings unavailable — failing closed: ${err instanceof Error ? err.message : err}`
+      );
+      return NextResponse.json(
+        { error: "Workflow settings unavailable — cannot evaluate batch gates. Retry shortly." },
+        { status: 422 }
+      );
+    }
     if (!settings.batch_approval_enabled) {
       return NextResponse.json(
         { error: "Batch approval is disabled for this organization" },
