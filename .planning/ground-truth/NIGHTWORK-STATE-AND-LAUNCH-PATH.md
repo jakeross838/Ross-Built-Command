@@ -123,9 +123,17 @@ Critical-path item 4 is DONE (`10bba5f`, deploy `dpl_GUonZ7AGGTw3CHp6s4XRBscErYG
 
 Backfills (72-CO + 13-invoice + 6 uncoded rows — items 2-4) → settings flip (item 5) → item 8 adjudication (brief ready: ITEM-8-ADJUDICATION-BRIEF.md) → 14-job fee collection (item 9) → Diane's $126,927.25 reconciliation (item 6) → the walk above. Wiring no longer blocks any of it.
 
+### Interaction-bug phase — CLOSED with the CONFIG DECISION (2026-06-12, nwrp283)
+
+**Decision: listener RE-ENABLED in Production** (`NEXT_PUBLIC_AUTH_STATE_LISTENER=true`, deploy `dpl_7HDBz3NoeCSbfV6x3FmJfskbxndk`, cache-skip + domain-ID checks ✓). L2 post-flip verification run: anon-curl ✓ + **automated authed cell on live production** (Playwright fresh sign-in as a smoke PM → shell healthy, role resolves, 17 supabase requests — the exact signature that broke on 2026-05-28 is absent). **Jake's 2-minute incognito spot-check is the remaining human confirmation** (heavy-account case: nav + role badge + jobs sidebar load normally).
+
+**Diagnosis (honest):** the deadlock is **absent at current HEAD in BOTH build flavors** — Preview deploy and a true production bundle (local `NEXT_PUBLIC_VERCEL_ENV=production` build) both ran fresh-sign-in cells HEALTHY. The line-level mechanism was never named: the prime suspect (supabase-js await-inside-onAuthStateChange lock deadlock) was **refuted by two cells** (bare Node AND raw-client real Chromium — no deadlock on v2.103), and the May-28 truth table carried an uncontrolled third variable (**session freshness** — the SIGNED_IN-event path only runs on fresh sign-ins; the original cells never controlled it). 60+ intervening commits changed multiple client surfaces. Per nwrp283 (3), no fix was compressed-to-fit — there is nothing left at HEAD to fix.
+
+**Revisit trigger (the rollback contract):** if the signature reappears (post-login shell stuck "Loading…", zero completing supabase requests), the proven 2-minute mitigation is `vercel env rm NEXT_PUBLIC_AUTH_STATE_LISTENER production` + force redeploy. Then bisect `acbfa06..HEAD` using the now-cheap per-commit cell runner (`tmp/zz-listener-app-cell.mjs` against local production bundles — no deploys needed). TD-WB-LISTENER-PHASE1-INTERACTION carries this trigger; TD-WB-LISTENER-UNFLAG closes (the unflag is done).
+
 ### Next per stamped sequence
 
-Interaction-bug phase entry proposal surfaced (INTERACTION-BUG-PHASE-ENTRY.md) — **not begun**; tiering-implementation after; 3-series after that (nwrp233 gate intact).
+**Tiering-implementation entry surfaces next — not begun** (nwrp233 gate closes on its original conditions); 3-series after.
 
 ## Cost ledger (full GTV)
 
