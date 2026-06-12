@@ -14,15 +14,15 @@ progress:
 
 # Nightwork — State
 
-**Updated:** 2026-05-27 (Phase 1 internal-launch-hide SHIPPED — Feature-flag HIDE phase validated LOW-severity tiering prototype; all 6 tasks landed; QA PASS; blocked on tiering design for Phase 2).
+**Updated:** 2026-06-12 (GTV CLOSED per nwrp281 + Per-Job Wiring SHIPPED per nwrp282. Canonical state lives in `.planning/ground-truth/NIGHTWORK-STATE-AND-LAUNCH-PATH.md` — this file is the quick pointer.)
 
 ## Active phase
 
-- **Branch:** `main`
-- **Phase:** Internal Ross Built Launch Phase 1 (internal-launch-hide) — SHIPPED 2026-05-27. Next: Phase 2 (UI-FINALIZE) pending tiering design per nwrp233 BLOCKING gate.
-- **Plan position:** 6 tasks completed (T1-T6). Phase 1 SHIPPED. Phase 2 dispatch blocked pending tiering design work.
-- **Upstream:** Wave-B Slice-1 (B-D080/B-1a/B-1a-bis/B-1b) complete + GATE 2 HALT for Jake review. Wave-B Slice-2 (B-2a/B-2b/B-3/B-4) complete; B-5..B-7 under Grounding Pass review. Grounding Pass → Phase 1 → (pending tiering design) → Phase 2 → Phase 3.
-- **Next after GATE:** Tiering design work BEFORE 3-series dispatch (3A/3B/3C/3D). Covers reviewer-set profiles, per-plan cost ceiling, authed-smoke SmokeAuthHelper primitive, escalation rules.
+- **Branch:** `main` — HEAD `10bba5f`; production `dpl_GUonZ7AGGTw3CHp6s4XRBscErYGu`.
+- **Just shipped:** **Per-Job Wiring (W-1..7)** — budget/bills/pay-apps/activity tabs wired to real data; F2D-2 affordance; W-6 metric de-dupe; both inherited test debts cleared — **full test suite green, first time on record**. Evidence: `.planning/ground-truth/PART-WIRING.md`.
+- **Before that:** GROUND-TRUTH-VERIFICATION complete end-to-end (Stages 1→2A-E→3→4, ~$285-325, every stage under its gate) + nwrp281 close-out wave (fee resolved 11%-contract/variable-per-CO; F2E-3 void-release fix migration 00110; F2B-1/F2A-1/F2A-2 gate fixes; ingestion warn-rule). GTV-CLOSED marking in the canonical doc.
+- **Stamped sequence (nwrp281/282):** wiring ✔ → **interaction-bug phase** (entry proposal surfaced at `.planning/ground-truth/INTERACTION-BUG-PHASE-ENTRY.md`, awaiting authorization) → tiering-implementation (nwrp233 gate intact, closes on original conditions) → 3-series.
+- **Dogfood gate (human-side, canonical doc §c):** Jake's combined walk (10-stop list in the canonical addendum) + item-8 adjudication with Diane (brief ready) + backfills (72-CO / 13-invoice / 6 uncoded rows) + `require_budget_allocation` flip (AFTER backfill) + 14-job fee collection + $126,927.25 reconciliation. Wiring no longer blocks any of it.
 
 ## Recently shipped to main
 

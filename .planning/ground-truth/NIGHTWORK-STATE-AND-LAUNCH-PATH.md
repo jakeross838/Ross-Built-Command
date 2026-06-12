@@ -102,6 +102,31 @@
 
 ---
 
+## POST-CLOSE ADDENDUM — Per-Job Wiring phase SHIPPED (2026-06-12, nwrp282)
+
+Critical-path item 4 is DONE (`10bba5f`, deploy `dpl_GUonZ7AGGTw3CHp6s4XRBscErYGu`): all four per-job tabs wired to real data, F2D-2 affordance closed, W-6 metric de-dupe applied, both inherited test debts cleared — **full test suite green for the first time on record**. Details: PART-WIRING.md. TD-NW-PER-JOB-TAB-WIRING's wiring scope is SATISFIED pending Jake's walk; its allocation-backfill companions remain items 2-5 below.
+
+### THE COMBINED WALK LIST (one incognito pass — Wave C + wiring together, per nwrp282 condition 5)
+
+1. `/jobs/{fish}/budget` → real G703-style BudgetView (144 lines), chrome once.
+2. `/jobs/{fish}/bills` → 57-row bill table, status badges, rows link to bill review.
+3. `/jobs/{fish}/pay-apps` → draw list shows **#21** ("Current Due (at creation)" column), links to F10 detail.
+4. `/jobs/{fish}/activity` → 16-row feed with named actors + readable summaries.
+5. `/jobs/{drummond}/budget` (+ bills/pay-apps/activity) → graceful empty states.
+6. `/jobs/{fish}/change-orders` → ONE summary row ("Pending / Draft COs" only — no contract triple repeat); **as a PM-role check if convenient:** "+ New Change Order" absent for PMs, present for you.
+7. `/jobs/{fish}` job details → **"Contract Fee % 11.0%"**, deposit 10.0%, retainage unchanged.
+8. Pay-app detail PCCO panel → **#11 reads "plan revision #3 7.14" unbroken; #65 reads "Ext. Column Wraps"**.
+9. One qa_review bill at `/financials/bills/[id]` → gold-standard render (2A-8).
+10. Chrome renders ONCE on every stop (L6 standing item).
+
+### Dogfood-start checklist (operational items remaining)
+
+Backfills (72-CO + 13-invoice + 6 uncoded rows — items 2-4) → settings flip (item 5) → item 8 adjudication (brief ready: ITEM-8-ADJUDICATION-BRIEF.md) → 14-job fee collection (item 9) → Diane's $126,927.25 reconciliation (item 6) → the walk above. Wiring no longer blocks any of it.
+
+### Next per stamped sequence
+
+Interaction-bug phase entry proposal surfaced (INTERACTION-BUG-PHASE-ENTRY.md) — **not begun**; tiering-implementation after; 3-series after that (nwrp233 gate intact).
+
 ## Cost ledger (full GTV)
 
 Stage 1 $22-25 · Stage 1.5 $15-18 · F5/F1 steps $27-32 · AppShell investigation+fix $13-17 · F-Inv-1 sweep $12-16 · F10 $12-15 · 2C gate+exec $20-25 · nwrp273 round $16-18 · nwrp274 round $16-18 · 2A $26-30 · nwrp276 round $18-21 · nwrp277 round $12-14 · nwrp278 round $28-32 · nwrp279 round $4-5 · **nwrp280 batch: 2E $12-14 + PART 3 $6-7 + PART 4 $24-28 = $42-49**. **GTV total ≈ $285-325** vs the $280-320 projection — at band.
