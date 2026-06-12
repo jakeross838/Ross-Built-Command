@@ -30,7 +30,7 @@ The invoice-side allocation gap (PART-2C D2 + PART-2A F2A-3) resolves operationa
 1. **Backfill FIRST:** author `invoice_line_items` allocations for the 13 unallocated spent invoices (IDs tabled in PART-2C) + resolve the 4 uncoded-draw scope rows (Q2) + this TD's 72-CO backfill. Operational data work, Jake/Andrew source the mappings.
 2. **Flip SECOND:** set `require_budget_allocation = TRUE` on the ross-built org row (manual, one UPDATE). Flipping before the backfill would 422-block Diane's live approval work on invoices that predate allocation authoring.
 
-Both steps complete **before Diane dogfood** (same deadline as the parent TD). The gate itself shipped enforced-able in `804f80e`: new orgs default TRUE (migration 00109 + code default), the action route fails closed on unreadable settings (F2A-2), and QA cannot edit amounts at qa_approve (F2A-1) — RB's flip is the only remaining switch, deliberately manual pending step 1.
+Both steps complete **before Diane dogfood** (same deadline as the parent TD). **D2 backfill execution additionally gates on Stage 2D PASSING** (per nwrp277 §2): the backfill pushes 72 COs through `recompute_budget_line_co_adjustments`, which has never fired at runtime — 2D's matrix row 2D-1 validates that trigger against hand-calculated expected adjustments first. The gate itself shipped enforced-able in `804f80e`: new orgs default TRUE (migration 00109 + code default), the action route fails closed on unreadable settings (F2A-2), and QA cannot edit amounts at qa_approve (F2A-1) — RB's flip is the only remaining switch, deliberately manual pending step 1.
 
 ## Related (same allocation-gap family)
 
