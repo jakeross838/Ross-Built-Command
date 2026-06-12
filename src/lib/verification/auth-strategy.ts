@@ -151,6 +151,10 @@ export async function createHarnessSession(
     .select("org_id, role, is_active")
     .eq("user_id", data.user.id)
     .eq("is_active", true)
+    // GH#18 determinism (W-7 per nwrp282): the fixture user is single-org
+    // today, but limit-without-order is the multi-org nondeterminism
+    // anti-pattern the guard exists to fence. Oldest membership wins.
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

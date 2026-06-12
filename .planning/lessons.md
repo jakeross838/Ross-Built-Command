@@ -480,6 +480,10 @@ The F5 verify (nwrp267) PASSED on "wizard renders + 4-step flow visible" while t
 - **Re-export resolution rule (L7):** applied retroactively in the F-Inv-1 Step 3 sweep (52 (a)-CANDIDATE disposition pass, same session). PART-1.5-WALK.md §F-Inv-1 sub-rules extended at application time.
 - **Change-orders "two summary rows":** cleared as NOT-the-AppShell-bug (JobFinancialBar + page stat grid each render once; 3 of 4 metrics repeat). Filed as UX-redundancy disposition under `TD-NW-PER-JOB-TAB-WIRING.md` per nwrp270 §23 — rationalize per-job header metrics when the tabs get wired.
 
+### Lesson 8 — DB-side logic is grep-invisible to src-tree audits (captured 2026-06-12 per nwrp282)
+
+PART-2E filed "no lien-release create path exists anywhere" off a full src-tree insert grep — and was **wrong**: `draw_submit_rpc` (a DB function shipped via migration) generates per-vendor lien rows at submit, and `draw_void_rpc` transitions them. The audit's universe was the TypeScript tree; the feature lived in Postgres. Same disease as L7 (re-export indirection hides mounts) one layer down: **any feature/mount/consumer audit MUST enumerate DB-side objects — RPCs (`pg_proc`), triggers (`pg_trigger`), policies (`pg_policy`) — alongside the src tree.** Mechanical pass: `SELECT proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','app_private') AND prosrc ILIKE '%<table>%'` for the table under audit, before declaring a capability absent. The F2E-1 correction (TD-NW-LIEN-CREATE) is the proving instance; the per-job wiring phase inherits this as a standing audit standard per nwrp282 condition (2).
+
 **Production state at lesson capture (2026-06-11 ~14:00 EDT):**
 
 - `https://nightwork-platform.vercel.app` aliased to `dpl_ESHeRsSYy7jJhUxA4ArUxx2m5eh6` (`erobry5h3`) — HEAD `34ac517`, force-cache-bust build ("Skipping build cache" confirmed in deploy logs), promoted over the cache-restored git auto-deploy `dpl_GAf2VWJnCS7DFEV78AmDsmYjdep6` per Rule 10(c).

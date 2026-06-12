@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useCurrentRole } from "@/hooks/use-current-role";
 // JobTabs removed per Stage 1.5c Plan 3 iter-2 must-fix CRITICAL #2 —
 // Plan 5's PerJobTabs in /jobs/[id]/layout.tsx is the sole tab surface.
 import JobFinancialBar from "@/components/job-financial-bar";
 import Breadcrumbs from "@/components/breadcrumbs";
 import { supabase } from "@/lib/supabase/client";
-import { formatCents, formatDate } from "@/lib/utils/format";
+import { formatDate } from "@/lib/utils/format";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
@@ -58,6 +59,11 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function ChangeOrdersPage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  // W-5 (F2D-2 per nwrp282): CO authoring is admin/owner territory — the
+  // route gate AND the RLS write policy both deny PMs (PART-2D F2D-1/2),
+  // so don't render an affordance that dead-ends in a 500 for them.
+  const role = useCurrentRole();
+  const canCreateCo = role === "admin" || role === "owner";
   const [job, setJob] = useState<Job | null>(null);
   const [cos, setCos] = useState<ChangeOrder[]>([]);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -183,28 +189,31 @@ export default function ChangeOrdersPage({ params }: { params: { id: string } })
               {job.address ?? "No address"}
             </p>
           </div>
-          <Link
-            href={`/jobs/${job.id}/change-orders/new`}
-            className="inline-flex items-center justify-center h-9 px-4 text-[11px] uppercase font-medium border transition-colors"
-            style={{
-              fontFamily: "var(--font-jetbrains-mono)",
-              letterSpacing: "0.12em",
-              background: "var(--nw-stone-blue)",
-              borderColor: "var(--nw-stone-blue)",
-              color: "var(--nw-white-sand)",
-            }}
-          >
-            + New Change Order
-          </Link>
+          {canCreateCo && (
+            <Link
+              href={`/jobs/${job.id}/change-orders/new`}
+              className="inline-flex items-center justify-center h-9 px-4 text-[11px] uppercase font-medium border transition-colors"
+              style={{
+                fontFamily: "var(--font-jetbrains-mono)",
+                letterSpacing: "0.12em",
+                background: "var(--nw-stone-blue)",
+                borderColor: "var(--nw-stone-blue)",
+                color: "var(--nw-white-sand)",
+              }}
+            >
+              + New Change Order
+            </Link>
+          )}
         </div>
         {/* JobTabs render removed — PerJobTabs in /jobs/[id]/layout.tsx (Plan 5) replaces */}
         <JobFinancialBar jobId={job.id} />
 
+        {/* W-6 (per nwrp273 disposition + nwrp282): the bar above already
+            shows Original / Approved COs / Revised — the local grid keeps
+            only the CO-page-specific metric instead of repeating 3 of 4
+            (the "two summary rows" Jake flagged on the GTV walk). */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <Stat label="Original Contract" value={formatCents(job.original_contract_amount)} />
-          <Stat label="Approved COs" value={formatCents(job.approved_cos_total ?? totals.approvedSum)} />
-          <Stat label="Revised Contract" value={formatCents(job.current_contract_amount)} highlight />
-          <Stat label="Pending / Draft" value={String(totals.pending)} />
+          <Stat label="Pending / Draft COs" value={String(totals.pending)} />
         </div>
 
         {error && (
