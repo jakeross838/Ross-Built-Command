@@ -144,7 +144,9 @@ Critical-path item 4 is DONE (`10bba5f`, deploy `dpl_GUonZ7AGGTw3CHp6s4XRBscErYG
 
 ### Next per stamped sequence
 
-**Tiering-implementation entry surfaces next — not begun** (nwrp233 gate closes on its original conditions); 3-series after.
+**Tiering-implementation SHIPPED** (nwrp285, commit `06c23d6`, 2026-06-11): all 8 touch points landed in one closed-seam cutover — tier-config.json (PA-2 committed), /np severity-abort pre-step, /nx Check 11, plan-review + QA tier-resolved reviewer sets (old fixed sets DELETED, AC-14 grep-clean), init-phase Step 2.5 signal-rendered severity declaration (PA-1), EXPANDED-SCOPE template, CLAUDE.md Rule 11, mid-execute-halts.jsonl seeded with one synthetic event (PA-3/AC-13). Mechanics dry-run (nwrp285 rider 2) ALL PASS — and earned its keep: it caught the schema/migration signal regex missing prose-"migration" before F6 could dispatch under a mis-firing signal table. TD-PLANNING-PIPELINE-SEVERITY-TIERING closure: condition (i) MET here; (ii) awaits F6-family shipping under the new tier; (iii) REVIEW-1 after 4 tiered phases. nwrp233's 3-series gate condition is now SATISFIED in mechanism (3-series dispatch still sequenced behind the F6-family + dogfood gates per the walk list).
+
+**Now surfacing: F6-family init** (`.planning/expansions/f6-family-EXPANDED-SCOPE.md`, DRAFT) — first phase through the tiered pipeline. Declared **HIGH** with PA-1 signal-rendered rationale (financial logic + trigger work + bank-facing display semantics + ≥16h wall-clock; UI signals subordinate). Membership pinned per nwrp285 rider 1: CO allocation authoring + 72-CO backfill rails + draw staleness affordance + N2 base/with-fee labeling; **lien-create NOT argued in** (dispatches separately at its first-bank-package deadline). Awaiting Jake authorization — NOT auto-dispatched. 3-series after.
 
 ## Cost ledger (full GTV)
 
