@@ -1,5 +1,11 @@
 # NIGHTWORK — STATE AND LAUNCH PATH (canonical synthesis)
 
+> **GTV-CLOSED (2026-06-12, nwrp281).** All stages complete, batch accepted, (f) re-sequence STAMPED (MASTER-PLAN updated). Open on the human side only: **(1) Jake's post-deploy walk bundle** (checklist item 7) and **(2) the CO #66-72 adjudication** (item 8 — identity verified to the cent below; evidence favors DB). Fee question RESOLVED per nwrp281 §A: **Fish contract fee = 11%** (9% + 2% components; $824,633.39 = 11.0000% of contract, formula-level read of Diane's Adjusted workbook), **per-CO fees are a separate variable structure (0.15 default / 0.11 on #22-24 / $0 on no-fee COs) and were already CORRECT rate-for-rate — no under-billing; the $39K scenario is dead.** Fish's stored fee fixed to 0.11 + relabeled "Contract Fee %" (`8bed758`); the other 14 jobs are checklist item 9.
+>
+> **Q2 dual-close symmetry (GTV's cleanest proof-of-value):** ONE parser lineage explains both jobs' contract gaps to the cent — Fish $479,900.00 (louvers/overhangs/pergola/planters, carrying $319,571.01 of previous billings — confirmed from the source side per nwrp281 A6c) and Dewberry $58,000.00 (Urns/Generator). One silent-skip bug, one warn-fix (`e917214`), two mystery numbers closed, and the F8 negative-payment-due explained — all from replaying the actual import sources through the repo's own parser.
+>
+> **Post-close corrections folded (nwrp281 close-out wave):** F2E-1 CORRECTED — the lien generator EXISTS in `draw_submit_rpc` (per-vendor pending rows at submit; void marks not_required); it has simply never executed with effect. The gap is the manual/upload create path + gate wiring → `TD-NW-LIEN-CREATE`. F2E-3 **FIXED** (migration 00110): draw void now releases ALL linked invoices with per-invoice audit appends — closed-loop proven re-drawable. F2E-2 interim shipped (default false, rows false). A(5) period-mapping: NOT a parser issue — the importer never writes draw rows; the Fish working draw is wizard-created (April period, human dates) while the workbook is the billed March App 21 → the working draw RENDERS as "Pay App #21" while App 21 is already billed — **off-by-one boundary question folded into the #66-72 adjudication** (item 8).
+
 **Date:** 2026-06-12 · **Authorization:** nwrp280 PART 4 (ceiling $35) · **Supersedes-for-state:** STATE.md's 2026-05-27 snapshot and MASTER-PLAN §9's pre-GTV framing for everything GTV touched. Evidence pointers are the PART/STAGE docs in this directory plus commits on `main`.
 **Sources:** PART-1-INVENTORY, PART-1.5-WALK, F-INV-1-RETRO-SWEEP, APPSHELL-OWNERSHIP-INVESTIGATION, PART-2A/2B/2C/2D (+2E results in the consolidated nwrp280 report), STAGE gates, MASTER-PLAN §9-12, TD files, nwrp256-280.
 
@@ -51,13 +57,15 @@
 
 ## (c) HUMAN-SIDE OPERATIONAL CHECKLIST (Jake/Andrew — standalone)
 
-1. **Fee answer: is Fish's contract fee 15% or 20%?** (twice-unfilled placeholder; gates the N3 data-fix vs the under-billing escalation doc — if 20%, ~$36K under-billed across 72 COs at base×0.05.)
+1. ~~Fee answer~~ **CLOSED per nwrp281 §A** — 11% contract / variable per-CO; per-CO layer verified correct; no under-billing. Evidence: formula-level read of `Fish-Pay_App_21_Mar_26__Adjusted_.xlsx` (Jake to drop into test-invoices/ for the diff record).
 2. **72-CO line backfill (Fish)** — map each approved CO to budget lines (or explicit unallocated flag). Trigger validated 2D-1. Before dogfood.
 3. **13-invoice allocation pass** — IDs tabled in PART-2C D2 ($76,970 + $18,096 partial). Before dogfood.
 4. **Louver/pergola/planters + Urns/Generator rows** — decide coded-budget-line vs C-suffix treatment for Fish's 4 ($479,900/$319,571 prev) and Dewberry's 2 ($58,000/$0 prev) uncoded scope rows. Before dogfood (rides the backfill session).
 5. **Flip `require_budget_allocation=TRUE` on ross-built** — AFTER 2-4 complete (ordering is load-bearing; one UPDATE).
-6. **BT $73,232.23 reconciliation** — the Fish cover-vs-G703 prior-app drift inside Buildertrend's own export (PART-2C Q2 decomposition). Bookkeeping-side answer lives in BT, not Nightwork.
-7. **Walk leftovers:** 2A-8 gold-standard render eyeball; 2B-3 price spot-walk (incl. the 2027-dated + two $0.00 observations); paper-cuts verify items (PCCO #11/#65 text, fee/deposit percent-scale) — placeholders unfilled since nwrp275.
+6. **Fish billed-ahead $126,927.25 reconciliation** (SUPERSEDES the $73K drift estimate, source numbers per nwrp281 A6a: payments $5,544,076.32 vs Diane's own G703 completed-to-date $5,417,149.07) — Diane reconciles before App #22.
+7. **Walk leftovers:** 2A-8 gold-standard render eyeball; 2B-3 price spot-walk (incl. the 2027-dated + two $0.00 observations); paper-cuts items (PCCO #11/#65 text, **fee now reads "Contract Fee % 11.0%" on Fish**, deposit percent-scale); chrome-once standard throughout.
+8. **CO #66-72 adjudication** (nwrp281 A4): DB Σ #66-72 with-fee = **$25,441.87 EXACT** (all 7 descriptions match incl. −$640.55 plaster credit; ≤#65 ties Diane's log within 2¢ rounding). Evidence FAVORS DB: the in-repo App-21 file's own G703 carries $25,441.87 as "PCCO for this Application" — the file knows these COs; the Adjusted copy's log ending at #65 reads stale. If DB right: no action. If file right: a 7-row void plan gets surfaced, not executed. **Fold-in: the App-21 off-by-one** — the wizard-created working draw renders as #21 while App 21 is billed; decide whether `starting_application_number` should be 22 (or the working draw's number semantics adjust) in the same sitting.
+9. **14-job fee collection** (nwrp281 A3): every other job carries the 0.20/0.10 import defaults — collect each job's real contract fee + deposit from its contract docs (do NOT bulk-assume 11%). Deposit note: Fish's G702 shows Deposit $0 vs stored 0.10 — flagged, not fixed.
 
 ## (d) KILL LIST (orphans + off-path scaffolds — custodian sweep, post-stamp)
 
