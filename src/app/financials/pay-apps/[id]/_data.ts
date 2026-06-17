@@ -49,9 +49,11 @@ import {
   applicationNumberForDraw,
   computeDrawLines,
   lessPreviousCertificatesForJob,
+  netChangeOrdersForJob,
   nonBudgetLineThisPeriodForDraw,
   rollupDrawTotals,
 } from "@/lib/draw-calc";
+import { computeDrawStaleness } from "@/lib/draw-staleness";
 import type {
   CaldwellChangeOrder,
   CaldwellCostCode,
@@ -66,6 +68,10 @@ export type PayAppViewData = {
   lineItems: CaldwellDrawLineItem[];
   costCodes: CaldwellCostCode[];
   changeOrdersThroughThisDraw: CaldwellChangeOrder[];
+  // F6-family D3 (nwrp286 Q3): display-only signal — a DRAFT draw's stored
+  // G702 summary diverges from a from-source recompute. Separate prop (the
+  // CaldwellDraw fixture shape is locked). Always false for non-draft draws.
+  storedSummaryStale: boolean;
 };
 
 const KNOWN_DRAW_STATUSES: ReadonlyArray<CaldwellDraw["status"]> = [
@@ -229,6 +235,38 @@ export async function loadPayAppViewData(
     ? (rawDrawStatus as CaldwellDraw["status"])
     : "submitted"; // 'locked' renders as SUBMITTED
 
+  // F6-family D3 (nwrp286 Q3): DISPLAY-ONLY staleness signal for DRAFT draws.
+  // Compare the stored G702 summary columns against a from-source recompute.
+  // net_change_orders is recomputed from change_orders (catches a CO approved
+  // after this draft was written — the phase-relevant signal); the rest come
+  // from rollupDrawTotals (genuinely source-derived). Pass-through fields
+  // (original_contract_sum, contract_sum_to_date) are excluded — they could
+  // never flag (see draw-staleness.ts). Only computed for drafts (the only
+  // status that shows the badge) so non-draft renders skip the extra query.
+  let storedSummaryStale = false;
+  if (drawStatus === "draft") {
+    const recomputedNetChangeOrders = await netChangeOrdersForJob(
+      draw.job_id as string
+    );
+    storedSummaryStale = computeDrawStaleness(
+      {
+        net_change_orders: (draw.net_change_orders as number | null) ?? 0,
+        total_completed_to_date:
+          (draw.total_completed_to_date as number | null) ?? 0,
+        current_payment_due: (draw.current_payment_due as number | null) ?? 0,
+        balance_to_finish: (draw.balance_to_finish as number | null) ?? 0,
+        deposit_amount: (draw.deposit_amount as number | null) ?? 0,
+      },
+      {
+        net_change_orders: recomputedNetChangeOrders,
+        total_completed_to_date: totals.total_completed_to_date,
+        current_payment_due: totals.current_payment_due,
+        balance_to_finish: totals.balance_to_finish,
+        deposit_amount: totals.deposit_amount,
+      }
+    );
+  }
+
   const drawShim: CaldwellDraw = {
     id: draw.id as string,
     job_id: draw.job_id as string,
@@ -354,5 +392,6 @@ export async function loadPayAppViewData(
     lineItems,
     costCodes,
     changeOrdersThroughThisDraw,
+    storedSummaryStale,
   };
 }

@@ -3375,6 +3375,7 @@ export type Database = {
           quick_approve_enabled: boolean
           quick_approve_min_confidence: number
           require_budget_allocation: boolean
+          require_co_budget_allocation: boolean
           require_invoice_date: boolean
           require_lien_release_for_draw: boolean
           require_po_linkage: boolean
@@ -3399,6 +3400,7 @@ export type Database = {
           quick_approve_enabled?: boolean
           quick_approve_min_confidence?: number
           require_budget_allocation?: boolean
+          require_co_budget_allocation?: boolean
           require_invoice_date?: boolean
           require_lien_release_for_draw?: boolean
           require_po_linkage?: boolean
@@ -3423,6 +3425,7 @@ export type Database = {
           quick_approve_enabled?: boolean
           quick_approve_min_confidence?: number
           require_budget_allocation?: boolean
+          require_co_budget_allocation?: boolean
           require_invoice_date?: boolean
           require_lien_release_for_draw?: boolean
           require_po_linkage?: boolean

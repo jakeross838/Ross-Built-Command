@@ -64,6 +64,12 @@ async function main() {
     DEFAULT_WORKFLOW_SETTINGS.require_budget_allocation === true
   );
 
+  // F6-family (nwrp286): CO-side gate code-default pin (new-org/fallback = gated).
+  check(
+    "DEFAULT_WORKFLOW_SETTINGS.require_co_budget_allocation === true",
+    DEFAULT_WORKFLOW_SETTINGS.require_co_budget_allocation === true
+  );
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 }

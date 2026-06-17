@@ -6,6 +6,8 @@ import {
   getMembershipFromRequest,
 } from "@/lib/org/session";
 import { recalcBudgetLine } from "@/lib/recalc";
+import { getWorkflowSettings } from "@/lib/workflow-settings";
+import { evaluateCoAllocationGate } from "@/lib/co-allocation-gate";
 import { logActivity, logStatusChange } from "@/lib/activity-log";
 import { canVoidCO, formatBlockers } from "@/lib/deletion-guards";
 import { updateWithLock, isLockConflict } from "@/lib/api/optimistic-lock";
@@ -170,6 +172,60 @@ export const PATCH = withApiError(async (request: NextRequest, { params }: { par
           details: { blockers: guard.blockers },
         });
         throw new ApiError(formatBlockers("void", guard), 422);
+      }
+    }
+
+    // F6-family (nwrp286 Q1/Q2): allocate-then-approve gate. When the org has
+    // require_co_budget_allocation ON, a CO cannot be approved unless every
+    // line is allocated to a budget line AND the lines sum to the CO amount.
+    // Mirrors the invoice-side require_budget_allocation gate (invoices action
+    // route). Fail-closed: settings unreadable → 422, never approve on a guess.
+    // Evaluates the EFFECTIVE post-write set: a combined PATCH that sends
+    // {status:'approved', lines, amount} is validated against those lines
+    // (filtered as the insert below filters) and that amount; the two-step
+    // flow (set lines, then approve) validates the already-committed DB lines.
+    if (body.status === "approved") {
+      try {
+        const settings = await getWorkflowSettings(membership.org_id, {
+          failClosed: true,
+        });
+        if (settings.require_co_budget_allocation) {
+          let gateLines: Array<{ budget_line_id: string | null; amount: number }>;
+          if (body.lines) {
+            gateLines = body.lines
+              .filter((l) => l.amount !== 0 || l.description)
+              .map((l) => ({
+                budget_line_id: l.budget_line_id ?? null,
+                amount: Math.round(l.amount ?? 0),
+              }));
+          } else {
+            const { data: dbLines } = await supabase
+              .from("change_order_lines")
+              .select("budget_line_id, amount")
+              .eq("co_id", params.id)
+              .eq("org_id", membership.org_id)
+              .is("deleted_at", null);
+            gateLines = (dbLines ?? []).map((l) => ({
+              budget_line_id: (l.budget_line_id as string | null) ?? null,
+              amount: (l.amount as number) ?? 0,
+            }));
+          }
+          const gate = evaluateCoAllocationGate(gateLines, amount);
+          if (!gate.ok) {
+            return NextResponse.json({ error: gate.error }, { status: gate.status });
+          }
+        }
+      } catch (err) {
+        console.error(
+          `[CO action workflow] settings unavailable — failing closed: ${err instanceof Error ? err.message : err}`
+        );
+        return NextResponse.json(
+          {
+            error:
+              "Workflow settings unavailable — cannot evaluate allocation gate. Retry shortly.",
+          },
+          { status: 422 }
+        );
       }
     }
 

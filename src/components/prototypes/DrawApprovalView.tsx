@@ -61,6 +61,9 @@ export interface DrawApprovalViewProps {
   costCodes: CaldwellCostCode[];
   /** Approved change orders rolled into the contract sum through this draw. */
   changeOrdersThroughThisDraw: CaldwellChangeOrder[];
+  /** F6-family D3 (nwrp286 Q3): display-only — stored G702 summary diverges
+   *  from a from-source recompute. Badge shows on DRAFT draws only. */
+  storedSummaryStale?: boolean;
   /** Optional href for the print preview action. Defaults to portfolio path. */
   printHref?: string;
   /** Optional breadcrumb root link. Defaults to /design-system/prototypes/. */
@@ -111,6 +114,7 @@ export default function DrawApprovalView({
   lineItems,
   costCodes,
   changeOrdersThroughThisDraw,
+  storedSummaryStale = false,
   printHref,
   breadcrumbRoot = { href: "/design-system/prototypes/", label: "Prototypes" },
 }: DrawApprovalViewProps) {
@@ -178,6 +182,9 @@ export default function DrawApprovalView({
               Application: {draw.application_date}
             </span>
             <Badge variant={status.variant}>{status.label}</Badge>
+            {draw.status === "draft" && storedSummaryStale && (
+              <Badge variant="warning">Recomputed — stored value stale</Badge>
+            )}
           </div>
         </div>
         {/* TD-20 fix: NwButton replaces raw button elements for Send back +
@@ -299,7 +306,21 @@ export default function DrawApprovalView({
                           : co.description}
                       </div>
                     </div>
-                    <Money cents={co.total_with_fee} size="sm" signColor />
+                    <div className="shrink-0 text-right">
+                      <div
+                        style={{
+                          fontFamily: "var(--font-jetbrains-mono)",
+                          fontSize: "9px",
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          color: "var(--text-tertiary)",
+                          marginBottom: "1px",
+                        }}
+                      >
+                        With fee
+                      </div>
+                      <Money cents={co.total_with_fee} size="sm" signColor />
+                    </div>
                   </li>
                 ))}
               </ul>

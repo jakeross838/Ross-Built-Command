@@ -39,6 +39,7 @@ export default async function PayAppReviewPage({
         lineItems={data.lineItems}
         costCodes={data.costCodes}
         changeOrdersThroughThisDraw={data.changeOrdersThroughThisDraw}
+        storedSummaryStale={data.storedSummaryStale}
         printHref={`/financials/pay-apps/${data.draw.id}/print`}
         breadcrumbRoot={{ href: "/financials/pay-apps", label: "Pay Apps" }}
       />

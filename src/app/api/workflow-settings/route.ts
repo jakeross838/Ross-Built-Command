@@ -22,6 +22,7 @@ const BOOL_COLUMNS = new Set([
   "auto_route_high_confidence",
   "require_lien_release_for_draw",
   "co_approval_required",
+  "require_co_budget_allocation",
   "payment_auto_scheduling",
 ]);
 

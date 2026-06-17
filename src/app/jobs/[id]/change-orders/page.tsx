@@ -237,7 +237,7 @@ export default function ChangeOrdersPage({ params }: { params: { id: string } })
                   <th className="text-left px-4 py-3 font-medium">PCCO #</th>
                   <th className="text-left px-4 py-3 font-medium">Title</th>
                   <th className="text-left px-4 py-3 font-medium">Type</th>
-                  <th className="text-right px-4 py-3 font-medium">Amount</th>
+                  <th className="text-right px-4 py-3 font-medium">Base Amount</th>
                   <th className="text-left px-4 py-3 font-medium">Status</th>
                   <th className="text-left px-4 py-3 font-medium">Submitted</th>
                   <th className="text-left px-4 py-3 font-medium">Approved</th>

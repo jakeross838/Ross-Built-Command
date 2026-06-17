@@ -388,6 +388,7 @@ Updated continuously by `nightwork-custodian` after each `/gsd-ship`. Order is a
 
 **NEW TD entries (this session):**
 - **TD-NW-PER-JOB-TAB-WIRING** (`.planning/tech-debt/TD-NW-PER-JOB-TAB-WIRING.md`) — wire per-job budget + bills + pay-apps + activity tabs to existing org-wide data layer with job_id filter. MEDIUM-HIGH severity. **MUST SHIP before Diane dogfood.** ~4 days work (~1/surface) since data layers + view components already exist. OWN PHASE post-GTV, not batched into Stage 2F. Sequencing: F1 + F6 waves (budget/bills/pay-apps) + Wave 1.1-Lite (activity).
+- **TD-F6-TRIGGER-RECALC-DIVERGE** (`.planning/tech-debt/TD-F6-TRIGGER-RECALC-DIVERGE.md`) — `recompute_budget_line_co_adjustments` trigger counts CO `status IN ('approved','executed')` but TS `recalcBudgetLine` (`src/lib/recalc.ts:40,110`) counts `['approved']` only; `netChangeOrdersForJob` is a third filter (`approved` only). LOW today / HIGH-if-triggered. **Zero live impact** (0 executed COs; app never writes `executed`). file-don't-fix; surfaced by f6-family plan-review (nwrp286). Fix = single shared "counts-toward-budget" CO-status constant when an `executed` transition is ever enabled.
 
 **NEXT PHASE GATE:**
 - **Pending GATE 2 HALT (Jake review).** Per nwrp152/nwrp171, validator interface shape + Layer 2 standards architecture + W.1 env-flag posture require substantive review before Slice-2 dispatch. Jake call per:

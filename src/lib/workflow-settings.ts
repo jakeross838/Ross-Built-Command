@@ -27,6 +27,7 @@ export type WorkflowSettings = {
   // Draw & payment
   require_lien_release_for_draw: boolean;
   co_approval_required: boolean;
+  require_co_budget_allocation: boolean;
   payment_auto_scheduling: boolean;
 
   // Phase 8f — draw cover letter (NULL = use built-in default)
@@ -68,6 +69,13 @@ export const DEFAULT_WORKFLOW_SETTINGS: Omit<
   // back deliberately. Existing org rows were set false in the same wave.
   require_lien_release_for_draw: false,
   co_approval_required: true,
+  // F6-family (nwrp286 Q2): CO-side allocation gate, mirrors
+  // require_budget_allocation. This code-default = the NEW-org / fail-closed
+  // fallback value (gated). EXISTING org rows are set false by migration
+  // 00111; this `true` is only hit on a genuinely-missing row (self-heal
+  // upsert) or the failClosed fallback path — NOT "always on". Ross Built's
+  // row stays false until Jake's backfill + manual flip.
+  require_co_budget_allocation: true,
   payment_auto_scheduling: true,
   cover_letter_template: null,
   import_max_batch_size: 50,
@@ -80,7 +88,7 @@ const COLUMNS =
   "require_invoice_date, require_budget_allocation, require_po_linkage, over_budget_requires_note, " +
   "duplicate_detection_enabled, duplicate_detection_sensitivity, " +
   "auto_route_high_confidence, auto_route_confidence_threshold, " +
-  "require_lien_release_for_draw, co_approval_required, payment_auto_scheduling, " +
+  "require_lien_release_for_draw, co_approval_required, require_co_budget_allocation, payment_auto_scheduling, " +
   "cover_letter_template, " +
   "import_max_batch_size, import_default_pm_id, import_auto_route_threshold, " +
   "created_at, updated_at";
