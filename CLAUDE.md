@@ -1062,6 +1062,53 @@ Default posture absent specific orchestrator directive: **halt-and-surface on di
   signal regex) shipped before the next phase at that tier dispatches.
   Tier is cited in every commit body, QA report, and plan-review report.
 
+- **Rule 12 — Human checkpoint on live production financial writes (per
+  nwrp290→294; lessons L10/L11 in `.planning/lessons.md`).** Any write to
+  real Ross Built financial data — `budget_lines`, `change_order_lines`,
+  `change_orders`, `draws`, `draw_line_items`, `invoices`,
+  `invoice_allocations`, contract amounts on `jobs`, and
+  `org_workflow_settings` enforcement gates — requires Jake's explicit
+  confirmation of THAT SPECIFIC write immediately before apply, regardless
+  of any upstream "in sequence," "proceed," or batch authorization. A prior
+  go-ahead authorizes a SEQUENCE; it never authorizes (a) authoring
+  financial distribution data the orchestrator pattern reserves for
+  Jake/Andrew (allocation across budget lines is explicitly reserved — see
+  Orchestration discipline "Architectural choices"), or (b) treating a named
+  production entity as test/disposable. This is a discipline-gate beside
+  Rule 7 (cost ceilings), Rule 8 (hook fail-closed), and Rule 9
+  (cross-reviewer disagreement): like them it HALTS rather than proceeds.
+  Origin: nwrp290 ran a live `--apply` backfill (72 `change_order_lines`,
+  $799,510.34, real RB org) on a mechanical round-robin allocation off a
+  one-line "this is all test data" aside; Fish is real imported operational
+  data (Domain rules + GTV PART-1-INVENTORY). Fully reversed cent-exact in
+  nwrp293.
+
+  **12a — Disposability-conflict halt.** If a "test data" / "disposable" /
+  "not important" premise about a NAMED entity conflicts with CLAUDE.md
+  domain facts or the GTV inventory (Fish carries the active operational
+  volume; Drummond is the canonical reference job; any real job = real
+  operational data), HALT and surface THAT specific conflict for explicit
+  confirmation BEFORE any write. The conflict is named pre-apply ("you said
+  test data, but the standing record calls Fish real operational data —
+  confirm which governs"), never explained post-hoc. A conversational aside
+  does not override the standing record.
+
+  **12b — No unbroken dry-run→apply.** Dry-run and live `--apply` against
+  real RB financial data are SEPARATE authorizations. Surface the dry-run
+  reconciliation + the exact mutation (table, row count, cents total), then
+  STOP for Jake's apply-go. The dry-run-then-apply-in-one-autonomous-run
+  pattern is prohibited for live financial-table / six-figure writes — the
+  human checkpoint sits BETWEEN the dry-run and the apply, not before the
+  chain.
+
+  **12c — Gate flips are their own confirmation.** Flips of live-enforcement
+  settings (`require_co_budget_allocation`, `require_budget_allocation`, and
+  any future `org_workflow_settings` gate that changes runtime behavior) are
+  confirmed on their own, never folded into an adjacent step's authorization
+  — even when sequenced after a write that was itself authorized.
+
+  Feeds PIPELINE-TIERING-REVIEW alongside L10/L11.
+
 ## Deployment
 
 Vercel + Next.js 14. Single region: **iad1** (N. Virginia). Full runbook in `.planning/deployment.md`.
