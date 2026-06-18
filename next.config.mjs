@@ -101,8 +101,12 @@ const nextConfig = {
       { source: "/draws/:id", destination: "/financials/pay-apps/:id", permanent: true },
       { source: "/draws/:id/print", destination: "/financials/pay-apps/:id/print", permanent: true },
 
-      // /change-orders/:id → /financials/change-orders/:id (move under Financials)
-      { source: "/change-orders/:id", destination: "/financials/change-orders/:id", permanent: true },
+      // NOTE: the 1.5c IA "move CO detail under /financials" redirect was REMOVED
+      // (nwrp290). The CO detail page lives at /change-orders/[id]; its destination
+      // /financials/change-orders/[id] has no page AND is intentionally 404'd by the
+      // FINANCIALS_F1_VIEWS middleware gate (org-wide F1 views hidden pre-launch), so
+      // the redirect shadowed the live page behind a 404. The move re-lands in F1 when
+      // FINANCIALS_F1_VIEWS ships the /financials/change-orders/[id] route.
 
       // /vendors → /people/vendors (move under People section)
       { source: "/vendors", destination: "/people/vendors", permanent: true },

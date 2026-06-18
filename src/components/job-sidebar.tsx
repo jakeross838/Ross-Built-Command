@@ -50,6 +50,11 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
   const [sort, setSort] = useState<SortKey>("alpha");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [loading, setLoading] = useState(true);
+  // nwrp290: never spin forever. loadError surfaces a retry state instead of a
+  // permanent spinner when auth.getUser() returns null or a fetch hangs/errors;
+  // reloadKey re-runs both effects on retry.
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Parse current job ID and tab from pathname
   const currentJobId = useMemo(() => {
@@ -76,62 +81,108 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
     });
   }, []);
 
-  // Fetch user info (once)
+  // Fetch user info (re-runs on retry via reloadKey)
   useEffect(() => {
+    let cancelled = false;
     async function loadUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setUserId(user.id);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (cancelled) return;
+        if (!user) {
+          // No client session (e.g. hydration race). Don't spin forever —
+          // surface a retry state. A transient resolves on retry; a real
+          // signed-out state shows the fallback instead of a dead spinner.
+          setLoadError(true);
+          setLoading(false);
+          return;
+        }
+        setUserId(user.id);
 
-      const { data: membership } = await supabase
-        .from("org_members")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        const { data: membership } = await supabase
+          .from("org_members")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
 
-      const userRole = (membership?.role as UserRole) ?? null;
-      setRole(userRole);
-      if (userRole === "pm") setFilter("mine");
+        if (cancelled) return;
+        const userRole = (membership?.role as UserRole) ?? null;
+        setRole(userRole);
+        if (userRole === "pm") setFilter("mine");
+      } catch {
+        if (!cancelled) {
+          setLoadError(true);
+          setLoading(false);
+        }
+      }
     }
     loadUser();
-  }, []);
+    return () => { cancelled = true; };
+  }, [reloadKey]);
 
   // Fetch jobs — refetches when filter changes so the server
   // only sends what the user should see (F-012 fix).
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
     async function loadJobs() {
       setLoading(true);
-      let query = supabase
-        .from("jobs")
-        .select("id, name, address, status, client:clients(id, full_name), pm_id, updated_at")
-        .is("deleted_at", null)
-        .order("name");
+      setLoadError(false);
+      try {
+        let query = supabase
+          .from("jobs")
+          .select("id, name, address, status, client:clients(id, full_name), pm_id, updated_at")
+          .is("deleted_at", null)
+          .order("name");
 
-      if (filter === "mine" && role === "pm") {
-        query = query.eq("pm_id", userId);
+        if (filter === "mine" && role === "pm") {
+          query = query.eq("pm_id", userId);
+        }
+
+        const { data: jobsData, error } = await query;
+        if (cancelled) return;
+        if (error) throw error;
+        // F1-Wave-B Slice-1 B-1a-bis: normalize PostgREST embed shape. Supabase
+        // typegen returns `client:clients(...)` as an array even though the FK
+        // relationship is many-to-one (jobs.client_id -> clients.id); coerce to
+        // single object for consumer consistency.
+        type RawSidebarRow = Omit<SidebarJob, "client"> & {
+          client: { id: string; full_name: string } | { id: string; full_name: string }[] | null;
+        };
+        const normalized: SidebarJob[] = ((jobsData ?? []) as unknown as RawSidebarRow[]).map((j) => ({
+          ...j,
+          client: Array.isArray(j.client) ? (j.client[0] ?? null) : j.client,
+        }));
+        setJobs(normalized);
+      } catch {
+        if (!cancelled) setLoadError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      const { data: jobsData } = await query;
-      // F1-Wave-B Slice-1 B-1a-bis: normalize PostgREST embed shape. Supabase
-      // typegen returns `client:clients(...)` as an array even though the FK
-      // relationship is many-to-one (jobs.client_id -> clients.id); coerce to
-      // single object for consumer consistency.
-      type RawSidebarRow = Omit<SidebarJob, "client"> & {
-        client: { id: string; full_name: string } | { id: string; full_name: string }[] | null;
-      };
-      const normalized: SidebarJob[] = ((jobsData ?? []) as unknown as RawSidebarRow[]).map((j) => ({
-        ...j,
-        client: Array.isArray(j.client) ? (j.client[0] ?? null) : j.client,
-      }));
-      setJobs(normalized);
-      setLoading(false);
     }
     loadJobs();
-  }, [userId, filter, role]);
+    return () => { cancelled = true; };
+  }, [userId, filter, role, reloadKey]);
+
+  // nwrp290 failsafe: if loading hasn't resolved within 10s (getUser or the
+  // jobs query hung and never settled), surface the retry state instead of an
+  // indefinite spinner. Resolving loading->false clears the timer via cleanup.
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => {
+      setLoading(false);
+      setLoadError(true);
+    }, 10000);
+    return () => clearTimeout(t);
+  }, [loading, reloadKey]);
+
+  const retry = useCallback(() => {
+    setLoadError(false);
+    setLoading(true);
+    setReloadKey((k) => k + 1);
+  }, []);
 
   // Search + sort (pm_id filter is now server-side)
   const filtered = useMemo(() => {
@@ -212,7 +263,19 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
           </div>
         )}
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
+          {loadError ? (
+            <div className="p-4 text-center space-y-2">
+              <p className="text-xs text-[color:var(--text-secondary)]">Couldn&apos;t load jobs.</p>
+              <button
+                type="button"
+                onClick={retry}
+                className="px-3 py-1 text-[11px] uppercase tracking-[0.06em] font-medium border border-nw-stone-blue text-nw-stone-blue hover:bg-nw-stone-blue hover:text-[color:var(--nw-white-sand)] transition-colors"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                Retry
+              </button>
+            </div>
+          ) : loading ? (
             <div className="p-4 text-center">
               <div className="w-5 h-5 border-2 border-[rgba(91,134,153,0.3)] border-t-nw-stone-blue animate-spin mx-auto" />
             </div>
@@ -403,7 +466,19 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
         >
           All {filtered.length} Job{filtered.length !== 1 ? "s" : ""}
         </Link>
-        {loading ? (
+        {loadError ? (
+          <div className="p-4 text-center space-y-2">
+            <p className="text-xs text-[color:var(--text-secondary)]">Couldn&apos;t load jobs.</p>
+            <button
+              type="button"
+              onClick={retry}
+              className="px-3 py-1 text-[11px] uppercase tracking-[0.06em] font-medium border border-nw-stone-blue text-nw-stone-blue hover:bg-nw-stone-blue hover:text-[color:var(--nw-white-sand)] transition-colors"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : loading ? (
           <div className="p-4 text-center">
             <div className="w-5 h-5 border-2 border-[rgba(91,134,153,0.3)] border-t-nw-stone-blue animate-spin mx-auto" />
           </div>
