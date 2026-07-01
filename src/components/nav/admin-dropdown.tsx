@@ -22,20 +22,16 @@
 
 import NavDropdown, { type NavDropdownItem } from "@/components/nav/nav-dropdown";
 
+// Gate-2 strip (2026-07): trimmed to the 4 live surfaces the three kept features
+// need. The 9 F2/F3/Wave-3 placeholder items (Roles, Permissions, Org Chart,
+// Approval Workflows, Notification Rules, Templates, Integrations, Workflow
+// Customization, Profile) are removed from the dropdown — they are inert
+// placeholder cards and out of the stripped product. Un-hide = re-add entries.
 const ADMIN_ITEMS: NavDropdownItem[] = [
   { href: "/admin", label: "Org Settings" },
   { href: "/admin/users", label: "Users" },
-  { href: "/admin/roles", label: "Roles" },
-  { href: "/admin/permissions", label: "Permissions" },
-  { href: "/admin/org-chart", label: "Org Chart" },
-  { href: "/admin/approval-workflows", label: "Approval Workflows" },
-  { href: "/admin/notification-rules", label: "Notification Rules" },
   { href: "/admin/cost-codes", label: "Cost Codes" },
-  { href: "/admin/templates", label: "Templates" },
-  { href: "/admin/integrations", label: "Integrations" },
   { href: "/admin/billing", label: "Billing" },
-  { href: "/admin/workflow-customization", label: "Workflow Customization" },
-  { href: "/admin/profile", label: "Profile" },
 ];
 
 export default function AdminDropdown({

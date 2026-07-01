@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 
-const TABS = [
+// Gate-2 strip (2026-07): Lien Releases tab dropped — /jobs/[id]/lien-releases is
+// now 404'd by PROJECT_OPS. Only the Draws tab renders. The full list + the
+// "liens" key are kept so the (now-hidden) lien-releases page still typechecks
+// and the tab can be restored on un-hide.
+const ALL_TABS = [
   { key: "draws", label: "Draws", slug: "/draws" },
   { key: "liens", label: "Lien Releases", slug: "/lien-releases" },
 ] as const;
 
-export type DrawsSection = (typeof TABS)[number]["key"];
+export type DrawsSection = (typeof ALL_TABS)[number]["key"];
+
+const TABS = ALL_TABS.filter((t) => t.key === "draws");
 
 export default function DrawsSubTabs({
   jobId,

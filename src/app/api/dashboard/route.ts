@@ -7,6 +7,7 @@ import {
 import { createServerClient } from "@/lib/supabase/server";
 import { tryCreateServiceRoleClient } from "@/lib/supabase/service";
 import { timed } from "@/lib/perf-log";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 /**
  * GET /api/dashboard
@@ -66,12 +67,12 @@ export const GET = withApiError(async (req: NextRequest) => {
   // didn't run (shouldn't happen for /api/ routes, but keep the fallback).
   const fromHeaders = getMembershipFromRequest(req);
   if (process.env.PERF_LOG === "1") {
-    console.log(`[perf] dashboard fromHeaders: ${fromHeaders ? "HIT" : "MISS"} (x-org-id=${req.headers.get("x-org-id") ?? "null"})`);
+    console.log(`[perf] dashboard fromHeaders: ${fromHeaders ? "HIT" : "MISS"} (x-org-id=${req.headers.get("x-org-id") ?? "null"})`); // nightwork: console-allowed — PERF_LOG-gated diagnostic perf timing
   }
   const membership = fromHeaders ?? (await getCurrentMembership());
   if (!membership) throw new ApiError("Not authenticated", 401);
   if (process.env.PERF_LOG === "1") {
-    console.log(`[perf] dashboard auth+membership: ${Date.now() - Tauth}ms`);
+    console.log(`[perf] dashboard auth+membership: ${Date.now() - Tauth}ms`); // nightwork: console-allowed — PERF_LOG-gated diagnostic perf timing
   }
 
   // Prefer service-role for aggregate efficiency; fall back to the user's
@@ -170,7 +171,7 @@ export const GET = withApiError(async (req: NextRequest) => {
         .order("updated_at", { ascending: false }).limit(50)),
   ]);
   if (process.env.PERF_LOG === "1") {
-    console.log(`[perf] dashboard wave1 total: ${Date.now() - T0}ms`);
+    console.log(`[perf] dashboard wave1 total: ${Date.now() - T0}ms`); // nightwork: console-allowed — PERF_LOG-gated diagnostic perf timing
   }
 
   // ---------- METRICS ----------
@@ -345,7 +346,10 @@ export const GET = withApiError(async (req: NextRequest) => {
     const used = po.invoiced_total ?? 0;
     if (total > 0) {
       const remainingPct = ((total - used) / total) * 100;
-      if (remainingPct >= 0 && remainingPct < 10) {
+      // Gate-2 strip (2026-07): suppress the PO-exhausted attention card while
+      // POs are hidden (PROJECT_OPS off) — its detail link (/purchase-orders/[id])
+      // would 404, and PO is not a kept feature. Re-surfaces when PROJECT_OPS flips.
+      if (remainingPct >= 0 && remainingPct < 10 && isFeatureEnabled("PROJECT_OPS")) {
         attention.push({
           kind: "po_nearly_exhausted",
           severity: remainingPct < 5 ? "high" : "medium",
@@ -415,7 +419,7 @@ export const GET = withApiError(async (req: NextRequest) => {
   // Parallel: resolve user names + job names for invoices + job names for draws
   // In-memory resolution from wave 1 prefetch — no round-trip.
   if (process.env.PERF_LOG === "1") {
-    console.log(`[perf] dashboard GRAND TOTAL: ${Date.now() - T0}ms`);
+    console.log(`[perf] dashboard GRAND TOTAL: ${Date.now() - T0}ms`); // nightwork: console-allowed — PERF_LOG-gated diagnostic perf timing
   }
   // Suppress unused IDs since we no longer dispatch wave 2 queries.
   void userIds; void invoiceIds; void drawIds;
@@ -439,12 +443,14 @@ export const GET = withApiError(async (req: NextRequest) => {
     const job = r.entity_id ? jobMap.get(`${r.entity_type}:${r.entity_id}`) ?? null : null;
     let href = "";
     if (r.entity_id) {
+      // Gate-2 strip (2026-07): omit link_href for purchase_order / change_order
+      // / vendor activity rows — their detail routes are now hidden (PROJECT_OPS
+      // 404 / redirect-to-404). today/page.tsx renders a non-link row when
+      // link_href is falsy, so these degrade cleanly. invoice/draw resolve to
+      // kept /financials/* via next.config 308 redirects; job stays kept.
       switch (r.entity_type) {
         case "invoice": href = `/invoices/${r.entity_id}`; break;
         case "draw": href = `/draws/${r.entity_id}`; break;
-        case "purchase_order": href = `/purchase-orders/${r.entity_id}`; break;
-        case "change_order": href = `/change-orders/${r.entity_id}`; break;
-        case "vendor": href = `/vendors/${r.entity_id}`; break;
         case "job": href = `/jobs/${r.entity_id}`; break;
       }
     }

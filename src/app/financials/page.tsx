@@ -33,9 +33,21 @@ const ALL_FINANCIALS_SECTIONS = [
   { href: "/financials/change-orders", label: "Change Orders", desc: "Org-wide change order list — F1 unifies job-scoped COs", wave: "F1", live: false },
 ];
 
+// Gate-2 strip (2026-07): Payments / Lien Releases / Aging cards are dropped from
+// the grid when FINANCIALS_F1_VIEWS is off — their routes are now 404'd by the
+// extended gate. Only Bills + Pay Apps remain. F1 org-wide placeholder cards
+// (CO/PO) keep hiding via the !s.live branch. Un-hide = flip the flag.
+const STRIPPED_WHEN_F1_OFF = new Set([
+  "/financials/payments",
+  "/financials/lien-releases",
+  "/financials/aging",
+]);
+
 const FINANCIALS_SECTIONS = ALL_FINANCIALS_SECTIONS.filter((s) => {
-  // Hide F1 org-wide views unless flag is on. Live entries always shown.
-  if (!s.live && !isFeatureEnabled("FINANCIALS_F1_VIEWS")) return false;
+  if (!isFeatureEnabled("FINANCIALS_F1_VIEWS")) {
+    if (!s.live) return false; // F1 org-wide placeholder cards (CO/PO)
+    if (STRIPPED_WHEN_F1_OFF.has(s.href)) return false; // Gate-2 strip
+  }
   return true;
 });
 

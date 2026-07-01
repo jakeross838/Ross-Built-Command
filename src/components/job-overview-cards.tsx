@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils/format";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import NwCard from "@/components/nw/Card";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import NwMoney from "@/components/nw/Money";
@@ -343,21 +344,28 @@ export default function JobOverviewCards({
                 count={openItems.pending_invoices_count}
                 amountCents={openItems.pending_invoices_total}
               />
-              <OpenItemRow
-                href={`/jobs/${jobId}/purchase-orders?status=draft`}
-                label="Draft POs"
-                count={openItems.draft_pos}
-              />
-              <OpenItemRow
-                href={`/jobs/${jobId}/change-orders?status=pending`}
-                label="Pending COs"
-                count={openItems.pending_cos}
-              />
-              <OpenItemRow
-                href={`/jobs/${jobId}/lien-releases?status=pending`}
-                label="Pending Liens"
-                count={openItems.pending_liens}
-              />
+              {/* Gate-2 strip (2026-07): PO / CO / Lien open-item rows hidden
+                  while their per-job tabs are 404'd by PROJECT_OPS. Pending
+                  Invoices + budget-health rows stay (kept). */}
+              {isFeatureEnabled("PROJECT_OPS") && (
+                <>
+                  <OpenItemRow
+                    href={`/jobs/${jobId}/purchase-orders?status=draft`}
+                    label="Draft POs"
+                    count={openItems.draft_pos}
+                  />
+                  <OpenItemRow
+                    href={`/jobs/${jobId}/change-orders?status=pending`}
+                    label="Pending COs"
+                    count={openItems.pending_cos}
+                  />
+                  <OpenItemRow
+                    href={`/jobs/${jobId}/lien-releases?status=pending`}
+                    label="Pending Liens"
+                    count={openItems.pending_liens}
+                  />
+                </>
+              )}
             </div>
           )}
         </SectionCard>

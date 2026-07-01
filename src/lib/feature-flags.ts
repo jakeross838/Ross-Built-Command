@@ -36,7 +36,8 @@ export type FeatureFlagName =
   | "COMPANY"
   | "REPORTS"
   | "PRICE_INTEL_F5"
-  | "FINANCIALS_F1_VIEWS";
+  | "FINANCIALS_F1_VIEWS"
+  | "PROJECT_OPS";
 
 // Static mapping: TypeScript union → process.env key. Inline `process.env.X`
 // reads are REQUIRED for Next.js NEXT_PUBLIC_* build-time inlining (dynamic
@@ -49,6 +50,12 @@ const FLAG_ENV_VALUE: Record<FeatureFlagName, string | undefined> = {
   REPORTS:             process.env.NEXT_PUBLIC_FEATURE_REPORTS,
   PRICE_INTEL_F5:      process.env.NEXT_PUBLIC_FEATURE_PRICE_INTEL_F5,
   FINANCIALS_F1_VIEWS: process.env.NEXT_PUBLIC_FEATURE_FINANCIALS_F1_VIEWS,
+  // Gate-2 strip (2026-07): gates the project-ops cluster — per-job non-core
+  // tabs (change-orders, POs, activity, closeout, daily-logs, documents, etc.),
+  // top-level /change-orders/[id], and the proposals API. Default OFF (unset ->
+  // undefined !== "true" -> OFF per the fail-closed contract). Un-hide later =
+  // set NEXT_PUBLIC_FEATURE_PROJECT_OPS="true" in Vercel + redeploy.
+  PROJECT_OPS:         process.env.NEXT_PUBLIC_FEATURE_PROJECT_OPS,
 };
 
 /**

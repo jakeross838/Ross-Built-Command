@@ -11,14 +11,17 @@ export type FinancialView =
   | "aging"
   | "liens";
 
+// Gate-2 strip (2026-07): Payments / Aging / Liens tabs removed — their targets
+// (/financials/{payments,aging,lien-releases}, via the /invoices/* + aging-report
+// redirects) are now 404'd by the extended FINANCIALS_F1_VIEWS gate. Kept:
+// Invoices / Queue / QA / Draws. The FinancialView type retains the removed keys
+// so any stripped page's `active` prop still typechecks (those pages no longer
+// render — middleware 404). Un-hide = re-add the entries.
 const TABS: { key: FinancialView; label: string; href: string }[] = [
   { key: "invoices", label: "Invoices", href: "/invoices" },
   { key: "queue", label: "Queue", href: "/invoices/queue" },
   { key: "qa", label: "QA", href: "/invoices/qa" },
-  { key: "payments", label: "Payments", href: "/invoices/payments" },
   { key: "draws", label: "Draws", href: "/draws" },
-  { key: "aging", label: "Aging", href: "/financials/aging-report" },
-  { key: "liens", label: "Liens", href: "/invoices/liens" },
 ];
 
 export default function FinancialViewTabs({

@@ -41,6 +41,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import {
   useCallback,
   useEffect,
@@ -340,10 +341,13 @@ function SubNavDropdown({
 
 export default function PerJobTabs({ jobId, phase }: PerJobTabsProps) {
   const pathname = usePathname();
-  const moreItems = [
-    ...moreBaseItems(jobId),
-    ...morePhaseItems(jobId, phase),
-  ];
+  // Gate-2 strip (2026-07): the More ▾ items (Change Orders, Purchase Orders,
+  // Activity, Closeout, ...) all point at routes now 404'd by PROJECT_OPS. Gate
+  // them behind the same flag so More ▾ is empty (and hidden below) while the
+  // cluster is stripped. Un-hide = flip PROJECT_OPS.
+  const moreItems = isFeatureEnabled("PROJECT_OPS")
+    ? [...moreBaseItems(jobId), ...morePhaseItems(jobId, phase)]
+    : [];
 
   // Active tab determination — exact path match against /jobs/{jobId}{path}.
   const activeTab = PRIMARY_TABS.find(
@@ -411,15 +415,17 @@ export default function PerJobTabs({ jobId, phase }: PerJobTabsProps) {
             );
           })}
 
-          {/* More ▾ dropdown (desktop) */}
-          <div className="ml-2">
-            <SubNavDropdown
-              label="More"
-              items={moreItems}
-              active={isMoreActive}
-              activeHref={pathname ?? undefined}
-            />
-          </div>
+          {/* More ▾ dropdown (desktop) — hidden when empty (Gate-2 strip). */}
+          {moreItems.length > 0 && (
+            <div className="ml-2">
+              <SubNavDropdown
+                label="More"
+                items={moreItems}
+                active={isMoreActive}
+                activeHref={pathname ?? undefined}
+              />
+            </div>
+          )}
         </div>
 
         {/* Mobile posture (<768px): single dropdown showing all tabs per iter-2 D-21 */}

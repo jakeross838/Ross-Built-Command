@@ -142,7 +142,7 @@ export async function middleware(request: NextRequest) {
   const { response, user, gate, isPlatformAdmin } = await updateSession(request);
   const { pathname } = request.nextUrl;
   if (process.env.PERF_LOG === "1" && pathname.startsWith("/api/")) {
-    console.log(`[perf] middleware ${pathname}: ${Date.now() - T0}ms`);
+    console.log(`[perf] middleware ${pathname}: ${Date.now() - T0}ms`); // nightwork: console-allowed — PERF_LOG-gated diagnostic perf timing
   }
 
   // Bounce signed-in users away from auth-only pages.
@@ -281,6 +281,16 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith("/api/owner-portal/")) {
       return respond404();
     }
+    // Gate-2 strip (2026-07): the Owner Portal token admin page lives under
+    // /admin/* so it was NOT caught by the /owner-portal or /api/owner-portal
+    // matchers above — gate it here so the whole Owner Portal surface hides
+    // together while OWNER_PORTAL is off.
+    if (
+      pathname === "/admin/owner-portal-tokens" ||
+      pathname.startsWith("/admin/owner-portal-tokens/")
+    ) {
+      return respond404();
+    }
   }
 
   // PIPELINE — entire section + sub-routes.
@@ -347,7 +357,25 @@ export async function middleware(request: NextRequest) {
       pathname === "/financials/purchase-orders" ||
       pathname.startsWith("/financials/purchase-orders/") ||
       pathname === "/financials/reconciliation" ||
-      pathname.startsWith("/financials/reconciliation/")
+      pathname.startsWith("/financials/reconciliation/") ||
+      // Gate-2 strip (2026-07): financials sub-routes with no prior flag. The
+      // /invoices/{payments,liens} + /financials/aging-report aliases 308-redirect
+      // (next.config) to these canonical paths, so gating here covers them too.
+      pathname === "/financials/payments" ||
+      pathname.startsWith("/financials/payments/") ||
+      pathname === "/financials/lien-releases" ||
+      pathname.startsWith("/financials/lien-releases/") ||
+      pathname === "/financials/aging" ||
+      pathname.startsWith("/financials/aging/") ||
+      // Backing APIs for the stripped financial extras. NOTE: the invoice-owned
+      // /api/invoices/[id]/payment is intentionally NOT gated (the kept invoice
+      // detail renders its PaymentPanel).
+      pathname === "/api/lien-releases" ||
+      pathname.startsWith("/api/lien-releases/") ||
+      pathname === "/api/invoices/payments/bulk" ||
+      pathname === "/api/invoices/payments/batch-by-vendor" ||
+      pathname === "/api/internal-billing-types" ||
+      pathname.startsWith("/api/internal-billing-types/")
     ) {
       return respond404();
     }
@@ -355,6 +383,64 @@ export async function middleware(request: NextRequest) {
     if (/^\/jobs\/[^/]+\/schedule(\/.*)?$/.test(pathname)) {
       return respond404();
     }
+  }
+
+  // PROJECT OPS — per-job non-core tabs + top-level change-order detail +
+  // proposals API (Gate-2 strip; new flag, default OFF). Kept per-job tabs
+  // (overview, budget, bills, pay-apps) and the kept-data orphan tabs
+  // (/jobs/[id]/invoices, /jobs/[id]/draws) are NOT matched. The
+  // change_orders / purchase_orders / proposals TABLES stay readable — only the
+  // management routes/APIs 404. The draw-owned /api/draws/[id]/change-orders is
+  // NOT matched (different prefix), so pay-app G702/G703 math is unaffected.
+  if (!isFeatureEnabled("PROJECT_OPS")) {
+    if (
+      pathname === "/change-orders" ||
+      pathname.startsWith("/change-orders/") ||
+      // Subcontractor portal — a stripped surface (not one of the three kept
+      // features). Found during the Gate-2 build sweep; NOT in the Gate-1
+      // inventory list, so this path family is gated beyond the confirmed set
+      // (same PROJECT_OPS flag, same OFF value). Flagged for orchestrator
+      // ratification before production promotion.
+      pathname === "/sub-portal" ||
+      pathname.startsWith("/sub-portal/") ||
+      pathname === "/api/change-orders" ||
+      pathname.startsWith("/api/change-orders/") ||
+      pathname === "/api/purchase-orders" ||
+      pathname.startsWith("/api/purchase-orders/") ||
+      pathname === "/api/proposals" ||
+      pathname.startsWith("/api/proposals/")
+    ) {
+      return respond404();
+    }
+    // Per-job stripped tabs — [id] is a dynamic segment. Excludes the kept
+    // budget/bills/pay-apps/overview + kept-data invoices/draws tabs.
+    if (
+      /^\/jobs\/[^/]+\/(change-orders|purchase-orders|activity|closeout|warranty|pre-con|daily-logs|documents|permits|photos|plans|punchlist|rfis|selections|specs|submittals|team|time-entries|to-dos|mobile-approval|lien-releases|internal-billings)(\/.*)?$/.test(
+        pathname,
+      )
+    ) {
+      return respond404();
+    }
+    // Per-job stripped APIs.
+    if (
+      /^\/api\/jobs\/[^/]+\/(change-orders|purchase-orders|po-import|internal-billings)(\/.*)?$/.test(
+        pathname,
+      )
+    ) {
+      return respond404();
+    }
+  }
+
+  // Strip hardcode-404 (no flag): dev/scratch surfaces that must not ship in the
+  // stripped product. /api/sample-data seeds demo records (a write endpoint);
+  // /nw-test is a scratch component-verification page (no platform_admin wall).
+  if (
+    pathname === "/api/sample-data" ||
+    pathname.startsWith("/api/sample-data/") ||
+    pathname === "/nw-test" ||
+    pathname.startsWith("/nw-test/")
+  ) {
+    return respond404();
   }
 
   // Design-system playground gate (Stage 1.5a T18.5 / SPEC B7).
@@ -393,7 +479,7 @@ export async function middleware(request: NextRequest) {
         request.headers.get("x-real-ip") ||
         "unknown";
       const ua = request.headers.get("user-agent")?.slice(0, 80) || "unknown";
-      console.log(
+      console.log( // nightwork: console-allowed — security audit log of every verification-bypass usage (also surfaced via Sentry)
         `[verification-bypass] pathname=${pathname}\tip=${ip}\tua=${ua}\tts=${ts}`
       );
       // Fall through to response. user/gate/isPlatformAdmin have already

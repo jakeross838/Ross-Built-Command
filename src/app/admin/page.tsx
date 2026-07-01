@@ -62,7 +62,12 @@ const ALL_ADMIN_TILES: AdminTile[] = [
   { href: "/admin/templates", label: "Templates", desc: "Document + email templates", status: "placeholder", wave: "Wave 3" },
 ];
 
-const ADMIN_TILES: AdminTile[] = ALL_ADMIN_TILES.filter((tile) => tile.status === "live");
+// Gate-2 strip (2026-07): Owner Portal Tokens tile dropped from the grid — the
+// Owner Portal feature is hidden (OWNER_PORTAL off; its admin page is now 404'd
+// by the extended OWNER_PORTAL gate). Kept live tiles: Users, Cost Codes, Billing.
+const ADMIN_TILES: AdminTile[] = ALL_ADMIN_TILES.filter(
+  (tile) => tile.status === "live" && tile.href !== "/admin/owner-portal-tokens",
+);
 
 export default function AdminOverviewPage() {
   return (

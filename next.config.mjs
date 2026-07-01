@@ -83,9 +83,15 @@ const nextConfig = {
       { source: "/cost-intelligence", destination: "/price-intel", permanent: true },
       { source: "/cost-intelligence/lookup", destination: "/price-intel/cost-lookup", permanent: true },
       { source: "/cost-intelligence/codes", destination: "/admin/cost-codes", permanent: true },
-      { source: "/cost-intelligence/scope-data", destination: "/price-intel", permanent: true },
       { source: "/cost-intelligence/suggestions", destination: "/price-intel", permanent: true },
-      { source: "/cost-intelligence/conversions", destination: "/price-intel/cost-database", permanent: true },
+      // Gate-2 strip (2026-07): REMOVED the /cost-intelligence/scope-data ->
+      // /price-intel and /cost-intelligence/conversions -> /price-intel/cost-database
+      // redirects. Both shadowed REAL, kept Price-Intel pages (Scope Data enrichment
+      // + Unit Conversions confirm/reject queue) behind a stale root / an F5-hidden
+      // placeholder, so the kept hub's "Scope Data" + "Unit Conversions" cards
+      // (src/app/cost-intelligence/page.tsx:289,308) dead-ended at 404. The real
+      // pages live at /cost-intelligence/{scope-data,conversions} and are not
+      // flag-gated (PRICE_INTEL_F5 gates only 7 /price-intel/* placeholders).
 
       // /invoices → /financials/bills (Bills terminology rename per D-01)
       { source: "/invoices", destination: "/financials/bills", permanent: true },

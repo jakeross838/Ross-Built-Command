@@ -76,7 +76,7 @@ const co = (amount: number) => ({ id: "co-1", org_id: FIXTURE_ORG, job_id: "job-
     "co-bad": [{ budget_line_id: "b2", amount: 90000 }], // sum mismatch
   };
   const { plan, errors } = planBackfill(cos, mapping, {});
-  check("planBackfill collects the mismatch error", errors.length === 1 && /co-bad/.test(errors[0]));
+  check("planBackfill collects the mismatch error", errors.length === 1 && /co-bad/.test(errors[0]!));
   check("planBackfill returns EMPTY plan when ANY CO is invalid (structural no-partial)", plan.length === 0);
 }
 
