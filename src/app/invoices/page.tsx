@@ -167,15 +167,26 @@ export default function AllInvoicesPage() {
  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
  useEffect(() => {
+ // Backstop: the loading skeleton must NEVER be permanent. If fetchData
+ // hasn't flipped `loading` within 15s (e.g. a hung network call), force it
+ // so the user always reaches the empty state / list, never an endless spin.
+ const loadingSafety = setTimeout(() => setLoading(false), 15000);
  async function fetchData() {
+ try {
  // Auth pre-flight + membership.org_id fetch (Plan C-1 CR-C1-1; Option A
  // promoted from Option B per iter-2 multi-tenant-architect BLOCKING +
  // 4-of-5 reviewer consensus. Explicit org_id filter on PM query —
  // tenant safety by construction per D-30 / CLAUDE.md
  // "Filter every query by membership.org_id".)
+ // getSession() reads the stored JWT locally (no /auth/v1/user network
+ // round-trip) — avoids a permanent hang if that validation call stalls on
+ // a fresh-signup session (the new-org stuck-spinner bug). The invoice /
+ // membership queries below are RLS-protected server-side, so trusting the
+ // local session here is sufficient for a read-only list load.
  const {
- data: { user },
- } = await supabase.auth.getUser();
+ data: { session },
+ } = await supabase.auth.getSession();
+ const user = session?.user ?? null;
  let orgId: string | null = null;
  if (user) {
  const { data: membership } = await supabase
@@ -274,9 +285,19 @@ export default function AllInvoicesPage() {
  .sort((a, b) => a.full_name.localeCompare(b.full_name));
  setPmUsers(pms);
  }
+ } catch (err) {
+ // Robustness (new-org signup bug): never strand the page on the loading
+ // skeleton. A thrown/rejected query anywhere in this async chain (auth,
+ // RLS, network) must still resolve to the empty state, not spin forever.
+ // The empty-state branch handles zero data; a real error is logged here.
+ console.error("[invoices] load failed:", err);
+ } finally {
+ clearTimeout(loadingSafety);
  setLoading(false);
  }
+ }
  fetchData();
+ return () => clearTimeout(loadingSafety);
  }, []);
 
  // Unique job names
