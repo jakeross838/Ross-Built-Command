@@ -8,7 +8,7 @@ import { formatCents, formatStatus, formatDate, statusBadgeOutline } from "@/lib
 import InvoiceUploadModal from "@/components/invoice-upload-modal";
 import InvoiceImportModal from "@/components/invoice-import-modal";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
-import { SkeletonList, SkeletonStatCard } from "@/components/loading-skeleton";
+import { SkeletonList } from "@/components/loading-skeleton";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
 import NwButton from "@/components/nw/Button";
@@ -125,15 +125,7 @@ function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
  return <span className="ml-1 text-[var(--text-accent)]">{dir === "asc" ? "↑" : "↓"}</span>;
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
- return (
- <div className="border px-4 py-3" style={{ background: "var(--bg-card)", borderColor: "var(--border-default)" }}>
- <p className="text-[11px] font-mono font-medium uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>{label}</p>
- <p className="text-xl font-mono font-medium tabular-nums mt-1" style={{ color: "var(--text-primary)" }}>{value}</p>
- {sub && <p className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>{sub}</p>}
- </div>
- );
-}
+// StatCard removed with the contradicting stat cards (per Jake ship-review fix 1).
 
 export default function AllInvoicesPage() {
  const searchParams = useSearchParams();
@@ -294,16 +286,8 @@ export default function AllInvoicesPage() {
  return Array.from(names).sort();
  }, [invoices]);
 
- // Stats
- const stats = useMemo(() => {
- const total = invoices.length;
- const totalValue = invoices.reduce((s, inv) => s + inv.total_amount, 0);
- const pending = invoices.filter(inv => ["pm_review", "ai_processed", "received"].includes(inv.status)).length;
- const approved = invoices.filter(inv => ["pm_approved", "qa_review", "qa_approved", "pushed_to_qb"].includes(inv.status)).length;
- const inDraw = invoices.filter(inv => inv.status === "in_draw").length;
- const paid = invoices.filter(inv => inv.status === "paid").length;
- return { total, totalValue, pending, approved, inDraw, paid };
- }, [invoices]);
+ // Stat cards removed — they used stale status buckets that contradicted the
+ // approval-stage tabs. Per-stage counts now live on the tab chips + sub-line.
 
  // STEP 2 — approval-stage tab counts (+ To Review PM/QA sub-counts).
  const stageCounts = useMemo(() => {
@@ -325,8 +309,11 @@ export default function AllInvoicesPage() {
  if (statusFilters.size > 0) count++;
  if (amountRange !== "all") count++;
  if (dateStart || dateEnd) count++;
+ if (jobFilter) count++;
+ if (pmFilter) count++;
+ if (confidenceFilter !== "all") count++;
  return count;
- }, [statusFilters, amountRange, dateStart, dateEnd]);
+ }, [statusFilters, amountRange, dateStart, dateEnd, jobFilter, pmFilter, confidenceFilter]);
 
  // Filter + sort
  const filtered = useMemo(() => {
@@ -545,26 +532,12 @@ export default function AllInvoicesPage() {
 
  {loading ? (
  <div className="space-y-4">
- <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
- <SkeletonStatCard />
- <SkeletonStatCard />
- <SkeletonStatCard />
- <SkeletonStatCard />
- </div>
  <SkeletonList rows={6} columns={["w-32", "w-20", "w-24", "w-32", "w-32", "w-20", "w-24"]} />
  </div>
  ) : (
  <>
  {activeTab === "all" ? (
  <>
- {/* Stats */}
- <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
- <StatCard label="Total Invoices" value={stats.total.toString()} />
- <StatCard label="Total Value" value={formatCents(stats.totalValue)} />
- <StatCard label="Pending Review" value={stats.pending.toString()} sub={`${stats.approved} approved`} />
- <StatCard label="In Draw / Paid" value={`${stats.inDraw} / ${stats.paid}`} />
- </div>
-
  {/* Primary filters */}
  <div className="flex flex-col md:flex-row gap-3 mb-3">
  <div className="relative flex-1">
@@ -580,24 +553,7 @@ export default function AllInvoicesPage() {
  </button>
  )}
  </div>
- <select value={jobFilter} onChange={(e) => setJobFilter(e.target.value)}
- className="px-3 py-2.5 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none md:w-48">
- <option value="">All Jobs</option>
- {jobNames.map(n => <option key={n} value={n}>{n}</option>)}
- </select>
- <select value={pmFilter} onChange={(e) => setPmFilter(e.target.value)}
- className="px-3 py-2.5 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none md:w-44">
- <option value="">All PMs</option>
- <option value="__unassigned__">Unassigned</option>
- {pmUsers.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
- </select>
- <select value={confidenceFilter} onChange={(e) => setConfidenceFilter(e.target.value as ConfidenceFilter)}
- className="px-3 py-2.5 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none md:w-40">
- <option value="all">All Confidence</option>
- <option value="high">High (≥85%)</option>
- <option value="medium">Medium (70–84%)</option>
- <option value="low">Low (&lt;70%)</option>
- </select>
+ {/* Job / PM / Confidence moved into "More Filters" below — one filter system, not two. */}
  </div>
 
  {/* More Filters toggle */}
@@ -637,6 +593,35 @@ export default function AllInvoicesPage() {
  {formatStatus(s)}
  </button>
  ))}
+ </div>
+ </div>
+ <div className="flex flex-col md:flex-row gap-4 mb-4">
+ <div>
+ <p className="text-[11px] font-mono font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Job</p>
+ <select value={jobFilter} onChange={(e) => setJobFilter(e.target.value)}
+ className="px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none md:w-48">
+ <option value="">All Jobs</option>
+ {jobNames.map(n => <option key={n} value={n}>{n}</option>)}
+ </select>
+ </div>
+ <div>
+ <p className="text-[11px] font-mono font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">PM</p>
+ <select value={pmFilter} onChange={(e) => setPmFilter(e.target.value)}
+ className="px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none md:w-44">
+ <option value="">All PMs</option>
+ <option value="__unassigned__">Unassigned</option>
+ {pmUsers.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+ </select>
+ </div>
+ <div>
+ <p className="text-[11px] font-mono font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Confidence</p>
+ <select value={confidenceFilter} onChange={(e) => setConfidenceFilter(e.target.value as ConfidenceFilter)}
+ className="px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none md:w-40">
+ <option value="all">All Confidence</option>
+ <option value="high">High (≥85%)</option>
+ <option value="medium">Medium (70–84%)</option>
+ <option value="low">Low (&lt;70%)</option>
+ </select>
  </div>
  </div>
  <div className="flex flex-col md:flex-row gap-4">
@@ -694,9 +679,7 @@ export default function AllInvoicesPage() {
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] text-right cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("amount")}>
  Amount<SortArrow active={sortKey === "amount"} dir={sortDir} />
  </th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("status")}>
- Status<SortArrow active={sortKey === "status"} dir={sortDir} />
- </th>
+ {/* Status column dropped — the active tab already names the stage. */}
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Draw</th>
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Paid</th>
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("pm")}>
@@ -727,6 +710,9 @@ export default function AllInvoicesPage() {
  )}
  {isUnknownVendor(inv) && (
  <NwBadge variant="danger" size="sm">Unknown Vendor</NwBadge>
+ )}
+ {(inv.parent_invoice_id || inv.partial_approval_note) && (
+ <NwBadge variant="warning" size="sm">Partial</NwBadge>
  )}
  </Link>
  </td>
@@ -767,16 +753,7 @@ export default function AllInvoicesPage() {
  <td className="py-3 px-4 text-right">
  <NwMoney cents={inv.total_amount} />
  </td>
- <td className="py-3 px-4">
- <div className="flex items-center gap-1.5">
- <NwBadge variant={invoiceBadgeVariant(inv.status)} size="sm">
- {formatStatus(inv.status)}
- </NwBadge>
- {(inv.parent_invoice_id || inv.partial_approval_note) && (
- <NwBadge variant="warning" size="sm">Partial</NwBadge>
- )}
- </div>
- </td>
+ {/* Status column dropped (fix 3) — the Partial flag moved to the vendor cell. */}
  <td className="py-3 px-4">
  {inv.draws ? (
  <NwBadge variant="info" size="sm">Draw #{inv.draws.draw_number} · {inv.draws.status}</NwBadge>
