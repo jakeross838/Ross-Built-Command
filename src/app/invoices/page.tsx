@@ -654,12 +654,29 @@ export default function AllInvoicesPage() {
 
  {/* No results */}
  {filtered.length === 0 && (
+ invoices.length === 0 ? (
+ // Truly empty org (no invoices at all) — the post-onboarding landing.
+ <EmptyState
+ icon={<EmptyIcons.Document />}
+ title="No invoices yet"
+ message="Upload your first invoice — vendors and jobs are matched automatically, then you review and approve it right here."
+ primaryAction={{ label: "Upload invoice", onClick: () => setUploadOpen(true) }}
+ />
+ ) : isFiltered ? (
  <EmptyState
  icon={<EmptyIcons.Search />}
  title="No invoices match your filters"
  message="Try adjusting your filters, or clear them to see every invoice in the system."
  primaryAction={{ label: "Clear filters", onClick: clearAllFilters }}
  />
+ ) : (
+ // Org has invoices, none in this stage tab, no filter applied.
+ <EmptyState
+ icon={<EmptyIcons.Check />}
+ title="Nothing in this stage"
+ message="No invoices are in this stage right now."
+ />
+ )
  )}
 
  {filtered.length > 0 && (

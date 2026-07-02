@@ -50,12 +50,14 @@ export const DEFAULT_WORKFLOW_SETTINGS: Omit<
   quick_approve_enabled: true,
   quick_approve_min_confidence: 95,
   require_invoice_date: true,
-  // Default TRUE per nwrp276 / PART-2A F2A-3: silent-off is how Ross Built
-  // accumulated $95K of spend invisible to budget rollups. New orgs start
-  // gated; column default flipped in migration 00109. RB's own row stays
-  // FALSE until the D2 backfill completes (TD-NW-CO-LINE-ALLOCATION
-  // companion workstream — backfill FIRST, flip SECOND, both pre-dogfood).
-  require_budget_allocation: true,
+  // Default FALSE per migration 00112 (onboarding fix): a brand-new org has
+  // no budget lines, so gating first-approval on budget allocation is
+  // unsatisfiable — the #1 onboarding cliff. Reverts 00109's default-true.
+  // Matches Ross Built (its row has always been false). Opt-in per-org;
+  // re-enable once a customer has authored budgets. This app-layer fallback
+  // only applies when an org row is missing; the DB column default drives
+  // new-org seeding.
+  require_budget_allocation: false,
   require_po_linkage: false,
   over_budget_requires_note: true,
   duplicate_detection_enabled: true,
