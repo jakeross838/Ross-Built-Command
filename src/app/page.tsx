@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
-import { getCurrentOrg } from "@/lib/org/session";
 import PublicHeader from "@/components/public-header";
 import PublicFooter from "@/components/public-footer";
 
@@ -14,12 +13,10 @@ export default async function Root() {
     data: { user },
   } = await supabase.auth.getUser();
   if (user) {
-    const org = await getCurrentOrg();
-    if (org && !org.onboarding_complete) redirect("/onboard");
     // Flat-IA rework (2026-07): Invoices is the default landing (feature #1).
     // /financials/bills is the canonical, un-redirected Invoices URL
-    // (invoices/page.tsx is re-exported there). /today is orphaned (no longer
-    // in the 3-surface nav).
+    // (invoices/page.tsx is re-exported there). Onboarding is now inline (one
+    // signup screen + guided empty states), so there's no /onboard gate here.
     redirect("/financials/bills");
   }
 

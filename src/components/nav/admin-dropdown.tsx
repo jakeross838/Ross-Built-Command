@@ -31,6 +31,7 @@ const ADMIN_ITEMS: NavDropdownItem[] = [
   { href: "/admin", label: "Org Settings" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/cost-codes", label: "Cost Codes" },
+  { href: "/admin/financial", label: "Financial" },
   { href: "/admin/billing", label: "Billing" },
 ];
 

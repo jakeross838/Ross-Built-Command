@@ -3459,6 +3459,7 @@ export type Database = {
           company_email: string | null
           company_phone: string | null
           company_state: string | null
+          company_type: string | null
           company_website: string | null
           company_zip: string | null
           cost_intelligence_settings: Json | null
@@ -3474,6 +3475,7 @@ export type Database = {
           payment_schedule_config: Json
           payment_schedule_type: string
           primary_color: string
+          revenue_band: string | null
           slug: string
           storage_used_bytes: number
           stripe_customer_id: string | null
@@ -3494,6 +3496,7 @@ export type Database = {
           company_email?: string | null
           company_phone?: string | null
           company_state?: string | null
+          company_type?: string | null
           company_website?: string | null
           company_zip?: string | null
           cost_intelligence_settings?: Json | null
@@ -3509,6 +3512,7 @@ export type Database = {
           payment_schedule_config?: Json
           payment_schedule_type?: string
           primary_color?: string
+          revenue_band?: string | null
           slug: string
           storage_used_bytes?: number
           stripe_customer_id?: string | null
@@ -3529,6 +3533,7 @@ export type Database = {
           company_email?: string | null
           company_phone?: string | null
           company_state?: string | null
+          company_type?: string | null
           company_website?: string | null
           company_zip?: string | null
           cost_intelligence_settings?: Json | null
@@ -3544,6 +3549,7 @@ export type Database = {
           payment_schedule_config?: Json
           payment_schedule_type?: string
           primary_color?: string
+          revenue_band?: string | null
           slug?: string
           storage_used_bytes?: number
           stripe_customer_id?: string | null
@@ -5139,10 +5145,14 @@ export type Database = {
       }
       create_signup: {
         Args: {
+          p_company_address?: string
           p_company_name: string
+          p_company_phone?: string
+          p_company_type?: string
           p_email: string
           p_full_name: string
           p_password: string
+          p_revenue_band?: string
         }
         Returns: Json
       }

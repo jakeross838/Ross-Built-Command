@@ -676,13 +676,11 @@ export default function AllInvoicesPage() {
  {/* No results */}
  {filtered.length === 0 && (
  invoices.length === 0 ? (
- // Truly empty org (no invoices at all) — the post-onboarding landing.
- <EmptyState
- icon={<EmptyIcons.Document />}
- title="No invoices yet"
- message="Upload your first invoice — vendors and jobs are matched automatically, then you review and approve it right here."
- primaryAction={{ label: "Upload invoice", onClick: () => setUploadOpen(true) }}
- />
+ // Truly empty org (no invoices at all) — the post-signup landing. A
+ // guiding 3-step setup path (cost codes → first job → upload invoice),
+ // NOT a blank screen: a fast one-screen signup that dead-ended here would
+ // strand new customers worse than the old wizard did.
+ <SetupGuide onUpload={() => setUploadOpen(true)} />
  ) : isFiltered ? (
  <EmptyState
  icon={<EmptyIcons.Search />}
@@ -955,4 +953,107 @@ export default function AllInvoicesPage() {
  }} />
  </>
  );
+}
+
+// ---------------------------------------------------------------------------
+// SetupGuide — the guiding empty state for a brand-new org (0 invoices).
+//
+// The one-screen signup gets a customer INTO the app fast; this is where they
+// learn what to do next. It lays out the 3 prerequisites to a first approved
+// invoice, in order, each with a direct action:
+//   1. Cost codes  → /admin/cost-codes   (the trades invoices are coded to)
+//   2. First job   → /jobs/new           (every invoice ties to a job)
+//   3. Upload      → the upload modal     (parse → review → approve)
+// Financial defaults (GC fee / deposit / payment schedule) and team invites
+// live in Settings and are prompted later (at draw-creation), so they are
+// intentionally NOT in this first-run path.
+// ---------------------------------------------------------------------------
+function SetupGuide({ onUpload }: { onUpload: () => void }) {
+  return (
+    <div className="border border-dashed border-[var(--border-default)] bg-[var(--bg-card)] px-6 py-12 animate-fade-up">
+      <div className="max-w-xl mx-auto text-center">
+        <span
+          className="text-[10px] uppercase text-[color:var(--text-tertiary)]"
+          style={{ fontFamily: "var(--font-jetbrains-mono)", letterSpacing: "0.14em" }}
+        >
+          Welcome to Nightwork
+        </span>
+        <h3 className="mt-2 font-display text-xl text-[color:var(--text-primary)]">
+          Three steps to your first invoice
+        </h3>
+        <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
+          Set up the essentials once, then upload invoices and approve them right here.
+        </p>
+      </div>
+
+      <ol className="mt-8 max-w-xl mx-auto flex flex-col gap-3">
+        <SetupStep
+          n={1}
+          title="Set up your cost codes"
+          desc="The trades you track — Framing, Electrical, Plumbing. Invoices get coded against these."
+          action={{ label: "Set up cost codes", href: "/admin/cost-codes" }}
+        />
+        <SetupStep
+          n={2}
+          title="Add your first job"
+          desc="The project your invoices bill against. Every invoice ties to a job."
+          action={{ label: "Add a job", href: "/jobs/new" }}
+        />
+        <SetupStep
+          n={3}
+          title="Upload your first invoice"
+          desc="PDF, Word, or a photo — we parse the vendor, amount, and line items for you to review."
+          action={{ label: "Upload invoice", onClick: onUpload }}
+          primary
+        />
+      </ol>
+
+      <p className="mt-6 text-center text-[11px] text-[color:var(--text-tertiary)]">
+        GC fee, deposit, and payment schedule live in Settings — we&rsquo;ll prompt you when you create your first draw.
+      </p>
+    </div>
+  );
+}
+
+function SetupStep({
+  n,
+  title,
+  desc,
+  action,
+  primary,
+}: {
+  n: number;
+  title: string;
+  desc: string;
+  action: { label: string; href: string } | { label: string; onClick: () => void };
+  primary?: boolean;
+}) {
+  const btnCls = primary
+    ? "inline-block px-4 py-2 bg-[var(--nw-stone-blue)] text-[color:var(--nw-white-sand)] text-sm hover:bg-[var(--nw-gulf-blue)] transition-colors whitespace-nowrap"
+    : "inline-block px-4 py-2 border border-[var(--border-default)] bg-[var(--bg-card)] text-[color:var(--text-primary)] text-sm hover:border-[rgba(91,134,153,0.5)] transition-colors whitespace-nowrap";
+  return (
+    <li className="flex items-start gap-4 border border-[var(--border-default)] bg-[var(--bg-page)] px-4 py-4">
+      <span
+        className="shrink-0 w-8 h-8 flex items-center justify-center border border-[var(--border-strong)] text-[13px] text-[color:var(--text-primary)]"
+        style={{ fontFamily: "var(--font-jetbrains-mono)" }}
+      >
+        {n}
+      </span>
+      <div className="flex-1 min-w-0 text-left">
+        <h4 className="font-display text-[15px] text-[color:var(--text-primary)]">{title}</h4>
+        <p className="mt-0.5 text-[13px] text-[color:var(--text-secondary)] leading-relaxed">{desc}</p>
+      </div>
+      <div className="shrink-0 self-center">
+        {"href" in action ? (
+          <Link href={action.href} className={btnCls}>
+            {action.label}
+          </Link>
+        ) : (
+          <button type="button" onClick={action.onClick} className={btnCls}>
+            {action.label}
+          </button>
+        )}
+      </div>
+    </li>
+  );
 }

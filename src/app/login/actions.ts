@@ -17,40 +17,17 @@ export async function loginAction(
   }
 
   const supabase = createServerClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
     return { error: error.message };
   }
 
-  // Route based on onboarding state so existing users don't bounce through
-  // the landing page on every sign-in. New orgs (or ones that ditched the
-  // wizard halfway) go to /onboard; everyone else lands on /dashboard.
-  if (user) {
-    const { data: member } = await supabase
-      .from("org_members")
-      .select("org_id")
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (member?.org_id) {
-      const { data: org } = await supabase
-        .from("organizations")
-        .select("onboarding_complete")
-        .eq("id", member.org_id)
-        .maybeSingle();
-      if (org && !org.onboarding_complete) {
-        redirect("/onboard");
-      }
-    }
-  }
-
-  redirect("/dashboard");
+  // Flat-IA rework: everyone lands on Invoices (/financials/bills), the
+  // canonical default surface. The 5-step /onboard wizard has been retired
+  // (onboarding is now inline — see src/app/signup + the guided empty
+  // Invoices state), so there is no onboarding-state branch here anymore.
+  redirect("/financials/bills");
 }
 
 export async function logoutAction() {
