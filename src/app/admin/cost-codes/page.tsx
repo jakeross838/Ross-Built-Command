@@ -27,5 +27,9 @@ export default async function CostCodesPage() {
     .is("deleted_at", null)
     .order("sort_order", { ascending: true });
 
-  return <CostCodesManager initial={(codes ?? []) as CostCode[]} />;
+  return (
+    <div className="px-6 py-8 max-w-[1200px] mx-auto">
+      <CostCodesManager initial={(codes ?? []) as CostCode[]} />
+    </div>
+  );
 }

@@ -115,7 +115,7 @@ export default async function BillingSettingsPage({
   const isCancelled = org.subscription_status === "cancelled";
 
   return (
-    <div className="space-y-6">
+    <div className="px-6 py-8 max-w-[1200px] mx-auto space-y-6">
       {searchParams.session_id && (
         <Banner kind="success">
           Subscription activated. Welcome to {planName}!

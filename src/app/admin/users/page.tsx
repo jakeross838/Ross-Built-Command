@@ -82,10 +82,12 @@ export default async function UsersPage() {
   const pending: PendingInvite[] = (pendingRaw ?? []) as PendingInvite[];
 
   return (
-    <TeamSettings
-      currentUserId={user.id}
-      members={members}
-      pending={pending}
-    />
+    <div className="px-6 py-8 max-w-[1200px] mx-auto">
+      <TeamSettings
+        currentUserId={user.id}
+        members={members}
+        pending={pending}
+      />
+    </div>
   );
 }

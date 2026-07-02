@@ -111,5 +111,9 @@ function daysUntil(iso: string | null): number | null {
   if (!iso) return null;
   const diffMs = new Date(iso).getTime() - Date.now();
   if (Number.isNaN(diffMs)) return null;
-  return Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+  // Trial already ended (date in the past) — hide the countdown instead of
+  // showing a misleading "0 days remaining". A brand-new org has ~14 days out,
+  // so this only affects genuinely-expired trials (previously clamped to 0).
+  if (diffMs <= 0) return null;
+  return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
 }

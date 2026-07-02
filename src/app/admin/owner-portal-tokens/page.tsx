@@ -107,7 +107,7 @@ export default async function OwnerPortalTokensPage() {
   const rows = (rowsRaw ?? []) as unknown as TokenRow[];
 
   return (
-    <main className="px-6 py-8">
+    <main className="px-6 py-8 max-w-[1200px] mx-auto">
       <div className="max-w-6xl mx-auto">
         <p
           className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]"
