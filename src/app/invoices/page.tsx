@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { formatCents, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
-import FinancialViewTabs from "@/components/financial-view-tabs";
 import InvoiceUploadModal from "@/components/invoice-upload-modal";
 import InvoiceImportModal from "@/components/invoice-import-modal";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
@@ -41,6 +40,8 @@ interface Invoice {
  parent_invoice_id: string | null;
  partial_approval_note: string | null;
  payment_status: string | null;
+ draw_id: string | null;
+ draws: { draw_number: number; status: string } | null;
  jobs: { id: string; name: string } | null;
  cost_codes: { code: string; description: string } | null;
  assigned_pm: { id: string; full_name: string } | null;
@@ -91,6 +92,34 @@ const ALL_STATUSES = [
 
 const statusBadgeColor = statusBadgeOutline;
 
+// ── STEP 2: approval-stage tabs (Archived DEFERRED per Jake — no draw-funding
+// signal exists yet). Three tabs map only to existing invoices.status values. ──
+type StageTab = "to_review" | "needs_attention" | "ready_for_draw";
+// Needs Attention = held / denied / waiting-on-info ONLY. NOTE (discovery
+// caveat, accepted): kick_back auto-reverts to pm_review, so kicked-back
+// invoices land under To Review, not here (0 rows carry qa_kicked_back today).
+const NEEDS_ATTENTION_STATUSES = ["pm_held", "pm_denied", "info_requested"];
+// Ready for Draw = approval-complete (independent of draw/pay state, which are
+// their own row badges). Includes in_draw + paid since Archived is deferred.
+const READY_FOR_DRAW_STATUSES = ["qa_approved", "in_draw", "paid", "pushed_to_qb"];
+// To Review = still needs a decision, split by reviewer audience.
+const TO_REVIEW_PM_STATUSES = ["received", "ai_processed", "pm_review", "info_received"];
+const TO_REVIEW_QA_STATUSES = ["pm_approved", "qa_review"];
+function stageOf(status: string): StageTab | null {
+ if (NEEDS_ATTENTION_STATUSES.includes(status)) return "needs_attention";
+ if (READY_FOR_DRAW_STATUSES.includes(status)) return "ready_for_draw";
+ if (TO_REVIEW_PM_STATUSES.includes(status) || TO_REVIEW_QA_STATUSES.includes(status)) return "to_review";
+ return null; // void / qb_failed / import_* — outside the 3 kept tabs (0 rows today)
+}
+
+// STEP 3: Paid indicator (independent of approval + draw). Uses payment_status.
+function paymentBadgeVariant(ps: string | null): BadgeVariant {
+ if (ps === "paid") return "success";
+ if (ps === "scheduled") return "info";
+ if (ps === "partial") return "warning";
+ return "neutral"; // unpaid / null
+}
+
 function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
  if (!active) return <span className="ml-1 text-[var(--text-tertiary)]">↕</span>;
  return <span className="ml-1 text-[var(--text-accent)]">{dir === "asc" ? "↑" : "↓"}</span>;
@@ -115,8 +144,13 @@ export default function AllInvoicesPage() {
  const [uploadOpen, setUploadOpen] = useState(searchParams.get("action") === "upload");
  const [importOpen, setImportOpen] = useState(searchParams.get("action") === "import");
 
- // Tabs
- const [activeTab, setActiveTab] = useState<"all" | "payment">("all");
+ // Tabs — STEP 2 approval stages. (Legacy `activeTab` retained but no longer
+ // switched: the Payment-Tracking branch below is now dormant, superseded by
+ // the per-row Paid badge; kept in place to preserve inline check#/picked-up
+ // editing pending Jake's call on whether to restore it as a view.)
+ const [activeTab] = useState<"all" | "payment">("all");
+ const [stageTab, setStageTab] = useState<StageTab>("to_review");
+ const [reviewSub, setReviewSub] = useState<"all" | "pm" | "qa">("all");
 
  // Inline editing for payment tracking
  const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
@@ -170,8 +204,8 @@ export default function AllInvoicesPage() {
  }
  // Try with partial-approval columns first (migration 00015). Fall back if
  // the columns don't exist yet so the page still renders.
- const INVOICES_FULL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, parent_invoice_id, partial_approval_note, payment_status, jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
- const INVOICES_MINIMAL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
+ const INVOICES_FULL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, parent_invoice_id, partial_approval_note, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
+ const INVOICES_MINIMAL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
  // Parallel: invoices + PMs. Line items fetched in a second pass with
  // an IN filter so we don't scan every line item in the org.
  const [invResult, pmResult] = await Promise.all([
@@ -271,6 +305,20 @@ export default function AllInvoicesPage() {
  return { total, totalValue, pending, approved, inDraw, paid };
  }, [invoices]);
 
+ // STEP 2 — approval-stage tab counts (+ To Review PM/QA sub-counts).
+ const stageCounts = useMemo(() => {
+ const c = { to_review: 0, needs_attention: 0, ready_for_draw: 0, pm: 0, qa: 0 };
+ for (const inv of invoices) {
+ const st = stageOf(inv.status);
+ if (st === "to_review") c.to_review++;
+ else if (st === "needs_attention") c.needs_attention++;
+ else if (st === "ready_for_draw") c.ready_for_draw++;
+ if (TO_REVIEW_PM_STATUSES.includes(inv.status)) c.pm++;
+ if (TO_REVIEW_QA_STATUSES.includes(inv.status)) c.qa++;
+ }
+ return c;
+ }, [invoices]);
+
  // Advanced filter count
  const advancedFilterCount = useMemo(() => {
  let count = 0;
@@ -283,6 +331,16 @@ export default function AllInvoicesPage() {
  // Filter + sort
  const filtered = useMemo(() => {
  let result = invoices;
+
+ // STEP 2 — approval-stage tab (+ To Review PM/QA sub-toggle)
+ result = result.filter(inv => stageOf(inv.status) === stageTab);
+ if (stageTab === "to_review" && reviewSub !== "all") {
+ result = result.filter(inv =>
+ reviewSub === "pm"
+ ? TO_REVIEW_PM_STATUSES.includes(inv.status)
+ : TO_REVIEW_QA_STATUSES.includes(inv.status)
+ );
+ }
 
  if (search.trim()) {
  const q = search.toLowerCase();
@@ -332,7 +390,7 @@ export default function AllInvoicesPage() {
  }
  return sortDir === "asc" ? cmp : -cmp;
  });
- }, [invoices, search, jobFilter, pmFilter, confidenceFilter, statusFilters, amountRange, dateStart, dateEnd, sortKey, sortDir]);
+ }, [invoices, stageTab, reviewSub, search, jobFilter, pmFilter, confidenceFilter, statusFilters, amountRange, dateStart, dateEnd, sortKey, sortDir]);
 
  const toggleSort = (key: SortKey) => {
  if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -396,7 +454,7 @@ export default function AllInvoicesPage() {
  return (
  <>
  <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
- <FinancialViewTabs active="invoices" />
+ {/* Invoices/Queue/QA sub-nav replaced by the STEP 2 approval-stage tabs below. */}
  <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
  <div>
  <span
@@ -422,9 +480,9 @@ export default function AllInvoicesPage() {
  Invoices
  </h2>
  <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
- {activeTab === "all"
- ? (isFiltered ? `Showing ${filtered.length} of ${invoices.length} invoices` : `${invoices.length} total invoices`)
- : `${paymentInvoices.length} invoices ready for payment`}
+ {isFiltered
+ ? `Showing ${filtered.length} filtered`
+ : `${filtered.length} in this stage · ${invoices.length} total`}
  </p>
  </div>
  <div className="flex items-center gap-2">
@@ -440,27 +498,45 @@ export default function AllInvoicesPage() {
  </div>
  </div>
 
- {/* Tabs */}
- <div className="flex gap-1 mb-6 bg-[var(--bg-subtle)] border border-[var(--border-default)] p-1 w-fit">
+ {/* STEP 2 — approval-stage tabs (replaces the Invoices/Queue/QA bar). */}
+ <div className="flex flex-wrap items-center gap-3 mb-4">
+ <div className="flex gap-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] p-1 w-fit">
+ {([
+ ["to_review", "To Review", stageCounts.to_review],
+ ["needs_attention", "Needs Attention", stageCounts.needs_attention],
+ ["ready_for_draw", "Ready for Draw", stageCounts.ready_for_draw],
+ ] as [StageTab, string, number][]).map(([key, label, count]) => (
  <button
- onClick={() => setActiveTab("all")}
- className={`px-4 py-2 font-mono text-[11px] tracking-[0.12em] uppercase font-medium transition-colors ${
- activeTab === "all" ? "bg-[var(--bg-muted)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+ key={key}
+ onClick={() => setStageTab(key)}
+ className={`px-4 py-2 font-mono text-[11px] tracking-[0.12em] uppercase font-medium transition-colors inline-flex items-center gap-2 ${
+ stageTab === key ? "bg-[var(--bg-muted)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
  }`}>
- All Invoices
+ {label}
+ <NwBadge variant={stageTab === key ? "accent" : "neutral"} size="sm">{String(count)}</NwBadge>
  </button>
+ ))}
+ </div>
+ {/* To Review sub-toggle — keeps the PM-vs-accountant split the app is built on. */}
+ {stageTab === "to_review" && (
+ <div className="flex gap-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] p-1 w-fit">
+ {([
+ ["all", "All", stageCounts.pm + stageCounts.qa],
+ ["pm", "PM Review", stageCounts.pm],
+ ["qa", "Accounting QA", stageCounts.qa],
+ ] as ["all" | "pm" | "qa", string, number][]).map(([key, label, count]) => (
  <button
- onClick={() => setActiveTab("payment")}
- className={`px-4 py-2 font-mono text-[11px] tracking-[0.12em] uppercase font-medium transition-colors ${
- activeTab === "payment" ? "bg-[var(--bg-muted)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+ key={key}
+ onClick={() => setReviewSub(key)}
+ className={`px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase font-medium transition-colors inline-flex items-center gap-1.5 ${
+ reviewSub === key ? "bg-[var(--bg-muted)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
  }`}>
- Payment Tracking
- {paymentInvoices.length > 0 && (
- <span className="ml-2">
- <NwBadge variant="info" size="sm">{String(paymentInvoices.length)}</NwBadge>
- </span>
+ {label}
+ <span className="text-[var(--text-tertiary)]">{count}</span>
+ </button>
+ ))}
+ </div>
  )}
- </button>
  </div>
 
  {loading ? (
@@ -599,7 +675,7 @@ export default function AllInvoicesPage() {
 
  {filtered.length > 0 && (
  <div className="overflow-x-auto border border-[var(--border-default)] animate-fade-up">
- <table className="w-full min-w-[1100px] text-sm">
+ <table className="w-full min-w-[1350px] text-sm">
  <thead>
  <tr className="bg-[var(--bg-subtle)] text-left">
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors sticky left-0 bg-[var(--bg-subtle)] z-10" onClick={() => toggleSort("vendor")}>
@@ -617,6 +693,8 @@ export default function AllInvoicesPage() {
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("status")}>
  Status<SortArrow active={sortKey === "status"} dir={sortDir} />
  </th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Draw</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Paid</th>
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("pm")}>
  PM<SortArrow active={sortKey === "pm"} dir={sortDir} />
  </th>
@@ -694,6 +772,16 @@ export default function AllInvoicesPage() {
  <NwBadge variant="warning" size="sm">Partial</NwBadge>
  )}
  </div>
+ </td>
+ <td className="py-3 px-4">
+ {inv.draws ? (
+ <NwBadge variant="info" size="sm">Draw #{inv.draws.draw_number} · {inv.draws.status}</NwBadge>
+ ) : (
+ <span className="text-[var(--text-tertiary)] text-xs">Not on a draw</span>
+ )}
+ </td>
+ <td className="py-3 px-4">
+ <NwBadge variant={paymentBadgeVariant(inv.payment_status)} size="sm">{inv.payment_status ?? "unpaid"}</NwBadge>
  </td>
  <td className="py-3 px-4 text-[var(--text-secondary)] text-xs">{inv.assigned_pm?.full_name ?? <span className="text-[var(--text-tertiary)]">—</span>}</td>
  <td className="py-3 px-4 text-right">
