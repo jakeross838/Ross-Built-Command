@@ -28,23 +28,35 @@ const SIZE_STYLES: Record<ButtonSize, string> = {
   lg: "h-[44px] px-5 text-[12px]",
 };
 
+// Raised affordance per the Slate invoice-inbox handoff: primary = stone-blue
+// with a darker bottom edge; secondary/danger = white bg with a subtle edge.
+// The raise is a hard 2px bottom line + soft ambient drop, defined as
+// --shadow-raise-* tokens in globals.css (no component hex). Hover lifts 1px,
+// press pushes 1px down + collapses the edge — the tactile "button" feel.
+// `ghost` intentionally stays flat + quiet (minimal-emphasis inline action).
 const VARIANT_STYLES: Record<ButtonVariant, string> = {
   primary:
-    "bg-nw-stone-blue text-nw-white-sand border border-nw-stone-blue " +
-    "hover:bg-nw-gulf-blue hover:border-nw-gulf-blue " +
-    "disabled:bg-nw-stone-blue/40 disabled:border-nw-stone-blue/40 disabled:cursor-not-allowed",
+    "bg-nw-stone-blue text-nw-white-sand border border-nw-gulf-blue " +
+    "shadow-[var(--shadow-raise-accent)] " +
+    "hover:bg-nw-gulf-blue hover:border-nw-gulf-blue hover:-translate-y-px " +
+    "active:translate-y-px active:shadow-[var(--shadow-raise-accent-active)] " +
+    "disabled:bg-nw-stone-blue/40 disabled:border-nw-stone-blue/40 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed",
   secondary:
-    "bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] " +
-    "hover:border-[var(--text-primary)] hover:bg-[var(--bg-subtle)] " +
-    "disabled:opacity-40 disabled:cursor-not-allowed",
+    "bg-[var(--bg-card)] text-[var(--text-primary)] border border-[var(--border-strong)] " +
+    "shadow-[var(--shadow-raise-ghost)] " +
+    "hover:border-nw-stone-blue hover:text-nw-stone-blue hover:-translate-y-px " +
+    "active:translate-y-px active:shadow-[var(--shadow-raise-ghost-active)] " +
+    "disabled:opacity-40 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed",
   ghost:
     "bg-transparent text-[var(--text-primary)] border border-transparent " +
     "hover:bg-[var(--bg-subtle)] " +
     "disabled:opacity-40 disabled:cursor-not-allowed",
   danger:
-    "bg-transparent text-nw-danger border border-nw-danger/60 " +
-    "hover:bg-nw-danger/[0.08] hover:border-nw-danger " +
-    "disabled:opacity-40 disabled:cursor-not-allowed",
+    "bg-[var(--bg-card)] text-nw-danger border border-nw-danger/50 " +
+    "shadow-[var(--shadow-raise-danger)] " +
+    "hover:bg-nw-danger/[0.08] hover:border-nw-danger hover:-translate-y-px " +
+    "active:translate-y-px active:shadow-[var(--shadow-raise-danger-active)] " +
+    "disabled:opacity-40 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed",
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -70,7 +82,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       className={[
         "inline-flex items-center justify-center gap-2",
         "uppercase font-medium leading-none",
-        "transition-colors duration-150",
+        "transition-all duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nw-stone-blue/40 focus-visible:ring-offset-1",
         SIZE_STYLES[size],
         VARIANT_STYLES[variant],

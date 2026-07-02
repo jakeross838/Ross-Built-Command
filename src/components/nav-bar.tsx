@@ -17,22 +17,13 @@ import PlatformAdminBadge from "@/components/nav/platform-admin-badge";
 import { useCurrentRole } from "@/hooks/use-current-role";
 import { NwWordmark } from "@/components/branding/Wordmark";
 import { NwIcon } from "@/components/branding/Icon";
-import { isFeatureEnabled } from "@/lib/feature-flags";
 
-// Token discipline (CLAUDE.md UI rules + post-edit hook):
-// - Foreground text on the dark nav-bar uses `text-nw-white-sand`
-//   (the existing Slate Tailwind utility for --nw-white-sand).
-// - Muted text and subtle borders on the dark nav use opacity-reduced
-//   white-sand via bracket-value rgba — these are NOT hex literals and
-//   are accepted by the post-edit hook. Logged as a Wave 1.1-Lite
-//   cleanup candidate (TD-21-style rgba consolidation): replace with a
-//   --nw-white-sand-muted CSS var token defined in colors_and_type.css
-//   so even the rgba literals collapse into named tokens.
-//
-// Tailwind JIT requires hover: prefixes to appear as full literal
-// strings in source — template literals like `hover:${NAV_TEXT}` are
-// invisible to the scanner and the hover class never gets generated.
-// Hence the literals are inlined below.
+// Flat-IA rework (2026-07): the 8-section nav collapsed to THREE cross-job
+// surfaces — Invoices | Price Intelligence | Draws — plus the owner/admin
+// Admin ▾ dropdown (the trimmed settings/users/cost-codes/billing access).
+// The jobs sidebar + per-job tab nav are gone (AppShell is now NavBar-only),
+// so the sidebar hamburger + onToggleSidebar prop are removed. Invoices is the
+// default landing (feature #1); /financials/bills is its canonical URL.
 
 function NavThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -67,30 +58,15 @@ type Profile = {
   role: UserRole;
 };
 
-// Per CONTEXT D-04 + D-11: 8-section nav locked structure. F2 expansion
-// to 15 roles is mechanical (the values become arrays of new role
-// strings; the structure here is unchanged).
-type NavItemKey =
-  | "today"
-  | "pipeline"
-  | "jobs"
-  | "financials"
-  | "price_intel"
-  | "people"
-  | "company"
-  | "reports"
-  | "admin";  // dropdown
+// Flat-IA rework: 3 surfaces + Admin dropdown. F2 role expansion is mechanical
+// (values become arrays of new role strings; this structure is unchanged).
+type NavItemKey = "invoices" | "price_intel" | "draws" | "admin";
 
 const ACCESS: Record<NavItemKey, UserRole[]> = {
-  today:        ["owner", "admin", "pm", "accounting"],
-  pipeline:     ["owner", "admin", "pm"],
-  jobs:         ["owner", "admin", "pm", "accounting"],
-  financials:   ["owner", "admin", "pm", "accounting"],
-  price_intel:  ["owner", "admin", "pm", "accounting"],
-  people:       ["owner", "admin", "pm", "accounting"],
-  company:      ["owner", "admin", "accounting"],
-  reports:      ["owner", "admin", "pm", "accounting"],
-  admin:        ["owner", "admin"],  // dropdown (13 items in AdminDropdown)
+  invoices:    ["owner", "admin", "pm", "accounting"],
+  price_intel: ["owner", "admin", "pm", "accounting"],
+  draws:       ["owner", "admin", "pm", "accounting"],
+  admin:       ["owner", "admin"], // dropdown
 };
 
 function can(role: UserRole | null, key: NavItemKey) {
@@ -121,75 +97,22 @@ function firstNameOf(fullName: string) {
   return fullName.trim().split(/\s+/)[0] ?? fullName;
 }
 
-// Per CONTEXT D-11: the prior buildFinancialItems / buildOperationsItems /
-// buildCostIntelItems / buildAdminItems builders were REMOVED. The new
-// 8-section nav uses single-link primary items (NOT dropdowns). The only
-// top-level dropdown is Admin ▾, owned by `<AdminDropdown />`.
-//
-// Section sub-navigation lives inside section overview pages (Plan 4 work)
-// — visiting `/financials` lands on the section overview Card grid which
-// links to /financials/bills, /financials/pay-apps, etc. This matches the
-// IA principle that the top nav is for sections; sub-navigation is a
-// section concern.
-//
-// Per iter-2 architect W-7: the prior local `pendingVerification` +
-// `pendingConversions` state + fetch was nav-bar-local; the only callers
-// were the (now-removed) cost intelligence dropdown count badges. The
-// counts concept is reachable via /price-intel/verification and
-// /price-intel section overview when those pages are built (Plan 4).
-// The cost-intelligence and admin/platform pages each have their own
-// independent pending-count fetch logic — confirmed by grep.
-
-// PRIMARY_NAV — full 8-section structure preserved for IA reference + future
-// unhide path. Per Internal-Launch Phase 1 (D-04 + D-11 of CONTEXT): filter by
-// NEXT_PUBLIC_FEATURE_* env vars at module load; both desktop nav and mobile
-// nav iterate this filtered list (single source of truth).
-// Reversibility: flip flag to "true" in Vercel + redeploy → section reappears
-// (EXCEPT people which is hardcoded HIDE per nwrp232 OQ #3 path (b); un-hides
-//  at F2/Wave-2 via code change).
-//
-// Filter ORDER: env-var filter HERE (build-time hide via NEXT_PUBLIC_*); the
-// existing role-gate `show` map applies SECOND at render time. Both filters
-// preserved; env-var precedence over role.
-const ALL_PRIMARY_NAV: Array<{ key: NavItemKey; label: string; href: string }> = [
-  { key: "today",       label: "Today",       href: "/today" },
-  { key: "pipeline",    label: "Pipeline",    href: "/pipeline" },
-  { key: "jobs",        label: "Jobs",        href: "/jobs" },
-  { key: "financials",  label: "Financials",  href: "/financials" },
-  { key: "price_intel", label: "Price Intel", href: "/price-intel" },
-  { key: "people",      label: "People",      href: "/people" },
-  { key: "company",     label: "Company",     href: "/company" },
-  { key: "reports",     label: "Reports",     href: "/reports" },
+// Flat-IA rework: the three top-level cross-job surfaces. Invoices + Draws are
+// the canonical /financials/* URLs (the legacy /invoices + /draws 308-redirect
+// there); Price Intelligence re-exports /cost-intelligence.
+const PRIMARY_NAV: Array<{ key: NavItemKey; label: string; href: string }> = [
+  { key: "invoices",    label: "Invoices",          href: "/financials/bills" },
+  { key: "price_intel", label: "Price Intelligence", href: "/price-intel" },
+  { key: "draws",       label: "Draws",             href: "/financials/pay-apps" },
 ];
 
-// Internal-launch Phase 1 hide list — flag !== "true" → drop from nav.
-// today, jobs, financials, price_intel are always on (no flag).
-// Admin is rendered separately via <AdminDropdown />, not in PRIMARY_NAV.
-// price_intel root re-exports /cost-intelligence (working surface) so it
-// stays visible; PRICE_INTEL_F5 gates only the 7 sub-routes (middleware T3).
-// financials stays visible — only F1 org-wide CO/PO sub-views hide (T3 + T5).
-const PRIMARY_NAV = ALL_PRIMARY_NAV.filter((item) => {
-  if (item.key === "pipeline" && !isFeatureEnabled("PIPELINE")) return false;
-  if (item.key === "company"  && !isFeatureEnabled("COMPANY"))  return false;
-  if (item.key === "reports"  && !isFeatureEnabled("REPORTS"))  return false;
-  if (item.key === "people") return false;  // hardcoded HIDE per nwrp232 OQ #3 path (b)
-  return true;
-});
-
-export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => void } = {}) {
+export default function NavBar() {
   const pathname = usePathname();
   const role = useCurrentRole();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Wait for role to resolve before composing the Profile state — the
-  // nav renders the role badge alongside the user name, so loading
-  // both together avoids a flash of a placeholder role.
-  //
-  // The PlatformAdminBadge component owns its own platform_admins query
-  // (see src/components/nav/platform-admin-badge.tsx). Removed from this
-  // file per Plan 1 Step F.
   useEffect(() => {
     if (!role) return;
     let cancelled = false;
@@ -229,37 +152,20 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
 
   const closeMobile = () => setMobileOpen(false);
 
-  // Active-state matchers for the 8 primary nav items. Per CONTEXT D-12:
-  // /jobs is the top-level list; per-job sub-nav (Plan 5) renders inside
-  // /jobs/[id]/layout.tsx, NOT in this top nav.
+  // Active-state matchers for the 3 surfaces. Invoices covers the canonical
+  // /financials/bills + the legacy /invoices; Draws covers /financials/pay-apps
+  // + legacy /draws; Price Intel covers /price-intel + /cost-intelligence.
   function isActive(key: NavItemKey): boolean {
     switch (key) {
-      case "today":
-        // /today (canonical) + / (root redirects to /today via Task 2) +
-        // legacy /dashboard (308-redirects via Task 3) — the redirects
-        // fire before render so pathname here will already be /today,
-        // but we keep the legacy match for the brief moment between
-        // client-side navigation requests and the server redirect
-        // resolving.
-        return pathname === "/" || pathname === "/today" || pathname === "/dashboard";
-      case "pipeline":
-        return pathname.startsWith("/pipeline");
-      case "jobs":
-        return pathname === "/jobs" || pathname.startsWith("/jobs/");
-      case "financials":
-        // Includes legacy paths that 308-redirect into /financials/* — the
-        // redirect resolves before render but we keep these for client-side
-        // optimistic active-state during navigation.
+      case "invoices":
         return (
-          pathname.startsWith("/financials") ||
-          pathname.startsWith("/financial") ||
-          pathname.startsWith("/invoices") ||
-          pathname.startsWith("/draws") ||
-          pathname.startsWith("/payments") ||
-          pathname.startsWith("/aging") ||
-          pathname.startsWith("/lien-releases") ||
-          pathname.startsWith("/change-orders") ||
-          pathname.startsWith("/purchase-orders")
+          pathname.startsWith("/financials/bills") ||
+          pathname.startsWith("/invoices")
+        );
+      case "draws":
+        return (
+          pathname.startsWith("/financials/pay-apps") ||
+          pathname.startsWith("/draws")
         );
       case "price_intel":
         return (
@@ -267,12 +173,6 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
           pathname.startsWith("/cost-intelligence") ||
           pathname.startsWith("/items")
         );
-      case "people":
-        return pathname.startsWith("/people") || pathname.startsWith("/vendors");
-      case "company":
-        return pathname.startsWith("/company");
-      case "reports":
-        return pathname.startsWith("/reports");
       case "admin":
         return pathname.startsWith("/admin") || pathname.startsWith("/settings");
     }
@@ -280,25 +180,16 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
 
   const isAdminActive = isActive("admin");
 
-  // Use the hook's role directly for show-gates; profile?.role is
-  // redundant once the hook drives profile assembly above.
   const show = {
-    today:        can(role, "today"),
-    pipeline:     can(role, "pipeline"),
-    jobs:         can(role, "jobs"),
-    financials:   can(role, "financials"),
-    price_intel:  can(role, "price_intel"),
-    people:       can(role, "people"),
-    company:      can(role, "company"),
-    reports:      can(role, "reports"),
-    admin:        can(role, "admin"),
+    invoices:    can(role, "invoices"),
+    price_intel: can(role, "price_intel"),
+    draws:       can(role, "draws"),
+    admin:       can(role, "admin"),
   };
   const branding = useOrgBranding();
   const brandName = branding?.name ?? PUBLIC_APP_NAME;
   const logoUrl = branding?.logo_url ?? null;
 
-  // Active menu item href for the Admin dropdown (used by NavDropdown to
-  // render the active item with the stone-blue left-border accent).
   const adminActiveHref = ADMIN_ITEMS.find((i) => pathname === i.href)?.href;
 
   return (
@@ -314,12 +205,6 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
           aria-label={PUBLIC_APP_NAME}
           className="flex items-center gap-4 group shrink-0 group-hover:opacity-85 transition-opacity"
         >
-          {/* Wordmark for >=360px viewports; collapses to icon at <360px per
-              CLAUDE.md UI rules Q13 / nwrp19 spec. Tailwind arbitrary
-              breakpoint max-[359px] handles the cutoff without adding a
-              named breakpoint to tailwind.config (per BRANDING.md §3
-              Mobile collapse). Nav bar sits on bg-nw-slate-deeper (dark)
-              so wordmark uses color="inverse" → --nw-white-sand. */}
           <span className="hidden 360:inline-flex">
             <NwWordmark size={110} color="inverse" />
           </span>
@@ -343,16 +228,16 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
           )}
         </Link>
 
-        {/* Desktop nav — 8 primary items + Admin dropdown */}
+        {/* Desktop nav — 3 surfaces + Admin dropdown */}
         <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center h-full">
           {PRIMARY_NAV.map((item) =>
             show[item.key] ? (
               <Link
                 key={item.key}
                 href={item.href}
-                className={`flex items-center gap-1.5 h-full px-[14px] text-[13px] font-medium font-sans transition-colors border-b-2 -mb-px ${
+                className={`flex items-center gap-1.5 h-full px-[15px] font-mono text-[11px] tracking-[0.12em] uppercase transition-colors border-b-2 -mb-px ${
                   isActive(item.key)
-                    ? "text-nw-white-sand border-b-nw-stone-blue"
+                    ? "text-nw-white-sand border-b-nw-stone-blue bg-[rgba(91,134,153,0.12)]"
                     : "text-[rgba(247,245,236,0.65)] hover:text-nw-white-sand border-transparent"
                 }`}
               >
@@ -365,7 +250,7 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
           )}
         </nav>
 
-        {/* Desktop user + logout */}
+        {/* Desktop: org identity + user + logout */}
         <div className="hidden md:flex items-center gap-3 shrink-0">
           <PlatformAdminBadge />
           {profile && <NotificationBell userId={profile.id} />}
@@ -389,23 +274,9 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
           </form>
         </div>
 
-        {/* Mobile: sidebar hamburger + Platform Admin badge + notification
-            bell + theme toggle + nav menu hamburger.
-            Per CONTEXT D-04 (Q5=A): the Platform Admin badge + notifications
-            bell + theme toggle stay top-right pinned even on mobile (do NOT
-            collapse into the menu hamburger). The menu hamburger expands
-            the 8 primary nav items + Admin dropdown contents + User
-            menu. */}
+        {/* Mobile: Platform Admin badge + notification bell + theme toggle +
+            nav menu hamburger. No jobs-sidebar hamburger (flat IA has no sidebar). */}
         <div className="flex md:hidden items-center gap-1">
-          {onToggleSidebar && (
-            <button type="button" onClick={onToggleSidebar}
-              className="flex items-center justify-center w-10 h-10 text-[rgba(247,245,236,0.65)] hover:text-nw-white-sand transition-colors"
-              aria-label="Open job sidebar">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-              </svg>
-            </button>
-          )}
           <PlatformAdminBadge />
           {profile && <NotificationBell userId={profile.id} />}
           <NavThemeToggle />
@@ -423,10 +294,7 @@ export default function NavBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
         </div>
       </div>
 
-      {/* Mobile dropdown — expands ALL 8 primary nav items + Admin
-          dropdown contents + User menu (Sign out). Notifications bell +
-          Platform Admin badge + theme toggle stay top-right pinned per
-          CONTEXT D-04 (Q5=A). */}
+      {/* Mobile dropdown — 3 surfaces + Admin dropdown contents + Sign out. */}
       {mobileOpen && (
         <nav className="md:hidden bg-nw-slate-deeper border-b border-[rgba(247,245,236,0.08)] px-2 pb-3 pt-1 flex flex-col gap-0">
           {profile && (

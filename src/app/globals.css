@@ -103,6 +103,32 @@
     --sidebar-ring: var(--nw-stone-blue);
   }
 
+  /* ── Raised-button edge shadows (Slate handoff amendment) ──
+     The invoice-inbox handoff amends the design system's flat ghost buttons
+     to a "raised affordance": a hard 2px bottom edge + a soft ambient drop.
+     Defined here (globals.css is the token-definition home and hook-exempt)
+     so components consume them via `shadow-[var(--shadow-raise-*)]` with NO
+     hardcoded hex leaking into .tsx (the post-edit hook blocks component hex).
+     Blur stays ≤8px so none of these trip the forbidden dark-glow rule.
+     `#3E5F70` is a darker stone-blue used only as the accent edge line. */
+  :root {
+    --shadow-raise-accent: 0 2px 0 #3E5F70, 0 3px 8px -2px rgba(26, 40, 48, 0.35);
+    --shadow-raise-accent-active: 0 1px 0 #3E5F70;
+    --shadow-raise-ghost: 0 2px 0 rgba(59, 88, 100, 0.22), 0 3px 8px -3px rgba(26, 40, 48, 0.18);
+    --shadow-raise-ghost-active: 0 1px 0 rgba(59, 88, 100, 0.22);
+    --shadow-raise-danger: 0 2px 0 rgba(176, 85, 78, 0.28), 0 3px 8px -3px rgba(176, 85, 78, 0.18);
+    --shadow-raise-danger-active: 0 1px 0 rgba(176, 85, 78, 0.28);
+    --shadow-raise-dark: 0 2px 0 rgba(0, 0, 0, 0.35);
+    --shadow-raise-dark-active: 0 1px 0 rgba(0, 0, 0, 0.35);
+  }
+  /* Dark theme — the ghost/secondary sit on slate-deeper cards; use a
+     light-toned edge so the raise stays visible against the dark surface. */
+  :root[data-theme="dark"],
+  [data-theme="dark"] {
+    --shadow-raise-ghost: 0 2px 0 rgba(247, 245, 236, 0.14), 0 3px 8px -3px rgba(0, 0, 0, 0.4);
+    --shadow-raise-ghost-active: 0 1px 0 rgba(247, 245, 236, 0.14);
+  }
+
   body {
     background: var(--bg-page);
     color: var(--text-body);

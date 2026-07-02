@@ -104,7 +104,7 @@ export default function PaymentPanel({ invoice, onRefresh }: PaymentPanelProps) 
               <button
                 onClick={() => setShowPayModal(true)}
                 disabled={busy}
-                className="px-3 py-1.5 bg-[var(--nw-stone-blue)] hover:bg-[var(--nw-gulf-blue)] disabled:opacity-50 text-white text-sm font-medium transition-colors"
+                className="px-3 py-1.5 bg-[var(--nw-stone-blue)] hover:bg-[var(--nw-gulf-blue)] disabled:opacity-50 text-nw-white-sand text-sm font-medium transition-colors"
               >
                 Mark as Paid
               </button>
@@ -173,7 +173,7 @@ export default function PaymentPanel({ invoice, onRefresh }: PaymentPanelProps) 
                   })
                 }
                 disabled={busy}
-                className="px-4 py-2 bg-[var(--nw-stone-blue)] hover:bg-[var(--nw-gulf-blue)] disabled:opacity-60 text-white text-sm font-medium transition-colors"
+                className="px-4 py-2 bg-[var(--nw-stone-blue)] hover:bg-[var(--nw-gulf-blue)] disabled:opacity-60 text-nw-white-sand text-sm font-medium transition-colors"
               >
                 {busy ? "Recording…" : "Record Payment"}
               </button>

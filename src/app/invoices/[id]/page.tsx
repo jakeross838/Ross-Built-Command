@@ -1143,7 +1143,7 @@ export default function InvoiceReviewPage() {
              color: "var(--text-muted)",
            }}
          >
-           Home / Financial / Invoices /{" "}
+           <Link href="/financials/bills" className="hover:text-[color:var(--text-secondary)] transition-colors">Invoices</Link>{" "}/{" "}
            <b style={{ color: "var(--text-primary)", fontWeight: 500 }}>
              {breadcrumbTrail}
            </b>
@@ -2015,7 +2015,7 @@ export default function InvoiceReviewPage() {
  <th className="text-left px-3 py-2 font-medium w-8">
  <input
  type="checkbox"
- className="accent-teal w-4 h-4"
+ className="accent-[var(--nw-stone-blue)] w-4 h-4"
  checked={partialApprovedIds.size === lineItems.length && lineItems.length > 0}
  onChange={(e) => {
  if (e.target.checked) setPartialApprovedIds(new Set(lineItems.map((l) => l.id!).filter(Boolean) as string[]));
@@ -2039,7 +2039,7 @@ export default function InvoiceReviewPage() {
  <td className="px-3 py-2">
  <input
  type="checkbox"
- className="accent-teal w-4 h-4"
+ className="accent-[var(--nw-stone-blue)] w-4 h-4"
  checked={checked}
  onChange={(e) => {
  setPartialApprovedIds((prev) => {

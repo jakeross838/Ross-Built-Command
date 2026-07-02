@@ -1005,7 +1005,7 @@ export default function QueuePage() {
  type="checkbox"
  checked={selectedIds.has(inv.id)}
  onChange={() => toggleSelect(inv.id)}
- className="w-5 h-5 accent-teal cursor-pointer"
+ className="w-5 h-5 accent-[var(--nw-stone-blue)] cursor-pointer"
  />
  </label>
  )}
@@ -1145,13 +1145,13 @@ export default function QueuePage() {
  type="checkbox"
  checked={filtered.length > 0 && filtered.every((inv) => selectedIds.has(inv.id))}
  onChange={toggleSelectAll}
- className="w-4 h-4 accent-teal cursor-pointer"
+ className="w-4 h-4 accent-[var(--nw-stone-blue)] cursor-pointer"
  aria-label="Select all invoices"
  />
  </th>
  )}
  <th
- className="py-3 px-5 text-[10px] uppercase font-medium tracking-[0.14em] text-[color:var(--text-secondary)] cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
+ className="py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)] cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
  onClick={() => toggleSort("vendor")}
  >
  Vendor
@@ -1160,11 +1160,11 @@ export default function QueuePage() {
  dir={sortDir}
  />
  </th>
- <th className="py-3 px-5 text-[10px] uppercase font-medium tracking-[0.14em] text-[color:var(--text-secondary)]">
+ <th className="py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)]">
  Invoice #
  </th>
  <th
- className="py-3 px-5 text-[10px] uppercase font-medium tracking-[0.14em] text-[color:var(--text-secondary)] cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
+ className="py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)] cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
  onClick={() => toggleSort("date")}
  >
  Date
@@ -1173,11 +1173,11 @@ export default function QueuePage() {
  dir={sortDir}
  />
  </th>
- <th className="py-3 px-5 text-[10px] uppercase font-medium tracking-[0.14em] text-[color:var(--text-secondary)]">
+ <th className="py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)]">
  Job
  </th>
  <th
- className="py-3 px-5 text-[10px] uppercase font-medium tracking-[0.14em] text-[color:var(--text-secondary)] cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
+ className="py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)] cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
  onClick={() => toggleSort("pm")}
  >
  PM
@@ -1187,7 +1187,7 @@ export default function QueuePage() {
  />
  </th>
  <th
- className="py-3 px-5 text-[10px] uppercase font-medium tracking-[0.14em] text-[color:var(--text-secondary)] text-right cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
+ className="py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)] text-right cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
  onClick={() => toggleSort("amount")}
  >
  Amount
@@ -1197,7 +1197,7 @@ export default function QueuePage() {
  />
  </th>
  <th
- className="py-3 px-5 text-[10px] uppercase font-medium tracking-[0.14em] text-[color:var(--text-secondary)] cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
+ className="py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)] cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
  onClick={() => toggleSort("confidence")}
  >
  Confidence
@@ -1207,7 +1207,7 @@ export default function QueuePage() {
  />
  </th>
  <th
- className="py-3 px-5 text-[10px] uppercase font-medium tracking-[0.14em] text-[color:var(--text-secondary)] text-right cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
+ className="py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)] text-right cursor-pointer select-none hover:text-[color:var(--nw-stone-blue)] transition-colors"
  onClick={() => toggleSort("waiting")}
  >
  Waiting
@@ -1235,7 +1235,7 @@ export default function QueuePage() {
  checked={selectedIds.has(inv.id)}
  onChange={() => toggleSelect(inv.id)}
  onClick={(e) => e.stopPropagation()}
- className="w-4 h-4 accent-teal cursor-pointer"
+ className="w-4 h-4 accent-[var(--nw-stone-blue)] cursor-pointer"
  aria-label="Select invoice for batch action"
  />
  </td>
@@ -1359,7 +1359,7 @@ export default function QueuePage() {
  {selectedIds.size} selected
  </span>
  <span className="text-xs text-[color:var(--text-secondary)]">
- Total: <span className="text-[color:var(--text-primary)] font-medium font-display">{formatCents(selectedTotalCents)}</span>
+ Total: <span className="text-[color:var(--text-primary)] font-mono font-medium tabular-nums">{formatCents(selectedTotalCents)}</span>
  </span>
  <button
  onClick={() => setSelectedIds(new Set())}
@@ -1497,7 +1497,7 @@ export default function QueuePage() {
  </h3>
  <p className="text-sm text-[color:var(--text-secondary)] mb-4">
  {approvalEligible.length > 0 && (
- <>Total: <span className="text-[color:var(--text-primary)] font-display font-medium">{formatCents(approvalEligible.reduce((s, i) => s + i.total_amount, 0))}</span></>
+ <>Total: <span className="text-[color:var(--text-primary)] font-mono font-medium tabular-nums">{formatCents(approvalEligible.reduce((s, i) => s + i.total_amount, 0))}</span></>
  )}
  </p>
 
@@ -1513,7 +1513,7 @@ export default function QueuePage() {
  <span className="ml-2 text-[color:var(--text-secondary)] text-xs">{inv.jobs.name}</span>
  )}
  </div>
- <span className="text-[color:var(--text-primary)] font-display ml-2 shrink-0">{formatCents(inv.total_amount)}</span>
+ <span className="text-[color:var(--text-primary)] font-mono tabular-nums ml-2 shrink-0">{formatCents(inv.total_amount)}</span>
  </div>
  ))}
  </div>
@@ -1530,7 +1530,7 @@ export default function QueuePage() {
  <div key={invoice.id} className="px-3 py-2 bg-[rgba(176,85,78,0.12)] border border-[rgba(176,85,78,0.35)] text-sm">
  <div className="flex items-center justify-between gap-2">
  <span className="text-[color:var(--text-primary)] truncate">{invoice.vendor_name_raw ?? "Unknown"}</span>
- <span className="text-[color:var(--text-secondary)] font-display text-xs shrink-0">{formatCents(invoice.total_amount)}</span>
+ <span className="text-[color:var(--text-secondary)] font-mono tabular-nums text-xs shrink-0">{formatCents(invoice.total_amount)}</span>
  </div>
  <div className="text-xs text-[color:var(--nw-danger)] mt-1">
  {reasons.join(" · ")}

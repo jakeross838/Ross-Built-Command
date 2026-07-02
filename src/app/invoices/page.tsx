@@ -41,7 +41,7 @@ interface Invoice {
  parent_invoice_id: string | null;
  partial_approval_note: string | null;
  payment_status: string | null;
- jobs: { name: string } | null;
+ jobs: { id: string; name: string } | null;
  cost_codes: { code: string; description: string } | null;
  assigned_pm: { id: string; full_name: string } | null;
  /** Set by client after fetching per-invoice line-item splits. */
@@ -99,8 +99,8 @@ function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
  return (
  <div className="border px-4 py-3" style={{ background: "var(--bg-card)", borderColor: "var(--border-default)" }}>
- <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>{label}</p>
- <p className="text-xl font-display font-medium mt-1" style={{ color: "var(--text-primary)" }}>{value}</p>
+ <p className="text-[11px] font-mono font-medium uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>{label}</p>
+ <p className="text-xl font-mono font-medium tabular-nums mt-1" style={{ color: "var(--text-primary)" }}>{value}</p>
  {sub && <p className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>{sub}</p>}
  </div>
  );
@@ -170,25 +170,25 @@ export default function AllInvoicesPage() {
  }
  // Try with partial-approval columns first (migration 00015). Fall back if
  // the columns don't exist yet so the page still renders.
- const INVOICES_FULL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, parent_invoice_id, partial_approval_note, payment_status, jobs:job_id (name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
- const INVOICES_MINIMAL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, jobs:job_id (name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
+ const INVOICES_FULL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, parent_invoice_id, partial_approval_note, payment_status, jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
+ const INVOICES_MINIMAL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
  // Parallel: invoices + PMs. Line items fetched in a second pass with
  // an IN filter so we don't scan every line item in the org.
  const [invResult, pmResult] = await Promise.all([
  supabase
  .from("invoices")
- .select(INVOICES_FULL)
+ .select(INVOICES_FULL).eq("org_id", orgId ?? "")
  .is("deleted_at", null)
  .order("created_at", { ascending: false })
- .limit(500)
+ .limit(2000)
  .then(async (r) => {
  if (r.error && /parent_invoice_id|partial_approval_note/i.test(r.error.message)) {
  return await supabase
  .from("invoices")
- .select(INVOICES_MINIMAL)
+ .select(INVOICES_MINIMAL).eq("org_id", orgId ?? "")
  .is("deleted_at", null)
  .order("created_at", { ascending: false })
- .limit(500);
+ .limit(2000);
  }
  return r;
  }),
@@ -444,14 +444,14 @@ export default function AllInvoicesPage() {
  <div className="flex gap-1 mb-6 bg-[var(--bg-subtle)] border border-[var(--border-default)] p-1 w-fit">
  <button
  onClick={() => setActiveTab("all")}
- className={`px-4 py-2 text-sm font-medium transition-colors ${
+ className={`px-4 py-2 font-mono text-[11px] tracking-[0.12em] uppercase font-medium transition-colors ${
  activeTab === "all" ? "bg-[var(--bg-muted)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
  }`}>
  All Invoices
  </button>
  <button
  onClick={() => setActiveTab("payment")}
- className={`px-4 py-2 text-sm font-medium transition-colors ${
+ className={`px-4 py-2 font-mono text-[11px] tracking-[0.12em] uppercase font-medium transition-colors ${
  activeTab === "payment" ? "bg-[var(--bg-muted)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
  }`}>
  Payment Tracking
@@ -523,7 +523,7 @@ export default function AllInvoicesPage() {
  {/* More Filters toggle */}
  <div className="flex items-center gap-3 mb-5">
  <button onClick={() => setShowMoreFilters(!showMoreFilters)}
- className="flex items-center gap-1.5 px-3 py-2 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)] hover:border-[var(--border-strong)] transition-colors">
+ className="flex items-center gap-1.5 px-3 py-2 font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)] hover:border-[var(--border-strong)] transition-colors">
  <svg className={`w-4 h-4 transition-transform ${showMoreFilters ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
  </svg>
@@ -536,7 +536,7 @@ export default function AllInvoicesPage() {
  </button>
  {isFiltered && (
  <button onClick={clearAllFilters}
- className="px-3 py-2 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)] hover:border-[var(--border-strong)] transition-colors">
+ className="px-3 py-2 font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)] hover:border-[var(--border-strong)] transition-colors">
  Clear all filters
  </button>
  )}
@@ -602,28 +602,28 @@ export default function AllInvoicesPage() {
  <table className="w-full min-w-[1100px] text-sm">
  <thead>
  <tr className="bg-[var(--bg-subtle)] text-left">
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors sticky left-0 bg-[var(--bg-subtle)] z-10" onClick={() => toggleSort("vendor")}>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors sticky left-0 bg-[var(--bg-subtle)] z-10" onClick={() => toggleSort("vendor")}>
  Vendor<SortArrow active={sortKey === "vendor"} dir={sortDir} />
  </th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Inv #</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("date")}>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Inv #</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("date")}>
  Date<SortArrow active={sortKey === "date"} dir={sortDir} />
  </th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Job</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Cost Code</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em] text-right cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("amount")}>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Job</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Cost Code</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] text-right cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("amount")}>
  Amount<SortArrow active={sortKey === "amount"} dir={sortDir} />
  </th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("status")}>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("status")}>
  Status<SortArrow active={sortKey === "status"} dir={sortDir} />
  </th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("pm")}>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("pm")}>
  PM<SortArrow active={sortKey === "pm"} dir={sortDir} />
  </th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em] text-right cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("aging")}>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] text-right cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors" onClick={() => toggleSort("aging")}>
  Days Out<SortArrow active={sortKey === "aging"} dir={sortDir} />
  </th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Payment</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Payment</th>
  </tr>
  </thead>
  <tbody>
@@ -662,7 +662,7 @@ export default function AllInvoicesPage() {
  </td>
  <td className="py-3 px-4">
  {inv.jobs?.name ? (
- <NwBadge variant="info" size="sm">{inv.jobs.name}</NwBadge>
+ <Link href={`/jobs/${inv.jobs.id}`} className="hover:opacity-80 transition-opacity"><NwBadge variant="info" size="sm">{inv.jobs.name}</NwBadge></Link>
  ) : inv.document_category === "overhead" ? (
  <NwBadge variant="warning" size="sm">Overhead</NwBadge>
  ) : (
@@ -763,13 +763,13 @@ export default function AllInvoicesPage() {
  <table className="w-full text-sm">
  <thead>
  <tr className="bg-[var(--bg-subtle)] text-left">
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Vendor</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Inv #</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em] text-right">Amount</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Status</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Payment Date</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em]">Check #</th>
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-medium uppercase tracking-[0.14em] text-center">Picked Up</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Vendor</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Inv #</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] text-right">Amount</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Status</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Payment Date</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Check #</th>
+ <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] text-center">Picked Up</th>
  </tr>
  </thead>
  <tbody>

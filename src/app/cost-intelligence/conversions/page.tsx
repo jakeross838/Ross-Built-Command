@@ -381,7 +381,7 @@ function Kpi({ label, value, warn }: { label: string; value: string; warn?: bool
     <div
       className="border p-4"
       style={{
-        borderColor: warn ? "var(--nw-warning)" : "var(--border-default)",
+        borderColor: warn ? "var(--nw-warn)" : "var(--border-default)",
         background: "var(--bg-card)",
       }}
     >

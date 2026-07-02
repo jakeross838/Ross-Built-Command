@@ -21,7 +21,6 @@ const TABS: { key: FinancialView; label: string; href: string }[] = [
   { key: "invoices", label: "Invoices", href: "/invoices" },
   { key: "queue", label: "Queue", href: "/invoices/queue" },
   { key: "qa", label: "QA", href: "/invoices/qa" },
-  { key: "draws", label: "Draws", href: "/draws" },
 ];
 
 export default function FinancialViewTabs({
@@ -40,10 +39,9 @@ export default function FinancialViewTabs({
           <Link
             key={tab.key}
             href={tab.href}
-            className="relative px-3 py-2.5 text-[12px] font-medium transition-colors whitespace-nowrap"
+            className="relative px-3 py-2.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-colors whitespace-nowrap hover:text-[color:var(--text-primary)]"
             style={{
               color: isActive ? "var(--text-primary)" : "var(--text-tertiary)",
-              letterSpacing: "0.02em",
             }}
           >
             {tab.label}

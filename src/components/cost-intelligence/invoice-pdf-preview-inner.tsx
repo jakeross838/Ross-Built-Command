@@ -133,7 +133,7 @@ export default function InvoicePdfPreviewInner({
                     <div className="p-6 text-[12px] text-[var(--text-tertiary)]">Loading PDF…</div>
                   }
                   error={
-                    <div className="p-6 text-[12px] text-[color:var(--status-danger)]">
+                    <div className="p-6 text-[12px] text-[color:var(--nw-danger)]">
                       Failed to load PDF
                     </div>
                   }

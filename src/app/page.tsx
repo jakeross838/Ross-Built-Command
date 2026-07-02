@@ -16,11 +16,11 @@ export default async function Root() {
   if (user) {
     const org = await getCurrentOrg();
     if (org && !org.onboarding_complete) redirect("/onboard");
-    // Per CONTEXT D-05 / Q7=A — root redirects authed users to /today
-    // (replaces /dashboard for the personal-home pattern per
-    // Principle 7). Legacy /dashboard URL still 308-redirects to /today
-    // via next.config.mjs (Plan 1 Task 3) so old bookmarks resolve.
-    redirect("/today");
+    // Flat-IA rework (2026-07): Invoices is the default landing (feature #1).
+    // /financials/bills is the canonical, un-redirected Invoices URL
+    // (invoices/page.tsx is re-exported there). /today is orphaned (no longer
+    // in the 3-surface nav).
+    redirect("/financials/bills");
   }
 
   return (

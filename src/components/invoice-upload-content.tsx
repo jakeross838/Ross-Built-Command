@@ -737,7 +737,7 @@ export default function UploadContent() {
  setFiles((prev) => prev.map((f, i) => i === index ? { ...f, status: "error" as const, error: message } : f));
  });
  }}
- className="flex-shrink-0 px-4 py-2 bg-[var(--nw-danger)] hover:brightness-110 text-white text-xs font-medium transition-all"
+ className="flex-shrink-0 px-4 py-2 bg-[var(--nw-danger)] hover:brightness-110 text-nw-white-sand text-xs font-medium transition-all"
  >
  Retry
  </button>

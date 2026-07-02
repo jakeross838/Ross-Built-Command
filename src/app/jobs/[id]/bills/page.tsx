@@ -122,7 +122,7 @@ export default async function JobBillsPage({
                     >
                       <td className="px-4 py-3 text-[color:var(--text-primary)]">
                         <Link
-                          href={`/financials/bills/${b.id}`}
+                          href={`/invoices/${b.id}`}
                           className="text-[color:var(--nw-stone-blue)] hover:underline"
                         >
                           {(vendor as { name?: string } | null)?.name ??

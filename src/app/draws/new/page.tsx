@@ -497,7 +497,7 @@ export default function NewDrawWizardPage() {
         }}
         className={`flex items-center gap-2 px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors ${
           active
-            ? "bg-[var(--nw-stone-blue)] text-white"
+            ? "bg-[var(--nw-stone-blue)] text-nw-white-sand"
             : done
               ? "bg-[var(--bg-muted)] text-[color:var(--text-primary)]"
               : "bg-[var(--bg-subtle)] text-[color:var(--text-muted)]"
@@ -622,7 +622,7 @@ export default function NewDrawWizardPage() {
                     type="checkbox"
                     checked={isFinal}
                     onChange={(e) => setIsFinal(e.target.checked)}
-                    className="rounded"
+                    className="accent-[var(--nw-stone-blue)]"
                   />
                   Mark as final draw (release retainage)
                 </label>
@@ -671,7 +671,7 @@ export default function NewDrawWizardPage() {
             <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
               <button
                 onClick={() => setStep(1)}
-                className="w-full sm:w-auto px-6 py-2.5 border border-[var(--border-default)] text-[color:var(--text-muted)] hover:border-[var(--border-default)]-light"
+                className="w-full sm:w-auto px-6 py-2.5 border border-[var(--border-default)] text-[color:var(--text-muted)] hover:border-[var(--border-strong)]"
               >
                 Back
               </button>
@@ -753,7 +753,7 @@ export default function NewDrawWizardPage() {
                           <td className="py-2 px-3 text-[color:var(--text-muted)] text-xs">
                             {inv.cost_codes ? `${inv.cost_codes.code}` : "—"}
                           </td>
-                          <td className="py-2 px-3 text-[color:var(--text-primary)] text-right font-display">
+                          <td className="py-2 px-3 text-[color:var(--text-primary)] text-right font-mono tabular-nums">
                             {formatCents(inv.total_amount)}
                           </td>
                         </tr>
@@ -847,7 +847,7 @@ export default function NewDrawWizardPage() {
             <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
               <button
                 onClick={() => setStep(2)}
-                className="w-full sm:w-auto px-6 py-2.5 border border-[var(--border-default)] text-[color:var(--text-muted)] hover:border-[var(--border-default)]-light"
+                className="w-full sm:w-auto px-6 py-2.5 border border-[var(--border-default)] text-[color:var(--text-muted)] hover:border-[var(--border-strong)]"
               >
                 Back
               </button>
@@ -942,7 +942,7 @@ export default function NewDrawWizardPage() {
             <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
               <button
                 onClick={() => setStep(3)}
-                className="w-full sm:w-auto px-6 py-2.5 border border-[var(--border-default)] text-[color:var(--text-muted)] hover:border-[var(--border-default)]-light"
+                className="w-full sm:w-auto px-6 py-2.5 border border-[var(--border-default)] text-[color:var(--text-muted)] hover:border-[var(--border-strong)]"
               >
                 Back
               </button>
@@ -975,7 +975,8 @@ export default function NewDrawWizardPage() {
           letter-spacing: 0.12em;
           text-transform: uppercase;
           font-weight: 500;
-          border: 1px solid var(--nw-stone-blue);
+          border: 1px solid var(--nw-gulf-blue);
+          box-shadow: var(--shadow-raise-accent);
         }
         :global(.nw-primary-btn:hover:not(:disabled)) {
           background: var(--nw-gulf-blue);
@@ -989,8 +990,8 @@ export default function NewDrawWizardPage() {
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wider text-[color:var(--text-secondary)]">{label}</div>
-      <div className="text-[color:var(--text-primary)] font-display font-medium">{value}</div>
+      <div className="text-[11px] font-mono uppercase tracking-wider text-[color:var(--text-secondary)]">{label}</div>
+      <div className="text-[color:var(--text-primary)] font-mono font-medium tabular-nums">{value}</div>
       {sub && <div className="text-xs text-[color:var(--text-secondary)] mt-0.5">{sub}</div>}
     </div>
   );
@@ -1054,7 +1055,7 @@ function G702Line({
         </span>
       </div>
       <span
-        className={`font-display ${
+        className={`font-mono tabular-nums ${
           highlight ? "text-[color:var(--nw-warn)] font-medium text-base" : "text-[color:var(--text-primary)] text-sm"
         }`}
       >
@@ -1102,7 +1103,7 @@ function G703EditRow({
             step="0.01"
             value={dollars}
             onChange={(e) => onChange(e.target.value, reason)}
-            className="w-24 px-1.5 py-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] text-right font-display focus:border-[var(--nw-stone-blue)] focus:outline-none"
+            className="w-24 px-1.5 py-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] text-right font-mono tabular-nums focus:border-[var(--nw-stone-blue)] focus:outline-none"
           />
         </td>
         <td className={`py-2 px-3 text-right ${overrun ? "text-[color:var(--nw-danger)] font-medium" : "text-[color:var(--text-primary)]"}`}>

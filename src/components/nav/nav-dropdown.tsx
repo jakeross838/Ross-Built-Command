@@ -161,10 +161,10 @@ export default function NavDropdown({
         onKeyDown={handleKeyDown}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`flex items-center gap-1 h-full px-[14px] text-[13px] font-medium font-sans transition-colors border-b-2 -mb-px ${
+        className={`flex items-center gap-1 h-full px-[15px] font-mono text-[11px] tracking-[0.12em] uppercase transition-colors border-b-2 -mb-px ${
           active
-            ? "text-[#F7F5EC] border-b-nw-stone-blue"
-            : "text-[rgba(247,245,236,0.65)] hover:text-[#F7F5EC] border-transparent"
+            ? "text-nw-white-sand border-b-nw-stone-blue bg-[rgba(91,134,153,0.12)]"
+            : "text-[rgba(247,245,236,0.65)] hover:text-nw-white-sand border-transparent"
         }`}
       >
         {label}

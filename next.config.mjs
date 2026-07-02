@@ -64,8 +64,9 @@ const nextConfig = {
       // 301-redirect to canonical 8-section IA. Half-rename = worse drift
       // than no rename.
 
-      // /dashboard → /today (Today as personal home per Principle 7)
-      { source: "/dashboard", destination: "/today", permanent: true },
+      // /dashboard → /financials/bills (flat-IA rework: Invoices is the landing;
+      // /today orphaned). Old bookmarks resolve to the new home.
+      { source: "/dashboard", destination: "/financials/bills", permanent: true },
 
       // /financial → /financials (consolidate; existing duplicate)
       { source: "/financial", destination: "/financials", permanent: true },
@@ -76,8 +77,8 @@ const nextConfig = {
 
       // /operations → /today (Operations dropdown removed; concerns split
       // between Today action items + per-job tabs + Wave 2 placeholders)
-      { source: "/operations", destination: "/today", permanent: true },
-      { source: "/operations/:path*", destination: "/today", permanent: true },
+      { source: "/operations", destination: "/financials/bills", permanent: true },
+      { source: "/operations/:path*", destination: "/financials/bills", permanent: true },
 
       // /cost-intelligence/* → /price-intel/* (Price Intel rename per D-11)
       { source: "/cost-intelligence", destination: "/price-intel", permanent: true },
@@ -99,8 +100,19 @@ const nextConfig = {
       { source: "/invoices/qa", destination: "/financials/bills/qa", permanent: true },
       { source: "/invoices/payments", destination: "/financials/payments", permanent: true },
       { source: "/invoices/liens", destination: "/financials/lien-releases", permanent: true },
-      // /invoices/:id (the per-invoice detail page) → /financials/bills/:id
-      { source: "/invoices/:id", destination: "/financials/bills/:id", permanent: true },
+      // /invoices/:id — NO redirect (flat-IA restyle re-point, 2026-07).
+      // The rich invoice-review page (src/app/invoices/[id]/page.tsx: PDF
+      // preview + editable cost-code allocations + full approve/hold/deny/QA
+      // workflow) is the live detail again. It was previously shadowed by a
+      // `/invoices/:id → /financials/bills/:id` redirect that routed every
+      // invoice detail to the InvoiceReviewView *placeholder* prototype
+      // (non-wired buttons, no PDF preview) — a regression for the #1
+      // invoice-approval feature. The list rows already link to /invoices/:id,
+      // which now renders the rich page (self-wraps AppShell; no /invoices
+      // layout, so no double-nav). The canonical /financials/bills LIST URL
+      // is unchanged; only the per-invoice detail reverts to /invoices/:id.
+      // The InvoiceReviewView prototype remains mounted at
+      // /design-system/prototypes/invoices/[id] for the design playground.
 
       // /draws → /financials/pay-apps (Pay Apps terminology rename per D-01)
       { source: "/draws", destination: "/financials/pay-apps", permanent: true },

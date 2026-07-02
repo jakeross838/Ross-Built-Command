@@ -425,7 +425,7 @@ export default function ImportPageContent() {
                 type="button"
                 onClick={doSendToQueue}
                 disabled={!done || counts.parsed === 0}
-                className="px-4 py-2 bg-[var(--nw-stone-blue)] text-white text-xs tracking-[0.08em] uppercase hover:bg-[var(--nw-gulf-blue)] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-[var(--nw-stone-blue)] text-nw-white-sand text-xs tracking-[0.08em] uppercase hover:bg-[var(--nw-gulf-blue)] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Send {counts.parsed} to Approval Queue
               </button>
@@ -605,8 +605,8 @@ function StatusBadge({ status }: { status: string }) {
     import_parsed: { label: "Parsed", tone: "bg-[rgba(74,138,111,0.24)] text-[color:var(--nw-success)]" },
     import_error: { label: "Error", tone: "bg-[rgba(176,85,78,0.24)] text-[color:var(--nw-danger)]" },
     import_duplicate: { label: "Duplicate", tone: "bg-[rgba(201,138,59,0.24)] text-[color:var(--nw-warn)]" },
-    pm_review: { label: "Sent → PM", tone: "bg-cream/10 text-[color:var(--text-secondary)]" },
-    qa_review: { label: "Sent → QA", tone: "bg-cream/10 text-[color:var(--text-secondary)]" },
+    pm_review: { label: "Sent → PM", tone: "bg-[var(--bg-subtle)] text-[color:var(--text-secondary)]" },
+    qa_review: { label: "Sent → QA", tone: "bg-[var(--bg-subtle)] text-[color:var(--text-secondary)]" },
   };
   const v = map[status] ?? { label: status, tone: "bg-[var(--border-default)]/30 text-[color:var(--text-secondary)]" };
   return (

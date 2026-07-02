@@ -268,7 +268,7 @@ export default function CostIntelligenceHubPage() {
           <div className="flex items-center gap-2">
             <Link
               href="/cost-intelligence/verification"
-              className="inline-flex items-center gap-2 h-[36px] px-4 border border-[var(--border-strong)] text-[11px] uppercase tracking-[0.12em] text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]"
+              className="inline-flex items-center gap-2 h-[36px] px-4 border border-[var(--border-strong)] font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--text-primary)] bg-[var(--bg-card)] shadow-[var(--shadow-raise-ghost)] transition-all hover:border-nw-stone-blue hover:text-nw-stone-blue hover:-translate-y-px active:translate-y-px active:shadow-[var(--shadow-raise-ghost-active)]"
               style={{ fontFamily: "var(--font-jetbrains-mono)" }}
             >
               Verification Queue
@@ -287,7 +287,7 @@ export default function CostIntelligenceHubPage() {
             </Link>
             <Link
               href="/cost-intelligence/conversions"
-              className="inline-flex items-center gap-2 h-[36px] px-4 border border-[var(--border-strong)] text-[11px] uppercase tracking-[0.12em] text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]"
+              className="inline-flex items-center gap-2 h-[36px] px-4 border border-[var(--border-strong)] font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--text-primary)] bg-[var(--bg-card)] shadow-[var(--shadow-raise-ghost)] transition-all hover:border-nw-stone-blue hover:text-nw-stone-blue hover:-translate-y-px active:translate-y-px active:shadow-[var(--shadow-raise-ghost-active)]"
               style={{ fontFamily: "var(--font-jetbrains-mono)" }}
             >
               Unit Conversions
@@ -306,7 +306,7 @@ export default function CostIntelligenceHubPage() {
             </Link>
             <Link
               href="/cost-intelligence/scope-data"
-              className="inline-flex items-center gap-2 h-[36px] px-4 border border-[var(--border-strong)] text-[11px] uppercase tracking-[0.12em] text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]"
+              className="inline-flex items-center gap-2 h-[36px] px-4 border border-[var(--border-strong)] font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--text-primary)] bg-[var(--bg-card)] shadow-[var(--shadow-raise-ghost)] transition-all hover:border-nw-stone-blue hover:text-nw-stone-blue hover:-translate-y-px active:translate-y-px active:shadow-[var(--shadow-raise-ghost-active)]"
               style={{ fontFamily: "var(--font-jetbrains-mono)" }}
             >
               Scope Data
@@ -412,7 +412,7 @@ export default function CostIntelligenceHubPage() {
               </p>
               <Link
                 href="/invoices"
-                className="inline-block mt-4 h-[36px] px-4 border border-[var(--border-strong)] text-[11px] uppercase tracking-[0.12em] text-[var(--text-primary)] leading-[36px] hover:bg-[var(--bg-subtle)]"
+                className="inline-block mt-4 h-[36px] px-4 border border-[var(--border-strong)] font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--text-primary)] leading-[36px] bg-[var(--bg-card)] shadow-[var(--shadow-raise-ghost)] transition-all hover:border-nw-stone-blue hover:text-nw-stone-blue"
                 style={{ fontFamily: "var(--font-jetbrains-mono)" }}
               >
                 Go to invoices →
@@ -444,7 +444,7 @@ function KpiCard({
     <div
       className="border p-4 h-full"
       style={{
-        borderColor: warn ? "var(--nw-warning)" : "var(--border-default)",
+        borderColor: warn ? "var(--nw-warn)" : "var(--border-default)",
         background: "var(--bg-card)",
       }}
     >
