@@ -101,7 +101,7 @@ type StageTab = "to_review" | "needs_attention" | "ready_for_draw";
 const NEEDS_ATTENTION_STATUSES = ["pm_held", "pm_denied", "info_requested"];
 // Ready for Draw = approval-complete (independent of draw/pay state, which are
 // their own row badges). Includes in_draw + paid since Archived is deferred.
-const READY_FOR_DRAW_STATUSES = ["qa_approved", "in_draw", "paid", "pushed_to_qb"];
+const READY_FOR_DRAW_STATUSES = ["qa_approved", "in_draw", "paid"]; // QB states pulled (not live) — filter-reachable, not a tab
 // To Review = still needs a decision, split by reviewer audience.
 const TO_REVIEW_PM_STATUSES = ["received", "ai_processed", "pm_review", "info_received"];
 const TO_REVIEW_QA_STATUSES = ["pm_approved", "qa_review"];
@@ -332,7 +332,10 @@ export default function AllInvoicesPage() {
  const filtered = useMemo(() => {
  let result = invoices;
 
- // STEP 2 — approval-stage tab (+ To Review PM/QA sub-toggle)
+ // STEP 2 — approval-stage tab governs the DEFAULT view. An explicit status
+ // filter (advanced chips) overrides it, keeping non-tab statuses (void, the
+ // QB states, import_*) filter-reachable without being tabs.
+ if (statusFilters.size === 0) {
  result = result.filter(inv => stageOf(inv.status) === stageTab);
  if (stageTab === "to_review" && reviewSub !== "all") {
  result = result.filter(inv =>
@@ -340,6 +343,7 @@ export default function AllInvoicesPage() {
  ? TO_REVIEW_PM_STATUSES.includes(inv.status)
  : TO_REVIEW_QA_STATUSES.includes(inv.status)
  );
+ }
  }
 
  if (search.trim()) {
