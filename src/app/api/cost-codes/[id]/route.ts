@@ -19,20 +19,36 @@ export const PATCH = withApiError(async (
     category: string | null;
     sort_order: number;
     is_change_order: boolean;
+    has_co_variant: boolean;
   }>;
 
   const update: Record<string, unknown> = {};
-  for (const k of ["code", "description", "category", "sort_order", "is_change_order"] as const) {
+  for (const k of ["code", "description", "category", "sort_order", "is_change_order", "has_co_variant"] as const) {
     if (body[k] !== undefined) update[k] = body[k];
   }
   if (Object.keys(update).length === 0) throw new ApiError("Nothing to update", 400);
+  if (typeof update.code === "string") {
+    const code = (update.code as string).trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/.test(code)) {
+      throw new ApiError(
+        `"${code}" is not a valid code — use letters, digits, dot, dash or underscore (max 20 chars).`,
+        400
+      );
+    }
+    update.code = code;
+  }
 
   const { error } = await supabase
     .from("cost_codes")
     .update(update)
     .eq("id", params.id)
     .eq("org_id", membership.org_id);
-  if (error) throw new ApiError(error.message, 500);
+  if (error) {
+    if (error.code === "23505") {
+      throw new ApiError(`Cost code ${update.code ?? ""} already exists.`, 409);
+    }
+    throw new ApiError(error.message, 500);
+  }
   return NextResponse.json({ ok: true });
 });
 

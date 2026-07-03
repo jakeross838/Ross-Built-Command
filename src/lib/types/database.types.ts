@@ -748,6 +748,7 @@ export type Database = {
           default_allowance_amount: number | null
           deleted_at: string | null
           description: string
+          has_co_variant: boolean
           id: string
           is_allowance: boolean
           is_change_order: boolean
@@ -764,6 +765,7 @@ export type Database = {
           default_allowance_amount?: number | null
           deleted_at?: string | null
           description: string
+          has_co_variant?: boolean
           id?: string
           is_allowance?: boolean
           is_change_order?: boolean
@@ -780,6 +782,7 @@ export type Database = {
           default_allowance_amount?: number | null
           deleted_at?: string | null
           description?: string
+          has_co_variant?: boolean
           id?: string
           is_allowance?: boolean
           is_change_order?: boolean

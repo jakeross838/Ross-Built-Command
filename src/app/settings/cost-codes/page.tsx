@@ -12,6 +12,7 @@ export type CostCode = {
   category: string | null;
   sort_order: number;
   is_change_order: boolean;
+  has_co_variant: boolean;
 };
 
 export default async function CostCodesPage() {
@@ -21,7 +22,7 @@ export default async function CostCodesPage() {
   const supabase = createServerClient();
   const { data: codes } = await supabase
     .from("cost_codes")
-    .select("id, code, description, category, sort_order, is_change_order")
+    .select("id, code, description, category, sort_order, is_change_order, has_co_variant")
     .eq("org_id", membership.org_id)
     .is("deleted_at", null)
     .order("sort_order", { ascending: true });

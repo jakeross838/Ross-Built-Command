@@ -15,7 +15,7 @@ export const GET = withApiError(async () => {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("cost_codes")
-    .select("code, description, category, sort_order, is_change_order")
+    .select("code, description, category, sort_order, is_change_order, has_co_variant")
     .eq("org_id", TEMPLATE_ORG_ID)
     .is("deleted_at", null)
     .order("sort_order", { ascending: true });
@@ -37,7 +37,7 @@ export const POST = withApiError(async () => {
 
   const { data: template, error: tplErr } = await supabase
     .from("cost_codes")
-    .select("code, description, category, sort_order, is_change_order")
+    .select("code, description, category, sort_order, is_change_order, has_co_variant")
     .eq("org_id", TEMPLATE_ORG_ID)
     .is("deleted_at", null);
   if (tplErr) throw new ApiError(tplErr.message, 500);
@@ -58,6 +58,7 @@ export const POST = withApiError(async () => {
       category: c.category,
       sort_order: c.sort_order,
       is_change_order: c.is_change_order,
+      has_co_variant: c.has_co_variant,
       created_by: user?.id ?? null,
     }));
 

@@ -6,12 +6,17 @@ import { ADMIN_OR_OWNER, requireRole } from "@/lib/org/require";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
+// Cost code format: starts alphanumeric, then alphanumeric / . _ - , max 20.
+// Rejects blanks, whitespace, and garbage. Mirrors the client validator in
+// CostCodesManager (route files can't export non-handler symbols).
+const CODE_FORMAT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/;
+
 export const GET = withApiError(async () => {
   const membership = await requireRole(ADMIN_OR_OWNER);
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("cost_codes")
-    .select("id, code, description, category, sort_order, is_change_order")
+    .select("id, code, description, category, sort_order, is_change_order, has_co_variant")
     .eq("org_id", membership.org_id)
     .is("deleted_at", null)
     .order("sort_order", { ascending: true });
@@ -31,17 +36,26 @@ export const POST = withApiError(async (request: NextRequest) => {
     category?: string | null;
     sort_order?: number;
     is_change_order?: boolean;
+    has_co_variant?: boolean;
   };
-  if (!body.code?.trim() || !body.description?.trim()) {
+  const code = body.code?.trim() ?? "";
+  if (!code || !body.description?.trim()) {
     throw new ApiError("Code and description are required.", 400);
+  }
+  if (!CODE_FORMAT.test(code)) {
+    throw new ApiError(
+      `"${code}" is not a valid code — use letters, digits, dot, dash or underscore (max 20 chars).`,
+      400
+    );
   }
   const { error } = await supabase.from("cost_codes").insert({
     org_id: membership.org_id,
-    code: body.code.trim(),
+    code,
     description: body.description.trim(),
     category: body.category ?? null,
     sort_order: body.sort_order ?? 0,
     is_change_order: body.is_change_order ?? false,
+    has_co_variant: body.has_co_variant ?? false,
     created_by: user?.id ?? null,
   });
   if (error) {
