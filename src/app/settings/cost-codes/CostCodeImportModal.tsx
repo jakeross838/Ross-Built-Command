@@ -229,13 +229,14 @@ function MappingStep({
     onCommit(out);
   }
 
-  // Sticky header cells must carry their own opaque background — Chrome does
-  // NOT paint thead/tr backgrounds under position:sticky, and it drops sticky
-  // cell backgrounds entirely under border-collapse:collapse. So the table uses
-  // border-separate + border-spacing-0, the background sits on each <th>, and
-  // row separators live on the <td> cells.
+  // Sticky header cells must carry their OWN OPAQUE background: (1) backgrounds
+  // on thead/tr don't paint under position:sticky, so the color must sit on the
+  // <th>; and (2) --bg-subtle is rgba(...,.06) — 94% transparent — so rows
+  // scroll straight through it. Use the opaque --bg-page (#f7f5ec) + a bottom
+  // border. Table is border-separate + border-spacing-0 (sticky cell backgrounds
+  // are unreliable under border-collapse); row separators live on the <td> cells.
   const thClass =
-    "sticky top-0 z-10 px-3 py-2 text-left text-[10px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)] bg-[var(--bg-subtle)] border-b border-[var(--border-default)]";
+    "sticky top-0 z-10 px-3 py-2 text-left text-[10px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)] bg-[var(--bg-page)] border-b border-[var(--border-default)]";
   const tdClass = "px-3 py-2 align-top border-b border-[var(--border-default)]";
 
   return (
