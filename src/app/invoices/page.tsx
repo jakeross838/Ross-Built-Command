@@ -1012,7 +1012,7 @@ function SetupGuide({
             : "Keep going to your first invoice"}
         </h3>
         <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-          Set up the essentials once, then upload invoices and approve them right here.
+          Set up the essentials, then upload and approve invoices — all in one place.
         </p>
       </div>
 
