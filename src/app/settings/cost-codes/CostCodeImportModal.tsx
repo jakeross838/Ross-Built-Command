@@ -229,8 +229,14 @@ function MappingStep({
     onCommit(out);
   }
 
+  // Sticky header cells must carry their own opaque background — Chrome does
+  // NOT paint thead/tr backgrounds under position:sticky, and it drops sticky
+  // cell backgrounds entirely under border-collapse:collapse. So the table uses
+  // border-separate + border-spacing-0, the background sits on each <th>, and
+  // row separators live on the <td> cells.
   const thClass =
-    "px-3 py-2 text-left text-[10px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)] bg-[var(--bg-subtle)]";
+    "sticky top-0 z-10 px-3 py-2 text-left text-[10px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)] bg-[var(--bg-subtle)] border-b border-[var(--border-default)]";
+  const tdClass = "px-3 py-2 align-top border-b border-[var(--border-default)]";
 
   return (
     <>
@@ -301,8 +307,8 @@ function MappingStep({
 
       {/* ---- Preview ---- */}
       <div className="mt-3 max-h-[300px] overflow-auto border border-[var(--border-default)]">
-        <table className="w-full text-sm border-collapse">
-          <thead className="sticky top-0 z-10">
+        <table className="w-full text-sm border-separate border-spacing-0">
+          <thead>
             <tr>
               <th className={thClass}>Code</th>
               <th className={thClass}>Description</th>
@@ -312,16 +318,11 @@ function MappingStep({
           </thead>
           <tbody>
             {parsedRows.map((p, i) => (
-              <tr
-                key={i}
-                className={`border-t border-[var(--border-default)] ${
-                  p.error ? "bg-[rgba(176,85,78,0.06)]" : ""
-                }`}
-              >
-                <td className="px-3 py-2 align-top font-mono whitespace-nowrap">{p.code || "—"}</td>
-                <td className="px-3 py-2 align-top">{p.description}</td>
-                <td className="px-3 py-2 align-top text-[color:var(--text-secondary)]">{p.category}</td>
-                <td className="px-3 py-2 align-top text-xs">
+              <tr key={i} className={p.error ? "bg-[rgba(176,85,78,0.06)]" : ""}>
+                <td className={`${tdClass} font-mono whitespace-nowrap`}>{p.code || "—"}</td>
+                <td className={tdClass}>{p.description}</td>
+                <td className={`${tdClass} text-[color:var(--text-secondary)]`}>{p.category}</td>
+                <td className={`${tdClass} text-xs`}>
                   {p.error ? (
                     <span className="text-[color:var(--nw-danger)]">{p.error}</span>
                   ) : p.isCo ? (
