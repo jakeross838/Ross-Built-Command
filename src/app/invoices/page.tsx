@@ -214,7 +214,7 @@ export default function AllInvoicesPage() {
  const INVOICES_MINIMAL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
  // Parallel: invoices + PMs. Line items fetched in a second pass with
  // an IN filter so we don't scan every line item in the org.
- const [invResult, pmResult, ccResult, jobResult] = await Promise.all([
+ const [invResult, pmResult] = await Promise.all([
  supabase
  .from("invoices")
  .select(INVOICES_FULL).eq("org_id", orgId ?? "")
@@ -246,20 +246,14 @@ export default function AllInvoicesPage() {
  .eq("is_active", true)
  .in("role", ["pm", "admin"])
  : Promise.resolve({ data: null, error: null }),
- // Setup progress — does the org have ANY cost codes / jobs yet? A single-row
- // existence probe (limit 1) is more robust than a head-count and is all the
- // SetupGuide needs. Org-scoped per D-30.
- orgId
- ? supabase.from("cost_codes").select("id").eq("org_id", orgId).is("deleted_at", null).limit(1)
- : Promise.resolve({ data: [], error: null }),
- orgId
- ? supabase.from("jobs").select("id").eq("org_id", orgId).is("deleted_at", null).limit(1)
- : Promise.resolve({ data: [], error: null }),
  ]);
- setSetupCounts({
- costCodes: (ccResult as { data: unknown[] | null }).data?.length ?? 0,
- jobs: (jobResult as { data: unknown[] | null }).data?.length ?? 0,
- });
+ // Setup progress via a server-side endpoint — reliable (the same server path
+ // /admin/cost-codes uses to read cost codes), avoiding client-side RLS/timing
+ // fragility of running these existence checks in the browser.
+ const setup = await fetch("/api/setup-status", { cache: "no-store" })
+ .then((r) => (r.ok ? r.json() : null))
+ .catch(() => null);
+ if (setup) setSetupCounts({ costCodes: setup.costCodes ?? 0, jobs: setup.jobs ?? 0 });
 
  // Build invoice_id → list of unique cost code strings — only for visible invoices
  const lineItemCodesByInvoice = new Map<string, Set<string>>();
