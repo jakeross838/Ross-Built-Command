@@ -246,17 +246,19 @@ export default function AllInvoicesPage() {
  .eq("is_active", true)
  .in("role", ["pm", "admin"])
  : Promise.resolve({ data: null, error: null }),
- // Setup progress counts (head-only, no rows) — org-scoped per D-30.
+ // Setup progress — does the org have ANY cost codes / jobs yet? A single-row
+ // existence probe (limit 1) is more robust than a head-count and is all the
+ // SetupGuide needs. Org-scoped per D-30.
  orgId
- ? supabase.from("cost_codes").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("deleted_at", null)
- : Promise.resolve({ count: 0, error: null }),
+ ? supabase.from("cost_codes").select("id").eq("org_id", orgId).is("deleted_at", null).limit(1)
+ : Promise.resolve({ data: [], error: null }),
  orgId
- ? supabase.from("jobs").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("deleted_at", null)
- : Promise.resolve({ count: 0, error: null }),
+ ? supabase.from("jobs").select("id").eq("org_id", orgId).is("deleted_at", null).limit(1)
+ : Promise.resolve({ data: [], error: null }),
  ]);
  setSetupCounts({
- costCodes: (ccResult as { count: number | null }).count ?? 0,
- jobs: (jobResult as { count: number | null }).count ?? 0,
+ costCodes: (ccResult as { data: unknown[] | null }).data?.length ?? 0,
+ jobs: (jobResult as { data: unknown[] | null }).data?.length ?? 0,
  });
 
  // Build invoice_id → list of unique cost code strings — only for visible invoices
