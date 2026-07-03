@@ -54,6 +54,7 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
   const [modal, setModal] = useState<Modal | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [parsedFile, setParsedFile] = useState<{
     fileName: string;
     columns: string[];
@@ -416,6 +417,7 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
       }
       const body = await res.json();
       setParsedFile(null);
+      setImportOpen(false);
       setMessage({
         kind: "ok",
         text: `Imported ${body.imported} cost codes${
@@ -470,11 +472,10 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
           </button>
           <button
             type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="px-3 py-2 border border-[var(--border-default)] text-sm disabled:opacity-60"
+            onClick={() => setImportOpen(true)}
+            className="px-3 py-2 border border-[var(--border-default)] text-sm"
           >
-            {busy && !parsedFile && !modal ? "Reading…" : "Import CSV / Excel"}
+            Import CSV / Excel
           </button>
           <input
             ref={fileRef}
@@ -605,16 +606,16 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
         />
       )}
 
-      {parsedFile && (
+      {importOpen && (
         <CostCodeImportModal
-          fileName={parsedFile.fileName}
-          columns={parsedFile.columns}
-          rows={parsedFile.rows}
-          totalRows={parsedFile.totalRows}
-          truncated={parsedFile.truncated}
+          parsed={parsedFile}
           busy={busy}
+          onChooseFile={() => fileRef.current?.click()}
           onCommit={handleImportCommit}
-          onClose={() => setParsedFile(null)}
+          onClose={() => {
+            setImportOpen(false);
+            setParsedFile(null);
+          }}
           onDownloadSample={downloadSample}
         />
       )}

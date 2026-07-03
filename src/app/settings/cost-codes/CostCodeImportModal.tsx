@@ -11,6 +11,14 @@ export type ImportDraft = {
   has_co_variant: boolean;
 };
 
+export type ParsedFile = {
+  fileName: string;
+  columns: string[];
+  rows: string[][];
+  totalRows: number;
+  truncated: boolean;
+};
+
 const CODE_FORMAT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/;
 const CO_SUFFIX = /^(\d{3,7})[cC]$/;
 const NONE = -1; // "not mapped" sentinel for the dropdowns
@@ -33,26 +41,112 @@ function guess(columns: string[], patterns: RegExp[]): number {
 }
 
 export default function CostCodeImportModal({
-  fileName,
-  columns,
-  rows,
-  totalRows,
-  truncated,
+  parsed,
   busy,
+  onChooseFile,
   onCommit,
   onClose,
   onDownloadSample,
 }: {
-  fileName: string;
-  columns: string[];
-  rows: string[][];
-  totalRows: number;
-  truncated: boolean;
+  parsed: ParsedFile | null;
   busy: boolean;
+  onChooseFile: () => void;
   onCommit: (rows: ImportDraft[]) => void;
   onClose: () => void;
   onDownloadSample: () => void;
 }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[rgba(0,0,0,0.4)] px-4 py-8"
+      onClick={onClose}
+    >
+      <div className="w-full max-w-4xl border nw-panel p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display text-lg text-[color:var(--text-primary)]">Import cost codes</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[color:var(--text-secondary)] text-sm px-2 py-1 hover:text-[color:var(--text-primary)]"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* ---- Guidance (shown in BOTH phases — before and after file choice) ---- */}
+        <div className="border border-[var(--border-default)] bg-[var(--bg-subtle)] p-3 text-[13px] text-[color:var(--text-secondary)] leading-relaxed">
+          <p className="text-[color:var(--text-primary)]">
+            <strong>How to format your file.</strong> One row per cost code. Include a column
+            for the <strong>code</strong>, a <strong>description</strong>, and the{" "}
+            <strong>category</strong> it belongs to. If your code and description live in one
+            column (like <code>22101-Appliances</code>), that&rsquo;s fine — we&rsquo;ll offer
+            to split them. CSV or Excel (.xlsx) both work.
+          </p>
+          <button
+            type="button"
+            onClick={onDownloadSample}
+            className="mt-2 text-[12px] tracking-[0.06em] uppercase text-[color:var(--nw-stone-blue)] border-b border-[var(--border-strong)] hover:border-[var(--nw-stone-blue)] pb-0.5"
+          >
+            Download sample template (.csv)
+          </button>
+        </div>
+
+        {parsed ? (
+          <MappingStep parsed={parsed} busy={busy} onCommit={onCommit} onClose={onClose} />
+        ) : (
+          <ChooseStep busy={busy} onChooseFile={onChooseFile} onClose={onClose} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChooseStep({
+  busy,
+  onChooseFile,
+  onClose,
+}: {
+  busy: boolean;
+  onChooseFile: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <div className="mt-4 border border-dashed border-[var(--border-default)] bg-[var(--bg-card)] px-6 py-10 text-center">
+        <p className="text-sm text-[color:var(--text-secondary)] max-w-md mx-auto">
+          Choose a <strong>CSV</strong> or <strong>Excel (.xlsx)</strong> file. We&rsquo;ll show
+          a preview and let you map the columns before anything is saved.
+        </p>
+        <button
+          type="button"
+          onClick={onChooseFile}
+          disabled={busy}
+          className="mt-5 px-4 py-2 nw-primary-btn text-sm disabled:opacity-60"
+        >
+          {busy ? "Reading…" : "Choose file"}
+        </button>
+      </div>
+      <div className="mt-4">
+        <button type="button" onClick={onClose} className="px-4 py-2 border border-[var(--border-default)] text-sm">
+          Cancel
+        </button>
+      </div>
+    </>
+  );
+}
+
+function MappingStep({
+  parsed,
+  busy,
+  onCommit,
+  onClose,
+}: {
+  parsed: ParsedFile;
+  busy: boolean;
+  onCommit: (rows: ImportDraft[]) => void;
+  onClose: () => void;
+}) {
+  const { fileName, columns, rows, totalRows, truncated } = parsed;
+
   const [codeCol, setCodeCol] = useState<number>(() =>
     guess(columns, [/^cost\s*code$/i, /^code$/i, /code/i, /item/i])
   );
@@ -64,8 +158,8 @@ export default function CostCodeImportModal({
   );
 
   // Auto-detect a combined "22101-Appliances" column: the code column's values
-  // contain a "-" followed by a non-digit (i.e. a description), and there's no
-  // separate description column.
+  // contain a "-" followed by a non-digit (a description), with no separate
+  // description column.
   const combinedLikely = useMemo(() => {
     if (codeCol === NONE) return false;
     let hits = 0;
@@ -82,13 +176,12 @@ export default function CostCodeImportModal({
 
   const [splitCombined, setSplitCombined] = useState<boolean>(false);
   const [autoApplied, setAutoApplied] = useState(false);
-  // Apply the auto-guess for combined-split once, after detection settles.
   if (!autoApplied && combinedLikely && descCol === NONE) {
     setSplitCombined(true);
     setAutoApplied(true);
   }
 
-  const parsed: ParsedRow[] = useMemo(() => {
+  const parsedRows: ParsedRow[] = useMemo(() => {
     return rows.map((row) => {
       const rawCode = codeCol !== NONE ? (row[codeCol] ?? "").trim() : "";
       let code = rawCode;
@@ -110,8 +203,8 @@ export default function CostCodeImportModal({
     });
   }, [rows, codeCol, descCol, catCol, splitCombined]);
 
-  const valid = parsed.filter((p) => !p.error);
-  const errorRows = parsed.filter((p) => p.error);
+  const valid = parsedRows.filter((p) => !p.error);
+  const errorRows = parsedRows.filter((p) => p.error);
 
   const stats = useMemo(() => {
     const bases = new Set<string>();
@@ -136,171 +229,134 @@ export default function CostCodeImportModal({
     onCommit(out);
   }
 
+  const thClass =
+    "px-3 py-2 text-left text-[10px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)] bg-[var(--bg-subtle)]";
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[rgba(0,0,0,0.4)] px-4 py-8"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-4xl border nw-panel p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-display text-lg text-[color:var(--text-primary)]">
-            Import cost codes
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[color:var(--text-secondary)] text-sm px-2 py-1 hover:text-[color:var(--text-primary)]"
-          >
-            ✕
-          </button>
-        </div>
+    <>
+      <p className="mt-3 text-xs text-[color:var(--text-tertiary)]">
+        <span className="font-mono">{fileName}</span> — {totalRows} row
+        {totalRows === 1 ? "" : "s"}
+        {truncated ? " (showing first 5000)" : ""}. Detected columns:{" "}
+        {columns.map((c) => c || "(unnamed)").join(", ")}.
+      </p>
 
-        {/* ---- Guidance ---- */}
-        <div className="border border-[var(--border-default)] bg-[var(--bg-subtle)] p-3 text-[13px] text-[color:var(--text-secondary)] leading-relaxed">
-          <p className="text-[color:var(--text-primary)]">
-            <strong>How to format your file.</strong> One row per cost code. Include a
-            column for the <strong>code</strong>, a <strong>description</strong>, and the{" "}
-            <strong>category</strong> it belongs to. If your code and description live in
-            one column (like <code>22101-Appliances</code>), that&rsquo;s fine — turn on
-            &ldquo;split&rdquo; below and we&rsquo;ll separate them. CSV or Excel (.xlsx)
-            both work.
-          </p>
-          <button
-            type="button"
-            onClick={onDownloadSample}
-            className="mt-2 text-[12px] tracking-[0.06em] uppercase text-[color:var(--nw-stone-blue)] border-b border-[var(--border-strong)] hover:border-[var(--nw-stone-blue)] pb-0.5"
-          >
-            Download sample template (.csv)
-          </button>
-        </div>
-
-        <p className="mt-3 text-xs text-[color:var(--text-tertiary)]">
-          <span className="font-mono">{fileName}</span> — {totalRows} row
-          {totalRows === 1 ? "" : "s"}
-          {truncated ? " (showing first 5000)" : ""}. Detected columns:{" "}
-          {columns.map((c) => c || "(unnamed)").join(", ")}.
-        </p>
-
-        {/* ---- Column mapping ---- */}
-        <div className="mt-3 grid sm:grid-cols-3 gap-3">
-          <MapField
-            label="Code column"
-            help="Your cost code number, e.g. 22101."
-            value={codeCol}
-            columns={columns}
-            onChange={setCodeCol}
-          />
-          <MapField
-            label="Description column"
-            help="What the code is for, e.g. Appliances."
-            value={descCol}
-            columns={columns}
-            onChange={setDescCol}
-            disabled={splitCombined}
-            disabledNote="From the split"
-          />
-          <MapField
-            label="Category column"
-            help="The group it belongs to — used for grouping."
-            value={catCol}
-            columns={columns}
-            onChange={setCatCol}
-          />
-        </div>
-
-        <label className="mt-3 flex items-start gap-2 text-[13px] text-[color:var(--text-primary)]">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={splitCombined}
-            onChange={(e) => {
-              setSplitCombined(e.target.checked);
-              setAutoApplied(true);
-            }}
-          />
-          <span>
-            The code column also contains the description — split on the first{" "}
-            <code>-</code> (digits before = code, the rest = description).
-            {combinedLikely && !splitCombined && (
-              <span className="text-[color:var(--nw-warn)]"> Looks like yours does.</span>
-            )}
-          </span>
-        </label>
-
-        {/* ---- Stats ---- */}
-        <div className="mt-4 flex flex-wrap gap-4 text-sm border-y border-[var(--border-default)] py-2">
-          <Stat n={stats.codes} label="cost codes" />
-          <Stat n={stats.categories} label="categories" />
-          <Stat n={stats.coVariants} label="change-order variants" />
-          {errorRows.length > 0 && (
-            <span className="text-[color:var(--nw-danger)]">
-              {errorRows.length} row{errorRows.length === 1 ? "" : "s"} skipped (see below)
-            </span>
-          )}
-        </div>
-
-        {/* ---- Preview ---- */}
-        <div className="mt-3 max-h-[300px] overflow-auto border border-[var(--border-default)]">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-[var(--bg-subtle)]">
-              <tr className="text-left text-[10px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)]">
-                <th className="px-3 py-2">Code</th>
-                <th className="px-3 py-2">Description</th>
-                <th className="px-3 py-2">Category</th>
-                <th className="px-3 py-2">Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parsed.map((p, i) => (
-                <tr
-                  key={i}
-                  className={`border-t border-[var(--border-default)] ${
-                    p.error ? "bg-[rgba(176,85,78,0.06)]" : ""
-                  }`}
-                >
-                  <td className="px-3 py-1.5 font-mono whitespace-nowrap">{p.code || "—"}</td>
-                  <td className="px-3 py-1.5">{p.description}</td>
-                  <td className="px-3 py-1.5 text-[color:var(--text-secondary)]">{p.category}</td>
-                  <td className="px-3 py-1.5 text-xs">
-                    {p.error ? (
-                      <span className="text-[color:var(--nw-danger)]">{p.error}</span>
-                    ) : p.isCo ? (
-                      <span className="text-[color:var(--text-secondary)]">
-                        change-order → merges into {p.base}
-                      </span>
-                    ) : (
-                      <span className="text-[color:var(--nw-success)]">ok</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-4 flex gap-2 items-center">
-          <button
-            type="button"
-            onClick={commit}
-            disabled={busy || valid.length === 0}
-            className="px-4 py-2 nw-primary-btn text-sm disabled:opacity-60"
-          >
-            {busy ? "Importing…" : `Import ${stats.codes} code${stats.codes === 1 ? "" : "s"}`}
-          </button>
-          <button type="button" onClick={onClose} className="px-4 py-2 border border-[var(--border-default)] text-sm">
-            Cancel
-          </button>
-          {valid.length === 0 && (
-            <span className="text-xs text-[color:var(--nw-danger)]">
-              Nothing to import — check your column mapping.
-            </span>
-          )}
-        </div>
+      {/* ---- Column mapping ---- */}
+      <div className="mt-3 grid sm:grid-cols-3 gap-3">
+        <MapField
+          label="Code column"
+          help="Your cost code number, e.g. 22101."
+          value={codeCol}
+          columns={columns}
+          onChange={setCodeCol}
+        />
+        <MapField
+          label="Description column"
+          help="What the code is for, e.g. Appliances."
+          value={descCol}
+          columns={columns}
+          onChange={setDescCol}
+          disabled={splitCombined}
+          disabledNote="From the split"
+        />
+        <MapField
+          label="Category column"
+          help="The group it belongs to — used for grouping."
+          value={catCol}
+          columns={columns}
+          onChange={setCatCol}
+        />
       </div>
-    </div>
+
+      <label className="mt-3 flex items-start gap-2 text-[13px] text-[color:var(--text-primary)]">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={splitCombined}
+          onChange={(e) => {
+            setSplitCombined(e.target.checked);
+            setAutoApplied(true);
+          }}
+        />
+        <span>
+          The code column also contains the description — split on the first <code>-</code>{" "}
+          (digits before = code, the rest = description).
+          {combinedLikely && !splitCombined && (
+            <span className="text-[color:var(--nw-warn)]"> Looks like yours does.</span>
+          )}
+        </span>
+      </label>
+
+      {/* ---- Stats ---- */}
+      <div className="mt-4 flex flex-wrap gap-4 text-sm border-y border-[var(--border-default)] py-2">
+        <Stat n={stats.codes} label="cost codes" />
+        <Stat n={stats.categories} label="categories" />
+        <Stat n={stats.coVariants} label="change-order variants" />
+        {errorRows.length > 0 && (
+          <span className="text-[color:var(--nw-danger)]">
+            {errorRows.length} row{errorRows.length === 1 ? "" : "s"} skipped (see below)
+          </span>
+        )}
+      </div>
+
+      {/* ---- Preview ---- */}
+      <div className="mt-3 max-h-[300px] overflow-auto border border-[var(--border-default)]">
+        <table className="w-full text-sm border-collapse">
+          <thead className="sticky top-0 z-10">
+            <tr>
+              <th className={thClass}>Code</th>
+              <th className={thClass}>Description</th>
+              <th className={thClass}>Category</th>
+              <th className={thClass}>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parsedRows.map((p, i) => (
+              <tr
+                key={i}
+                className={`border-t border-[var(--border-default)] ${
+                  p.error ? "bg-[rgba(176,85,78,0.06)]" : ""
+                }`}
+              >
+                <td className="px-3 py-2 align-top font-mono whitespace-nowrap">{p.code || "—"}</td>
+                <td className="px-3 py-2 align-top">{p.description}</td>
+                <td className="px-3 py-2 align-top text-[color:var(--text-secondary)]">{p.category}</td>
+                <td className="px-3 py-2 align-top text-xs">
+                  {p.error ? (
+                    <span className="text-[color:var(--nw-danger)]">{p.error}</span>
+                  ) : p.isCo ? (
+                    <span className="text-[color:var(--text-secondary)]">
+                      change-order → merges into {p.base}
+                    </span>
+                  ) : (
+                    <span className="text-[color:var(--nw-success)]">ok</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 flex gap-2 items-center">
+        <button
+          type="button"
+          onClick={commit}
+          disabled={busy || valid.length === 0}
+          className="px-4 py-2 nw-primary-btn text-sm disabled:opacity-60"
+        >
+          {busy ? "Importing…" : `Import ${stats.codes} code${stats.codes === 1 ? "" : "s"}`}
+        </button>
+        <button type="button" onClick={onClose} className="px-4 py-2 border border-[var(--border-default)] text-sm">
+          Cancel
+        </button>
+        {valid.length === 0 && (
+          <span className="text-xs text-[color:var(--nw-danger)]">
+            Nothing to import — check your column mapping.
+          </span>
+        )}
+      </div>
+    </>
   );
 }
 
