@@ -132,6 +132,9 @@ export default function AllInvoicesPage() {
  const router = useRouter();
  const [invoices, setInvoices] = useState<Invoice[]>([]);
  const [pmUsers, setPmUsers] = useState<PmUser[]>([]);
+ // Live setup progress — the SetupGuide derives step completion from these
+ // actual data counts, not a stored onboarding flag.
+ const [setupCounts, setSetupCounts] = useState<{ costCodes: number; jobs: number }>({ costCodes: 0, jobs: 0 });
  const [loading, setLoading] = useState(true);
  const [uploadOpen, setUploadOpen] = useState(searchParams.get("action") === "upload");
  const [importOpen, setImportOpen] = useState(searchParams.get("action") === "import");
@@ -211,7 +214,7 @@ export default function AllInvoicesPage() {
  const INVOICES_MINIMAL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
  // Parallel: invoices + PMs. Line items fetched in a second pass with
  // an IN filter so we don't scan every line item in the org.
- const [invResult, pmResult] = await Promise.all([
+ const [invResult, pmResult, ccResult, jobResult] = await Promise.all([
  supabase
  .from("invoices")
  .select(INVOICES_FULL).eq("org_id", orgId ?? "")
@@ -243,7 +246,18 @@ export default function AllInvoicesPage() {
  .eq("is_active", true)
  .in("role", ["pm", "admin"])
  : Promise.resolve({ data: null, error: null }),
+ // Setup progress counts (head-only, no rows) — org-scoped per D-30.
+ orgId
+ ? supabase.from("cost_codes").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("deleted_at", null)
+ : Promise.resolve({ count: 0, error: null }),
+ orgId
+ ? supabase.from("jobs").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("deleted_at", null)
+ : Promise.resolve({ count: 0, error: null }),
  ]);
+ setSetupCounts({
+ costCodes: (ccResult as { count: number | null }).count ?? 0,
+ jobs: (jobResult as { count: number | null }).count ?? 0,
+ });
 
  // Build invoice_id → list of unique cost code strings — only for visible invoices
  const lineItemCodesByInvoice = new Map<string, Set<string>>();
@@ -680,7 +694,12 @@ export default function AllInvoicesPage() {
  // guiding 3-step setup path (cost codes → first job → upload invoice),
  // NOT a blank screen: a fast one-screen signup that dead-ended here would
  // strand new customers worse than the old wizard did.
- <SetupGuide onUpload={() => setUploadOpen(true)} />
+ <SetupGuide
+ onUpload={() => setUploadOpen(true)}
+ costCodes={setupCounts.costCodes}
+ jobs={setupCounts.jobs}
+ invoicesCount={invoices.length}
+ />
  ) : isFiltered ? (
  <EmptyState
  icon={<EmptyIcons.Search />}
@@ -968,7 +987,18 @@ export default function AllInvoicesPage() {
 // live in Settings and are prompted later (at draw-creation), so they are
 // intentionally NOT in this first-run path.
 // ---------------------------------------------------------------------------
-function SetupGuide({ onUpload }: { onUpload: () => void }) {
+function SetupGuide({
+  onUpload,
+  costCodes,
+  jobs,
+  invoicesCount,
+}: {
+  onUpload: () => void;
+  costCodes: number;
+  jobs: number;
+  invoicesCount: number;
+}) {
+  const doneCount = (costCodes > 0 ? 1 : 0) + (jobs > 0 ? 1 : 0) + (invoicesCount > 0 ? 1 : 0);
   return (
     <div className="border border-dashed border-[var(--border-default)] bg-[var(--bg-card)] px-6 py-12 animate-fade-up">
       <div className="max-w-xl mx-auto text-center">
@@ -979,7 +1009,11 @@ function SetupGuide({ onUpload }: { onUpload: () => void }) {
           Welcome to Nightwork
         </span>
         <h3 className="mt-2 font-display text-xl text-[color:var(--text-primary)]">
-          Three steps to your first invoice
+          {doneCount === 0
+            ? "Three steps to your first invoice"
+            : doneCount >= 2
+            ? "Almost there — upload your first invoice"
+            : "Keep going to your first invoice"}
         </h3>
         <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
           Set up the essentials once, then upload invoices and approve them right here.
@@ -989,18 +1023,21 @@ function SetupGuide({ onUpload }: { onUpload: () => void }) {
       <ol className="mt-8 max-w-xl mx-auto flex flex-col gap-3">
         <SetupStep
           n={1}
+          done={costCodes > 0}
           title="Set up your cost codes"
           desc="The trades you track — Framing, Electrical, Plumbing. Invoices get coded against these."
           action={{ label: "Set up cost codes", href: "/admin/cost-codes" }}
         />
         <SetupStep
           n={2}
+          done={jobs > 0}
           title="Add your first job"
           desc="The project your invoices bill against. Every invoice ties to a job."
           action={{ label: "Add a job", href: "/jobs/new" }}
         />
         <SetupStep
           n={3}
+          done={invoicesCount > 0}
           title="Upload your first invoice"
           desc="PDF, Word, or a photo — we parse the vendor, amount, and line items for you to review."
           action={{ label: "Upload invoice", onClick: onUpload }}
@@ -1017,12 +1054,14 @@ function SetupGuide({ onUpload }: { onUpload: () => void }) {
 
 function SetupStep({
   n,
+  done,
   title,
   desc,
   action,
   primary,
 }: {
   n: number;
+  done?: boolean;
   title: string;
   desc: string;
   action: { label: string; href: string } | { label: string; onClick: () => void };
@@ -1032,19 +1071,40 @@ function SetupStep({
     ? "inline-block px-4 py-2 bg-[var(--nw-stone-blue)] text-[color:var(--nw-white-sand)] text-sm hover:bg-[var(--nw-gulf-blue)] transition-colors whitespace-nowrap"
     : "inline-block px-4 py-2 border border-[var(--border-default)] bg-[var(--bg-card)] text-[color:var(--text-primary)] text-sm hover:border-[rgba(91,134,153,0.5)] transition-colors whitespace-nowrap";
   return (
-    <li className="flex items-start gap-4 border border-[var(--border-default)] bg-[var(--bg-page)] px-4 py-4">
+    <li
+      className={`flex items-start gap-4 border border-[var(--border-default)] px-4 py-4 ${
+        done ? "bg-[var(--bg-subtle)]" : "bg-[var(--bg-page)]"
+      }`}
+    >
       <span
-        className="shrink-0 w-8 h-8 flex items-center justify-center border border-[var(--border-strong)] text-[13px] text-[color:var(--text-primary)]"
+        className={`shrink-0 w-8 h-8 flex items-center justify-center border text-[13px] ${
+          done
+            ? "border-[color:var(--nw-success)] text-[color:var(--nw-success)]"
+            : "border-[var(--border-strong)] text-[color:var(--text-primary)]"
+        }`}
         style={{ fontFamily: "var(--font-jetbrains-mono)" }}
       >
-        {n}
+        {done ? "✓" : n}
       </span>
       <div className="flex-1 min-w-0 text-left">
         <h4 className="font-display text-[15px] text-[color:var(--text-primary)]">{title}</h4>
         <p className="mt-0.5 text-[13px] text-[color:var(--text-secondary)] leading-relaxed">{desc}</p>
       </div>
       <div className="shrink-0 self-center">
-        {"href" in action ? (
+        {done ? (
+          "href" in action ? (
+            <Link
+              href={action.href}
+              className="inline-flex items-center gap-1.5 text-[13px] text-[color:var(--nw-success)] hover:underline whitespace-nowrap"
+            >
+              ✓ Done
+            </Link>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-[13px] text-[color:var(--nw-success)] whitespace-nowrap">
+              ✓ Done
+            </span>
+          )
+        ) : "href" in action ? (
           <Link href={action.href} className={btnCls}>
             {action.label}
           </Link>
