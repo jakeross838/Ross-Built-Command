@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CostCode } from "./page";
+import CostCodeImportModal, { type ImportDraft } from "./CostCodeImportModal";
 
 if (typeof document !== "undefined" && !document.getElementById("nw-cc-styles")) {
   const s = document.createElement("style");
@@ -19,8 +20,6 @@ if (typeof document !== "undefined" && !document.getElementById("nw-cc-styles"))
 
 // Cost code format — mirrors CODE_FORMAT in src/app/api/cost-codes/route.ts.
 const CODE_FORMAT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/;
-// A "<digits>C" code is a change-order VARIANT, not a standalone code.
-const CO_SUFFIX = /^(\d{3,7})[cC]$/;
 const NEW_CATEGORY = "__new__";
 
 type DraftRow = {
@@ -47,54 +46,6 @@ function csvEscape(v: string): string {
   return v;
 }
 
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQuotes) {
-      if (ch === '"' && text[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        cell += ch;
-      }
-    } else {
-      if (ch === '"') inQuotes = true;
-      else if (ch === ",") {
-        row.push(cell);
-        cell = "";
-      } else if (ch === "\n") {
-        row.push(cell);
-        rows.push(row);
-        row = [];
-        cell = "";
-      } else if (ch === "\r") {
-        // skip
-      } else {
-        cell += ch;
-      }
-    }
-  }
-  if (cell.length > 0 || row.length > 0) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return rows.filter((r) => r.some((c) => c.trim() !== ""));
-}
-
-type ImportDraft = {
-  code: string;
-  description: string;
-  category: string;
-  sort_order: number;
-  has_co_variant: boolean;
-};
-
 export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
   const router = useRouter();
   const [codes, setCodes] = useState<CostCode[]>(initial);
@@ -103,7 +54,13 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
   const [modal, setModal] = useState<Modal | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [importPreview, setImportPreview] = useState<ImportDraft[] | null>(null);
+  const [parsedFile, setParsedFile] = useState<{
+    fileName: string;
+    columns: string[];
+    rows: string[][];
+    totalRows: number;
+    truncated: boolean;
+  } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -396,58 +353,75 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
   async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setMessage(null);
+    setBusy(true);
     try {
-      const text = await file.text();
-      const rows = parseCsv(text);
-      if (rows.length === 0) throw new Error("Empty CSV");
-      const header = rows[0].map((h) => h.trim().toLowerCase());
-      const codeIdx = header.indexOf("code");
-      const descIdx = header.indexOf("description");
-      if (codeIdx === -1 || descIdx === -1) {
-        throw new Error('CSV must include "code" and "description" columns.');
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/cost-codes/parse-file", { method: "POST", body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `Could not read file (${res.status})`);
       }
-      const catIdx = header.indexOf("category");
-      const sortIdx = header.indexOf("sort_order");
-      const coIdx = header.indexOf("has_co_variant");
-      const drafts: ImportDraft[] = rows.slice(1).map((r, i) => ({
-        code: r[codeIdx]?.trim() ?? "",
-        description: r[descIdx]?.trim() ?? "",
-        category: catIdx >= 0 ? r[catIdx]?.trim() ?? "" : "",
-        sort_order: sortIdx >= 0 ? Number(r[sortIdx]) || i : i,
-        has_co_variant: coIdx >= 0 ? /^(true|1|yes|y)$/i.test(r[coIdx] ?? "") : false,
-      }));
-      setImportPreview(drafts.filter((d) => d.code && d.description));
+      const body = (await res.json()) as {
+        columns: string[];
+        rows: string[][];
+        total_rows: number;
+        truncated: boolean;
+      };
+      setParsedFile({
+        fileName: file.name,
+        columns: body.columns,
+        rows: body.rows,
+        totalRows: body.total_rows,
+        truncated: body.truncated,
+      });
     } catch (e) {
-      setMessage({ kind: "err", text: e instanceof Error ? e.message : "Parse failed" });
+      setMessage({ kind: "err", text: e instanceof Error ? e.message : "Could not read file" });
     } finally {
+      setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
 
-  const importCoCount = useMemo(
-    () => (importPreview ?? []).filter((d) => CO_SUFFIX.test(d.code)).length,
-    [importPreview]
-  );
+  function downloadSample() {
+    const sample =
+      "code,description,category\n" +
+      "03101,Concrete & Foundation,Structure\n" +
+      "06101,Framing,Structure\n" +
+      "09101,Electrical,Electrical\n" +
+      "09101C,Electrical Change Order,Electrical\n" +
+      "10101,Plumbing,Plumbing\n";
+    const blob = new Blob([sample], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cost-codes-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
-  async function commitImport() {
-    if (!importPreview) return;
+  async function handleImportCommit(rows: ImportDraft[]) {
     setBusy(true);
+    setMessage(null);
     try {
       const res = await fetch("/api/cost-codes/import", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ codes: importPreview }),
+        body: JSON.stringify({ codes: rows }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? "Import failed");
       }
       const body = await res.json();
-      setImportPreview(null);
+      setParsedFile(null);
       setMessage({
         kind: "ok",
         text: `Imported ${body.imported} cost codes${
-          body.co_variants_merged ? ` (${body.co_variants_merged} C-variant${body.co_variants_merged === 1 ? "" : "s"} merged)` : ""
+          body.co_variants_merged
+            ? ` (${body.co_variants_merged} change-order variant${body.co_variants_merged === 1 ? "" : "s"} merged)`
+            : ""
         }.`,
       });
       await refresh();
@@ -497,14 +471,15 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="px-3 py-2 border border-[var(--border-default)] text-sm"
+            disabled={busy}
+            className="px-3 py-2 border border-[var(--border-default)] text-sm disabled:opacity-60"
           >
-            Import CSV
+            {busy && !parsedFile && !modal ? "Reading…" : "Import CSV / Excel"}
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={onImportFile}
             className="hidden"
           />
@@ -539,69 +514,11 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
         </p>
       )}
 
-      {importPreview && (
-        <div className="border nw-panel p-4">
-          <h3 className="text-[11px] tracking-[0.08em] uppercase text-[color:var(--text-secondary)]">
-            Import Preview — {importPreview.length} rows
-          </h3>
-          {importCoCount > 0 && (
-            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
-              {importCoCount} &ldquo;C&rdquo; code{importCoCount === 1 ? "" : "s"} will merge into their base as a change-order variant.
-            </p>
-          )}
-          <div className="max-h-[240px] overflow-auto mt-2 text-sm">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-xs text-[color:var(--text-secondary)]">
-                  <th className="px-2 py-1">Code</th>
-                  <th className="px-2 py-1">Description</th>
-                  <th className="px-2 py-1">Category</th>
-                  <th className="px-2 py-1">CO variant</th>
-                </tr>
-              </thead>
-              <tbody>
-                {importPreview.map((d, i) => {
-                  const isCo = CO_SUFFIX.test(d.code);
-                  return (
-                    <tr key={i} className="border-t border-[var(--border-default)]">
-                      <td className="px-2 py-1 font-mono">{d.code}</td>
-                      <td className="px-2 py-1">{d.description}</td>
-                      <td className="px-2 py-1">{d.category}</td>
-                      <td className="px-2 py-1">{isCo ? "→ merges to base" : d.has_co_variant ? "✓" : ""}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              onClick={commitImport}
-              disabled={busy}
-              className="px-3 py-2 bg-[var(--nw-stone-blue)] text-[color:var(--nw-white-sand)] text-sm hover:bg-[var(--nw-gulf-blue)] transition-colors"
-            >
-              {busy ? "Importing…" : "Confirm import"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportPreview(null)}
-              className="px-3 py-2 border border-[var(--border-default)] text-sm"
-            >
-              Cancel
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-[color:var(--text-secondary)]">
-            Existing codes are updated by <code>code</code>; new codes are inserted. &ldquo;13101C&rdquo; rows collapse into &ldquo;13101&rdquo; with a change-order variant.
-          </p>
-        </div>
-      )}
-
       {/* STEP 4: grouped, collapsible list */}
       <div className="border nw-panel overflow-hidden">
         {grouped.length === 0 && (
           <div className="px-3 py-8 text-center text-[color:var(--text-secondary)] text-sm">
-            {search ? "No matching cost codes." : "No cost codes yet. Click + Add Cost Codes or Import CSV."}
+            {search ? "No matching cost codes." : "No cost codes yet. Click + Add Cost Codes or Import CSV / Excel."}
           </div>
         )}
         {grouped.map(([cat, list]) => {
@@ -685,6 +602,20 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
           onAddRow={addRow}
           onRemoveRow={removeRow}
           onSave={saveModal}
+        />
+      )}
+
+      {parsedFile && (
+        <CostCodeImportModal
+          fileName={parsedFile.fileName}
+          columns={parsedFile.columns}
+          rows={parsedFile.rows}
+          totalRows={parsedFile.totalRows}
+          truncated={parsedFile.truncated}
+          busy={busy}
+          onCommit={handleImportCommit}
+          onClose={() => setParsedFile(null)}
+          onDownloadSample={downloadSample}
         />
       )}
     </div>
