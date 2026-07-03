@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CostCode } from "./page";
 import CostCodeImportModal, { type ImportDraft } from "./CostCodeImportModal";
@@ -66,6 +66,10 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
   } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
+  // Guard against the pre-hydration dead-click: the top action buttons stay
+  // disabled until this client component has mounted (handlers attached).
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
 
   const existingCategories = useMemo(() => {
     const set = new Set<string>();
@@ -468,14 +472,16 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
           <button
             type="button"
             onClick={openAdd}
-            className="px-3 py-2 bg-[var(--nw-stone-blue)] text-[color:var(--nw-white-sand)] text-sm hover:bg-[var(--nw-gulf-blue)] transition-colors"
+            disabled={!ready}
+            className="px-3 py-2 bg-[var(--nw-stone-blue)] text-[color:var(--nw-white-sand)] text-sm hover:bg-[var(--nw-gulf-blue)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             + Add Cost Codes
           </button>
           <button
             type="button"
             onClick={() => setImportOpen(true)}
-            className="px-3 py-2 border border-[var(--border-default)] text-sm"
+            disabled={!ready}
+            className="px-3 py-2 border border-[var(--border-default)] text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Import CSV / Excel
           </button>
@@ -489,7 +495,8 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
           <button
             type="button"
             onClick={exportCsv}
-            className="px-3 py-2 border border-[var(--border-default)] text-sm"
+            disabled={!ready}
+            className="px-3 py-2 border border-[var(--border-default)] text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Export CSV
           </button>
@@ -542,18 +549,18 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
                 </span>
               </button>
               {!isCollapsed && (
-                <table className="w-full text-sm">
+                <table className="w-full text-sm table-fixed">
                   <tbody>
                     {list.map((c) => (
                       <tr key={c.id} className="border-t border-[var(--border-default)]">
-                        <td className="px-3 py-2 w-8">
+                        <td className="px-3 py-2 w-8 align-top">
                           <input
                             type="checkbox"
                             checked={selected.has(c.id)}
                             onChange={() => toggleSelect(c.id)}
                           />
                         </td>
-                        <td className="px-3 py-2 font-mono text-[color:var(--text-primary)] whitespace-nowrap">
+                        <td className="px-3 py-2 w-[150px] font-mono text-[color:var(--text-primary)] break-words align-top">
                           {c.code}
                           {c.has_co_variant && (
                             <span
@@ -564,8 +571,10 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-[color:var(--text-primary)]">{c.description}</td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <td className="px-3 py-2 text-[color:var(--text-primary)] break-words align-top">
+                          {c.description.trim() === c.code.trim() ? "" : c.description}
+                        </td>
+                        <td className="px-3 py-2 w-[120px] text-right whitespace-nowrap align-top">
                           <button
                             type="button"
                             onClick={() => openEdit(c)}
