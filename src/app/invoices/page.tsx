@@ -176,6 +176,13 @@ export default function AllInvoicesPage() {
  const loadingSafety = setTimeout(() => setLoading(false), 15000);
  async function fetchData() {
  try {
+ // Setup progress (server-side, INDEPENDENT of the invoice load so a slow /
+ // hanging invoice query can't block it) — fire-and-forget; it updates the
+ // SetupGuide as soon as it resolves.
+ fetch("/api/setup-status", { cache: "no-store" })
+ .then((r) => (r.ok ? r.json() : null))
+ .then((s) => { if (s) setSetupCounts({ costCodes: s.costCodes ?? 0, jobs: s.jobs ?? 0 }); })
+ .catch(() => {});
  // Auth pre-flight + membership.org_id fetch (Plan C-1 CR-C1-1; Option A
  // promoted from Option B per iter-2 multi-tenant-architect BLOCKING +
  // 4-of-5 reviewer consensus. Explicit org_id filter on PM query —
@@ -247,13 +254,6 @@ export default function AllInvoicesPage() {
  .in("role", ["pm", "admin"])
  : Promise.resolve({ data: null, error: null }),
  ]);
- // Setup progress via a server-side endpoint — reliable (the same server path
- // /admin/cost-codes uses to read cost codes), avoiding client-side RLS/timing
- // fragility of running these existence checks in the browser.
- const setup = await fetch("/api/setup-status", { cache: "no-store" })
- .then((r) => (r.ok ? r.json() : null))
- .catch(() => null);
- if (setup) setSetupCounts({ costCodes: setup.costCodes ?? 0, jobs: setup.jobs ?? 0 });
 
  // Build invoice_id → list of unique cost code strings — only for visible invoices
  const lineItemCodesByInvoice = new Map<string, Set<string>>();
