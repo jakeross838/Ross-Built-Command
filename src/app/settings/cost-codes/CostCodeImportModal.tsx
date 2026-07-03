@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 // Shared with CostCodesManager — the shape POSTed to /api/cost-codes/import.
 export type ImportDraft = {
@@ -29,6 +29,37 @@ export type ParsedFile = {
 const CODE_FORMAT = /^[^\t\r\n]{1,64}$/;
 const CO_SUFFIX = /^(\d{3,7})[cC]$/;
 const NONE = -1; // "not mapped" sentinel for the dropdowns
+const NEW_CAT = "__new__"; // "create new category" sentinel in the inline editor
+
+type EditField = "code" | "description" | "category";
+
+// Compact one-line status pill for the preview Result column. "✓ OK" for a
+// clean row, "CO → <base>" for a change-order variant that folds into its base,
+// and a truncated reason for a flagged row (kept visible, never hidden).
+function ResultBadge({ row }: { row: ParsedRow }) {
+  if (row.error) {
+    return (
+      <span
+        title={row.error}
+        className="inline-block max-w-[180px] truncate align-middle whitespace-nowrap text-[11px] text-[color:var(--nw-danger)]"
+      >
+        ⚠ {row.error}
+      </span>
+    );
+  }
+  if (row.isCo) {
+    return (
+      <span className="inline-flex items-center whitespace-nowrap px-1.5 py-0.5 border border-[var(--border-strong)] text-[10px] font-mono tracking-[0.04em] text-[color:var(--text-secondary)]">
+        CO → {row.base}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center whitespace-nowrap px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.06em] text-[color:var(--nw-success)]">
+      ✓ OK
+    </span>
+  );
+}
 
 type ParsedRow = {
   code: string;
@@ -188,7 +219,9 @@ function MappingStep({
     setAutoApplied(true);
   }
 
-  const parsedRows: ParsedRow[] = useMemo(() => {
+  // Base parse (mapping-dependent): raw code / description / category per row,
+  // with the (b) description backfill. Inline edits are applied ON TOP of this.
+  const baseRows = useMemo(() => {
     return rows.map((row) => {
       const rawCode = codeCol !== NONE ? (row[codeCol] ?? "").trim() : "";
       let code = rawCode;
@@ -199,24 +232,71 @@ function MappingStep({
           code = rawCode.slice(0, idx).trim();
           description = rawCode.slice(idx + 1).trim();
         }
-        // (b) No "-" in a combined cell → keep the WHOLE cell as the code and
-        // do NOT blank the description; it's a valid named line item.
       }
       const category = catCol !== NONE ? (row[catCol] ?? "").trim() : "";
-      // Never drop a valid code for a missing description — fall back to the
-      // code label itself (a named line item is self-describing).
       if (code && !description) description = code;
-      const m = code.match(CO_SUFFIX);
-      let error: string | null = null;
-      if (!code) error = "No code — check the Code column mapping.";
-      else if (!CODE_FORMAT.test(code))
-        error = `"${code.slice(0, 32)}${code.length > 32 ? "…" : ""}" is over 64 chars or has invalid characters.`;
-      return { code, description, category, isCo: !!m, base: m ? m[1] : code, error };
+      return { code, description, category };
     });
   }, [rows, codeCol, descCol, catCol, splitCombined]);
 
-  const valid = parsedRows.filter((p) => !p.error);
-  const errorRows = parsedRows.filter((p) => p.error);
+  // Inline edits: per-row field overrides applied before import, keyed by index.
+  // Only ONE row is ever in edit mode (click-to-edit), so we never render 168
+  // live inputs — the rest stay as plain text.
+  const [edits, setEdits] = useState<Record<number, Partial<Record<EditField, string>>>>({});
+  const [editingRow, setEditingRow] = useState<number | null>(null);
+  const [focusField, setFocusField] = useState<EditField>("code");
+  const [catNewMode, setCatNewMode] = useState(false);
+
+  // Exit the editable row when the user clicks outside it.
+  useEffect(() => {
+    if (editingRow === null) return;
+    function onDown(e: MouseEvent) {
+      const el = e.target as HTMLElement | null;
+      if (!el || !el.closest('[data-editing="true"]')) {
+        setEditingRow(null);
+        setCatNewMode(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [editingRow]);
+
+  function fieldValue(i: number, field: EditField) {
+    return edits[i]?.[field] ?? baseRows[i][field];
+  }
+  function setEdit(i: number, field: EditField, value: string) {
+    setEdits((prev) => ({ ...prev, [i]: { ...prev[i], [field]: value } }));
+  }
+  function startEdit(i: number, field: EditField) {
+    setFocusField(field);
+    setCatNewMode(false);
+    setEditingRow(i);
+  }
+  function onEditKey(e: KeyboardEvent) {
+    if (e.key === "Enter" || e.key === "Escape") {
+      setEditingRow(null);
+      setCatNewMode(false);
+    }
+  }
+
+  // Effective rows = base parse + edits, re-validated. This is what imports.
+  const effectiveRows: ParsedRow[] = useMemo(() => {
+    return baseRows.map((b, i) => {
+      const e = edits[i];
+      const code = (e?.code ?? b.code).trim();
+      let description = (e?.description ?? b.description).trim();
+      const category = (e?.category ?? b.category).trim();
+      if (code && !description) description = code;
+      const m = code.match(CO_SUFFIX);
+      let error: string | null = null;
+      if (!code) error = "No code — set one below.";
+      else if (!CODE_FORMAT.test(code)) error = "Over 64 chars or invalid characters.";
+      return { code, description, category, isCo: !!m, base: m ? m[1] : code, error };
+    });
+  }, [baseRows, edits]);
+
+  const valid = effectiveRows.filter((p) => !p.error);
+  const errorRows = effectiveRows.filter((p) => p.error);
 
   const stats = useMemo(() => {
     const bases = new Set<string>();
@@ -230,6 +310,14 @@ function MappingStep({
     return { codes: bases.size, categories: cats.size, coVariants: co };
   }, [valid]);
 
+  // Detected categories for the inline dropdown — includes any created inline,
+  // so a new category on one row is offered on the others.
+  const detectedCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of effectiveRows) if (p.category) set.add(p.category);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [effectiveRows]);
+
   function commit() {
     const out: ImportDraft[] = valid.map((p, i) => ({
       code: p.code,
@@ -241,15 +329,15 @@ function MappingStep({
     onCommit(out);
   }
 
-  // Sticky header cells must carry their OWN OPAQUE background: (1) backgrounds
-  // on thead/tr don't paint under position:sticky, so the color must sit on the
-  // <th>; and (2) --bg-subtle is rgba(...,.06) — 94% transparent — so rows
-  // scroll straight through it. Use the opaque --bg-page (#f7f5ec) + a bottom
-  // border. Table is border-separate + border-spacing-0 (sticky cell backgrounds
-  // are unreliable under border-collapse); row separators live on the <td> cells.
+  // Sticky header cells carry their OWN OPAQUE background (--bg-subtle is 94%
+  // transparent, and thead/tr backgrounds don't paint under position:sticky).
+  // Table is border-separate + border-spacing-0; row separators on the <td>.
   const thClass =
     "sticky top-0 z-10 px-3 py-2 text-left text-[10px] uppercase tracking-[0.08em] text-[color:var(--text-tertiary)] bg-[var(--bg-page)] border-b border-[var(--border-default)]";
   const tdClass = "px-3 py-2 align-top border-b border-[var(--border-default)]";
+  const tdEdit = "px-2 py-1 align-top border-b border-[var(--border-default)]";
+  const cellInput = "w-full px-2 py-1 border nw-panel text-sm";
+  const tdClick = `${tdClass} cursor-text hover:bg-[var(--bg-subtle)]`;
 
   return (
     <>
@@ -318,36 +406,107 @@ function MappingStep({
         )}
       </div>
 
-      {/* ---- Preview ---- */}
-      <div className="mt-3 max-h-[300px] overflow-auto border border-[var(--border-default)]">
-        <table className="w-full text-sm border-separate border-spacing-0">
+      {/* ---- Editable preview (click a cell to edit before importing) ---- */}
+      <p className="mt-3 text-[11px] text-[color:var(--text-tertiary)]">
+        Click any Code, Description, or Category to edit it. Your edits are what get imported.
+      </p>
+      <div className="mt-1 max-h-[300px] overflow-auto border border-[var(--border-default)]">
+        <table className="w-full text-sm border-separate border-spacing-0 table-fixed">
           <thead>
             <tr>
-              <th className={thClass}>Code</th>
-              <th className={thClass}>Description</th>
-              <th className={thClass}>Category</th>
-              <th className={thClass}>Result</th>
+              <th className={`${thClass} w-[22%]`}>Code</th>
+              <th className={`${thClass} w-[36%]`}>Description</th>
+              <th className={`${thClass} w-[24%]`}>Category</th>
+              <th className={`${thClass} w-[18%]`}>Result</th>
             </tr>
           </thead>
           <tbody>
-            {parsedRows.map((p, i) => (
-              <tr key={i} className={p.error ? "bg-[rgba(176,85,78,0.06)]" : ""}>
-                <td className={`${tdClass} font-mono whitespace-nowrap`}>{p.code || "—"}</td>
-                <td className={tdClass}>{p.description}</td>
-                <td className={`${tdClass} text-[color:var(--text-secondary)]`}>{p.category}</td>
-                <td className={`${tdClass} text-xs`}>
-                  {p.error ? (
-                    <span className="text-[color:var(--nw-danger)]">{p.error}</span>
-                  ) : p.isCo ? (
-                    <span className="text-[color:var(--text-secondary)]">
-                      change-order → merges into {p.base}
-                    </span>
-                  ) : (
-                    <span className="text-[color:var(--nw-success)]">ok</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {effectiveRows.map((r, i) => {
+              const vCode = fieldValue(i, "code");
+              const vDesc = fieldValue(i, "description");
+              const vCat = fieldValue(i, "category");
+              const rowBg = r.error ? "bg-[rgba(176,85,78,0.06)]" : "";
+              if (editingRow === i) {
+                return (
+                  <tr key={i} data-editing="true" className={rowBg || "bg-[var(--bg-subtle)]"}>
+                    <td className={tdEdit}>
+                      <input
+                        autoFocus={focusField === "code"}
+                        value={vCode}
+                        onChange={(e) => setEdit(i, "code", e.target.value)}
+                        onKeyDown={onEditKey}
+                        className={`${cellInput} font-mono`}
+                      />
+                    </td>
+                    <td className={tdEdit}>
+                      <input
+                        autoFocus={focusField === "description"}
+                        value={vDesc}
+                        onChange={(e) => setEdit(i, "description", e.target.value)}
+                        onKeyDown={onEditKey}
+                        className={cellInput}
+                      />
+                    </td>
+                    <td className={tdEdit}>
+                      {catNewMode ? (
+                        <input
+                          autoFocus
+                          value={vCat}
+                          placeholder="New category"
+                          onChange={(e) => setEdit(i, "category", e.target.value)}
+                          onKeyDown={onEditKey}
+                          className={cellInput}
+                        />
+                      ) : (
+                        <select
+                          autoFocus={focusField === "category"}
+                          value={detectedCategories.includes(vCat) ? vCat : ""}
+                          onChange={(e) => {
+                            if (e.target.value === NEW_CAT) {
+                              setCatNewMode(true);
+                              setEdit(i, "category", "");
+                            } else {
+                              setEdit(i, "category", e.target.value);
+                            }
+                          }}
+                          className={cellInput}
+                        >
+                          <option value="">Uncategorized</option>
+                          {detectedCategories.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                          <option value={NEW_CAT}>+ New category…</option>
+                        </select>
+                      )}
+                    </td>
+                    <td className={tdClass}>
+                      <ResultBadge row={r} />
+                    </td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={i} className={rowBg}>
+                  <td onClick={() => startEdit(i, "code")} className={`${tdClick} font-mono truncate`}>
+                    {vCode || "—"}
+                  </td>
+                  <td onClick={() => startEdit(i, "description")} className={`${tdClick} truncate`}>
+                    {vDesc}
+                  </td>
+                  <td
+                    onClick={() => startEdit(i, "category")}
+                    className={`${tdClick} truncate text-[color:var(--text-secondary)]`}
+                  >
+                    {vCat || <span className="italic text-[color:var(--text-tertiary)]">Uncategorized</span>}
+                  </td>
+                  <td className={tdClass}>
+                    <ResultBadge row={r} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
