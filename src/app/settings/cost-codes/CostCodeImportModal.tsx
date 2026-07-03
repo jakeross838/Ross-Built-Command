@@ -19,7 +19,14 @@ export type ParsedFile = {
   truncated: boolean;
 };
 
-const CODE_FORMAT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/;
+// Cost codes may be numeric (22101) OR a named line item — builders track
+// overhead, fees, insurance, markup and allowances by name ("Change Order
+// Markup", "Contractor Fee", "Buildertrend Flat Rate"). So a code is valid if,
+// after trimming, it is non-empty, has no control characters (a sign of parse
+// garbage), and is at most 64 chars. Only genuinely-empty or absurdly-long
+// cells are flagged — and those stay VISIBLE in the preview, never dropped
+// silently.
+const CODE_FORMAT = /^[^\t\r\n]{1,64}$/;
 const CO_SUFFIX = /^(\d{3,7})[cC]$/;
 const NONE = -1; // "not mapped" sentinel for the dropdowns
 
@@ -192,13 +199,18 @@ function MappingStep({
           code = rawCode.slice(0, idx).trim();
           description = rawCode.slice(idx + 1).trim();
         }
+        // (b) No "-" in a combined cell → keep the WHOLE cell as the code and
+        // do NOT blank the description; it's a valid named line item.
       }
       const category = catCol !== NONE ? (row[catCol] ?? "").trim() : "";
+      // Never drop a valid code for a missing description — fall back to the
+      // code label itself (a named line item is self-describing).
+      if (code && !description) description = code;
       const m = code.match(CO_SUFFIX);
       let error: string | null = null;
-      if (!code) error = "No code in this row.";
-      else if (!CODE_FORMAT.test(code)) error = `"${code}" isn't a valid code.`;
-      else if (!description) error = "No description.";
+      if (!code) error = "No code — check the Code column mapping.";
+      else if (!CODE_FORMAT.test(code))
+        error = `"${code.slice(0, 32)}${code.length > 32 ? "…" : ""}" is over 64 chars or has invalid characters.`;
       return { code, description, category, isCo: !!m, base: m ? m[1] : code, error };
     });
   }, [rows, codeCol, descCol, catCol, splitCombined]);
@@ -252,7 +264,7 @@ function MappingStep({
       <div className="mt-3 grid sm:grid-cols-3 gap-3">
         <MapField
           label="Code column"
-          help="Your cost code number, e.g. 22101."
+          help="A number like 22101 or a name like Contractor Fee."
           value={codeCol}
           columns={columns}
           onChange={setCodeCol}
@@ -301,7 +313,7 @@ function MappingStep({
         <Stat n={stats.coVariants} label="change-order variants" />
         {errorRows.length > 0 && (
           <span className="text-[color:var(--nw-danger)]">
-            {errorRows.length} row{errorRows.length === 1 ? "" : "s"} skipped (see below)
+            {errorRows.length} row{errorRows.length === 1 ? "" : "s"} flagged — shown below, not imported
           </span>
         )}
       </div>

@@ -57,8 +57,11 @@ export const POST = withApiError(async (request: NextRequest) => {
   const merged = new Map<string, Merged>();
   for (const row of body.codes) {
     const code = (row.code ?? "").trim();
-    const description = (row.description ?? "").trim();
-    if (!code || CO_SUFFIX.test(code) || !description) continue;
+    // Never drop a valid code for a missing description — fall back to the code
+    // label itself (a named line item is self-describing). Only empty codes and
+    // "<digits>C" variants (which fold into their base) are skipped here.
+    const description = (row.description ?? "").trim() || code;
+    if (!code || CO_SUFFIX.test(code)) continue;
     merged.set(code, {
       code,
       description,

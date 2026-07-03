@@ -6,10 +6,11 @@ import { ADMIN_OR_OWNER, requireRole } from "@/lib/org/require";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
-// Cost code format: starts alphanumeric, then alphanumeric / . _ - , max 20.
-// Rejects blanks, whitespace, and garbage. Mirrors the client validator in
+// Cost code format: codes may be numeric (22101) or a named line item
+// ("Contractor Fee"). Valid = non-empty, no control chars, max 64. Rejects only
+// blanks/whitespace and parse garbage. Mirrors the client validator in
 // CostCodesManager (route files can't export non-handler symbols).
-const CODE_FORMAT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/;
+const CODE_FORMAT = /^[^\t\r\n]{1,64}$/;
 
 export const GET = withApiError(async () => {
   const membership = await requireRole(ADMIN_OR_OWNER);
@@ -44,7 +45,7 @@ export const POST = withApiError(async (request: NextRequest) => {
   }
   if (!CODE_FORMAT.test(code)) {
     throw new ApiError(
-      `"${code}" is not a valid code — use letters, digits, dot, dash or underscore (max 20 chars).`,
+      `"${code}" is not a valid code — max 64 characters, no line breaks.`,
       400
     );
   }

@@ -29,9 +29,10 @@ export const PATCH = withApiError(async (
   if (Object.keys(update).length === 0) throw new ApiError("Nothing to update", 400);
   if (typeof update.code === "string") {
     const code = (update.code as string).trim();
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/.test(code)) {
+    // Codes may be numeric or a named line item; max 64, no line breaks.
+    if (!/^[^\t\r\n]{1,64}$/.test(code)) {
       throw new ApiError(
-        `"${code}" is not a valid code — use letters, digits, dot, dash or underscore (max 20 chars).`,
+        `"${code}" is not a valid code — max 64 characters, no line breaks.`,
         400
       );
     }

@@ -19,7 +19,9 @@ if (typeof document !== "undefined" && !document.getElementById("nw-cc-styles"))
 }
 
 // Cost code format — mirrors CODE_FORMAT in src/app/api/cost-codes/route.ts.
-const CODE_FORMAT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/;
+// Codes may be numeric (22101) or a named line item ("Contractor Fee"); valid =
+// trimmed, non-empty, no control chars, max 64 chars.
+const CODE_FORMAT = /^[^\t\r\n]{1,64}$/;
 const NEW_CATEGORY = "__new__";
 
 type DraftRow = {
@@ -177,7 +179,7 @@ export default function CostCodesManager({ initial }: { initial: CostCode[] }) {
       let error: string | null = null;
       if (!code) error = "Code is required.";
       else if (!CODE_FORMAT.test(code))
-        error = "Use letters, digits, . - _ (max 20 chars).";
+        error = "Code is too long (max 64) or has invalid characters.";
       else if (!desc) error = "Description is required.";
       else {
         const lc = code.toLowerCase();
