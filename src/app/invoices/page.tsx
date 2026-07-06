@@ -175,6 +175,12 @@ export default function AllInvoicesPage() {
  // so the user always reaches the empty state / list, never an endless spin.
  const loadingSafety = setTimeout(() => setLoading(false), 15000);
  async function fetchData() {
+ // [DIAG lockfix] confirm the live build + time each load step via a window
+ // global (browser network/console tooling proved unreliable). Remove after.
+ const W = window as unknown as { __nwPerf?: { s: string; t: number }[]; __nwBuild?: string };
+ W.__nwBuild = "lockfix-instr-1";
+ W.__nwPerf = [{ s: "start", t: Math.round(performance.now()) }];
+ const mark = (s: string) => W.__nwPerf!.push({ s, t: Math.round(performance.now()) });
  try {
  // Setup progress (server-side, INDEPENDENT of the invoice load so a slow /
  // hanging invoice query can't block it) — fire-and-forget; it updates the
@@ -196,6 +202,7 @@ export default function AllInvoicesPage() {
  const {
  data: { session },
  } = await supabase.auth.getSession();
+ mark("getSession");
  const user = session?.user ?? null;
  let orgId: string | null = null;
  if (user) {
@@ -215,6 +222,7 @@ export default function AllInvoicesPage() {
  });
  }
  }
+ mark("membership");
  // Try with partial-approval columns first (migration 00015). Fall back if
  // the columns don't exist yet so the page still renders.
  const INVOICES_FULL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, parent_invoice_id, partial_approval_note, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
@@ -254,6 +262,7 @@ export default function AllInvoicesPage() {
  .in("role", ["pm", "admin"])
  : Promise.resolve({ data: null, error: null }),
  ]);
+ mark("queries");
 
  // Build invoice_id → list of unique cost code strings — only for visible invoices
  const lineItemCodesByInvoice = new Map<string, Set<string>>();
@@ -302,6 +311,7 @@ export default function AllInvoicesPage() {
  // The empty-state branch handles zero data; a real error is logged here.
  console.error("[invoices] load failed:", err);
  } finally {
+ mark("finally");
  clearTimeout(loadingSafety);
  setLoading(false);
  }
