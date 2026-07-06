@@ -520,6 +520,29 @@ See `docs/platform-admin-runbook.md` for common scenarios.
   alone is a backstop, not a substitute for application-layer auth. A
   dropped policy must not cause a leak. Filter every query by
   `membership.org_id`.
+- **Load-critical data loads via a server route or SSR — never client-side
+  supabase auth (STANDING PATTERN for all new work).** The client supabase-js
+  singleton (`@/lib/supabase/client`) has an auth init (`getSession()` →
+  `initialize()` → token refresh inside a navigator Web Lock) that can STRAND
+  and never resolve — a client-side auth-js deadlock that fires before any
+  `/auth/v1/token` network call when the browser loads a page needing to
+  refresh an expired access_token (auth-js 2.105.3 + `@supabase/ssr` +
+  navigator-lock; normally masked because the middleware keeps the cookie token
+  fresh). When it strands it blocks EVERY client-side `supabase.auth.*` AND
+  `supabase.from(...)` behind it — the ~15s invoices-list hang (fixed 2026-07,
+  commit `9ca03b1`). New pages and all Phase-B rebuilds MUST load initial
+  render-gating data via a server API route (plain `fetch()`, per-request
+  cookie auth — see `src/app/api/invoices/list/route.ts` and
+  `/api/setup-status`) or a server component (SSR), NOT client-side supabase
+  queries in a mount effect. Client `supabase.auth.*` is acceptable only in a
+  user-triggered handler, never in a load path that gates render. Legacy
+  client-auth-gated surfaces are catalogued in the RIDER-1 audit (invoices
+  queue/qa/payments/liens, per-job draws + draws/new, price-intel/cost-
+  intelligence hub, jobs + per-job subpages, vendors, dashboard, and the
+  app-wide NavBar cluster incl. `useCurrentRole`); migrate them off this path
+  during their rebuild — do NOT add new ones. Until the auth-strand itself is
+  fixed, a client-auth guard (bounded init/refresh → force re-login on failure,
+  not infinite hang) is the intended safety net.
 - **Never hardcode an ORG_ID as a fallback.** If a record's `org_id` is
   null, fail with 500 "record missing org_id". The only legitimate
   constant ORG_ID is `TEMPLATE_ORG_ID` in cost-codes/template/route.ts
