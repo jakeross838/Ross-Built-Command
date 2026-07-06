@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/lib/org/session";
+import { getCurrentMembership, getMembershipFromRequest } from "@/lib/org/session";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +25,11 @@ const INVOICES_FULL =
 const INVOICES_MINIMAL =
   "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
 
-export async function GET() {
-  const membership = await getCurrentMembership();
+export async function GET(request: NextRequest) {
+  // Fast path: read org from middleware-set headers (skips a redundant
+  // auth.getUser() round-trip, ~250-300ms). Fall back to the full lookup if
+  // the headers aren't present.
+  const membership = getMembershipFromRequest(request) ?? (await getCurrentMembership());
   if (!membership) {
     return NextResponse.json({ invoices: [], pmUsers: [] });
   }
