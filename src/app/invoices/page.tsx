@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase/client";
 import { formatCents, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
 import InvoiceUploadModal from "@/components/invoice-upload-modal";
 import InvoiceImportModal from "@/components/invoice-import-modal";
@@ -175,12 +174,6 @@ export default function AllInvoicesPage() {
  // so the user always reaches the empty state / list, never an endless spin.
  const loadingSafety = setTimeout(() => setLoading(false), 15000);
  async function fetchData() {
- // [DIAG lockfix] confirm the live build + time each load step via a window
- // global (browser network/console tooling proved unreliable). Remove after.
- const W = window as unknown as { __nwPerf?: { s: string; t: number }[]; __nwBuild?: string };
- W.__nwBuild = "lockfix-instr-1";
- W.__nwPerf = [{ s: "start", t: Math.round(performance.now()) }];
- const mark = (s: string) => W.__nwPerf!.push({ s, t: Math.round(performance.now()) });
  try {
  // Setup progress (server-side, INDEPENDENT of the invoice load so a slow /
  // hanging invoice query can't block it) — fire-and-forget; it updates the
@@ -189,120 +182,18 @@ export default function AllInvoicesPage() {
  .then((r) => (r.ok ? r.json() : null))
  .then((s) => { if (s) setSetupCounts({ costCodes: s.costCodes ?? 0, jobs: s.jobs ?? 0 }); })
  .catch(() => {});
- // Auth pre-flight + membership.org_id fetch (Plan C-1 CR-C1-1; Option A
- // promoted from Option B per iter-2 multi-tenant-architect BLOCKING +
- // 4-of-5 reviewer consensus. Explicit org_id filter on PM query —
- // tenant safety by construction per D-30 / CLAUDE.md
- // "Filter every query by membership.org_id".)
- // getSession() reads the stored JWT locally (no /auth/v1/user network
- // round-trip) — avoids a permanent hang if that validation call stalls on
- // a fresh-signup session (the new-org stuck-spinner bug). The invoice /
- // membership queries below are RLS-protected server-side, so trusting the
- // local session here is sufficient for a read-only list load.
- const {
- data: { session },
- } = await supabase.auth.getSession();
- mark("getSession");
- const user = session?.user ?? null;
- let orgId: string | null = null;
- if (user) {
- const { data: membership } = await supabase
- .from("org_members")
- .select("role, org_id")
- .eq("user_id", user.id)
- .eq("is_active", true)
- .order("created_at", { ascending: true })
- .limit(1)
- .maybeSingle();
- orgId = (membership?.org_id as string | undefined) ?? null;
- if (!orgId) {
- console.error("[invoices] Membership has no org_id; PM dropdown will be empty", {
- user_id: user.id,
- membership,
- });
- }
- }
- mark("membership");
- // Try with partial-approval columns first (migration 00015). Fall back if
- // the columns don't exist yet so the page still renders.
- const INVOICES_FULL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, parent_invoice_id, partial_approval_note, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
- const INVOICES_MINIMAL = "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
- // Parallel: invoices + PMs. Line items fetched in a second pass with
- // an IN filter so we don't scan every line item in the org.
- const [invResult, pmResult] = await Promise.all([
- supabase
- .from("invoices")
- .select(INVOICES_FULL).eq("org_id", orgId ?? "")
- .is("deleted_at", null)
- .order("created_at", { ascending: false })
- .limit(2000)
- .then(async (r) => {
- if (r.error && /parent_invoice_id|partial_approval_note/i.test(r.error.message)) {
- return await supabase
- .from("invoices")
- .select(INVOICES_MINIMAL).eq("org_id", orgId ?? "")
- .is("deleted_at", null)
- .order("created_at", { ascending: false })
- .limit(2000);
- }
- return r;
- }),
- // PM dropdown sourced from org_members + profiles. Plan D-1 (Wave-D
- // Issue 1 fix): hint syntax updated from the broken column-disambiguation
- // form to `profile:profiles (...)` resolving via the FK
- // org_members_user_id_profiles_fkey created in 00098. Option A: explicit
- // org_id filter — tenant safety by construction per D-30 (preserved from
- // C-1 CR-C1-1 promotion).
- orgId
- ? supabase
- .from("org_members")
- .select("user_id, profile:profiles (id, full_name)")
- .eq("org_id", orgId)
- .eq("is_active", true)
- .in("role", ["pm", "admin"])
- : Promise.resolve({ data: null, error: null }),
- ]);
- mark("queries");
-
- // Build invoice_id → list of unique cost code strings — only for visible invoices
- const lineItemCodesByInvoice = new Map<string, Set<string>>();
- const invoiceIds = (invResult.data as unknown as Array<{ id: string }> | null)?.map((i) => i.id) ?? [];
- if (invoiceIds.length > 0) {
- const { data: lineItems } = await supabase
- .from("invoice_line_items")
- .select("invoice_id, cost_code_id, cost_codes:cost_code_id(code)")
- .in("invoice_id", invoiceIds)
- .is("deleted_at", null);
- for (const li of lineItems ?? []) {
- // eslint-disable-next-line @typescript-eslint/no-explicit-any
- const cc = (li as any).cost_codes;
- const code = Array.isArray(cc) ? cc[0]?.code : cc?.code;
- if (!code) continue;
- // eslint-disable-next-line @typescript-eslint/no-explicit-any
- const invId = (li as any).invoice_id as string;
- if (!lineItemCodesByInvoice.has(invId)) lineItemCodesByInvoice.set(invId, new Set());
- lineItemCodesByInvoice.get(invId)!.add(code);
- }
- }
-
- if (!invResult.error && invResult.data) {
- const enriched = (invResult.data as unknown as Invoice[]).map(inv => ({
- ...inv,
- line_item_cost_codes: Array.from(lineItemCodesByInvoice.get(inv.id) ?? []),
- }));
- setInvoices(enriched);
- }
- if (!pmResult.error && pmResult.data) {
- const pms = (pmResult.data as Array<{ user_id: string; profile: { id: string; full_name: string } | { id: string; full_name: string }[] | null }>)
- .map((m) => {
- const profile = Array.isArray(m.profile) ? m.profile[0] : m.profile;
- return profile && profile.id && profile.full_name
- ? { id: profile.id, full_name: profile.full_name }
- : null;
- })
- .filter((p): p is PmUser => p !== null)
- .sort((a, b) => a.full_name.localeCompare(b.full_name));
- setPmUsers(pms);
+ // Invoices + PM dropdown, loaded SERVER-SIDE via /api/invoices/list.
+ // Root-cause fix for the ~15s hang: the previous client-side supabase-js
+ // load blocked on getSession()/auth-init, which can strand and never
+ // resolve (confirmed on RB: fetchData never got past getSession). A plain
+ // fetch to a server route uses per-request cookie auth (refreshed by
+ // middleware) and doesn't touch the client's stuck auth singleton, so the
+ // list renders fast — data or empty state — never via the 15s backstop.
+ const res = await fetch("/api/invoices/list", { cache: "no-store" });
+ if (res.ok) {
+ const data = (await res.json()) as { invoices?: Invoice[]; pmUsers?: PmUser[] };
+ setInvoices(data.invoices ?? []);
+ setPmUsers(data.pmUsers ?? []);
  }
  } catch (err) {
  // Robustness (new-org signup bug): never strand the page on the loading
@@ -311,7 +202,6 @@ export default function AllInvoicesPage() {
  // The empty-state branch handles zero data; a real error is logged here.
  console.error("[invoices] load failed:", err);
  } finally {
- mark("finally");
  clearTimeout(loadingSafety);
  setLoading(false);
  }

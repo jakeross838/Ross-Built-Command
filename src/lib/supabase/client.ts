@@ -2,61 +2,11 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 
-// ── Auth-lock hardening: ROOT CAUSE of the invoices-list ~15s hang ──────────
-// supabase-js serializes every auth op (getSession, token refresh) behind a
-// cross-tab Web Lock (`navigator.locks`, name `lock:sb-<ref>-auth-token`). The
-// DEFAULT lock waits INDEFINITELY for that exclusive lock. When it's held — by
-// another tab, or by a refresh that stalled and never released it — the very
-// first thing the invoices page does (`supabase.auth.getSession()`) blocks, and
-// with it every RLS query behind it; the page only renders via its 15s safety
-// timeout. Confirmed on RB via `navigator.locks.query()`: the auth lock held
-// exclusive with getSession requests queued behind it, and ZERO REST queries
-// fired during the load. See Supabase Discussion #37755.
-//
-// This lock keeps normal cross-tab serialization when the lock is free (so
-// legitimate token refreshes still don't race), but NEVER blocks the app for
-// more than ~1s: if it can't acquire the lock within that budget it runs the
-// operation without it. A rare, briefly-unserialized auth read is far less
-// harmful than hanging every page load for 15 seconds. The 1s budget also
-// comfortably covers a normal token refresh (~300-500ms), so concurrent-refresh
-// (refresh-token-rotation) conflicts are avoided in the common case.
-async function boundedAuthLock<R>(
-  name: string,
-  _acquireTimeout: number,
-  fn: () => Promise<R>
-): Promise<R> {
-  if (
-    typeof navigator === "undefined" ||
-    !navigator.locks ||
-    typeof navigator.locks.request !== "function"
-  ) {
-    return await fn();
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 1000);
-  try {
-    return (await navigator.locks.request(
-      name,
-      { mode: "exclusive", signal: controller.signal },
-      async () => {
-        clearTimeout(timer);
-        return await fn();
-      }
-    )) as R;
-  } catch {
-    // AbortError (lock not acquired within the budget) or any lock failure →
-    // run without the lock rather than hang the load.
-    clearTimeout(timer);
-    return await fn();
-  }
-}
-
 // Single shared browser client — cookies are synchronized so auth state
 // persists across navigation and is readable by the Next.js middleware.
 export const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { lock: boundedAuthLock } }
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
 // ─────────────────────────────────────────────────────────────────────────
