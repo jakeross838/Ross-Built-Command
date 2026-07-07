@@ -11,6 +11,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import { computePaymentDate } from "@/lib/utils/payment-schedule";
 import type { ParsedInvoice } from "@/lib/types/invoice";
 import {
@@ -321,7 +322,7 @@ export async function applyParsedToInvoice(
           : {}),
         ...(overhead.isOverhead ? { overhead_reason: overhead.reason } : {}),
       },
-      ai_model_used: "claude-sonnet-4-20250514",
+      ai_model_used: ANTHROPIC_MODEL,
       ai_raw_response: parsed,
       status: nextStatus,
       status_history: [statusEntry],

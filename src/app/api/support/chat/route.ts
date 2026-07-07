@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
@@ -10,7 +11,7 @@ import { runTool, type ToolContext } from "@/lib/support/tool-handlers";
 
 // Sonnet 4.6 alias — Anthropic resolves this to the latest Sonnet 4.6
 // snapshot. Kept here so the model choice is obvious at the route level.
-const MODEL_ID = "claude-sonnet-4-6";
+const MODEL_ID = ANTHROPIC_MODEL;
 
 const MAX_TOOL_ITERATIONS = 5;
 const MAX_MESSAGES_PER_CONVERSATION = 30;

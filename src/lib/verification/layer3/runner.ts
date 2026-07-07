@@ -41,6 +41,7 @@
 // {error_redacted: redactApiKey(message)}.
 
 import { chromium, type Browser } from "playwright";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
 import type {
@@ -67,7 +68,7 @@ import {
 } from "../_browser";
 
 // Updated 2026-05-07 per nwrp62 FIX 4: see vision-client.ts DEFAULT_MODEL.
-const VISION_MODEL_ID = "claude-sonnet-4-6";
+const VISION_MODEL_ID = ANTHROPIC_MODEL;
 
 export async function runLayer3(
   ctx: Layer3Context

@@ -24,6 +24,7 @@
 // contain `sk-ant-*` or `Bearer *` patterns before they reach stderr/Sentry.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import type { VerificationCriterion, VisionResult } from "../types";
@@ -32,7 +33,7 @@ import type { VerificationCriterion, VisionResult } from "../types";
 // by Anthropic and now returns 404 on every call (12 SKIPs in run #25513946216
 // blocked on this single deprecated ID). claude-sonnet-4-6 is the current
 // production Sonnet — vision-capable, cost-tier appropriate for Layer 3.
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MODEL = ANTHROPIC_MODEL;
 
 /**
  * Heuristic cost estimate per vision call. Anthropic pricing fluctuates;

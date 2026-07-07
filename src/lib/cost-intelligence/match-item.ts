@@ -12,6 +12,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import { callClaude } from "@/lib/claude";
 import { isNameTooGeneric, normalizeItemName } from "./normalize-item-name";
 import type {
@@ -200,7 +201,7 @@ export interface MatchConfidences {
   classification_confidence: number;
 }
 
-const MATCH_MODEL = "claude-sonnet-4-20250514";
+const MATCH_MODEL = ANTHROPIC_MODEL;
 
 export interface MatchInput {
   raw_description: string;

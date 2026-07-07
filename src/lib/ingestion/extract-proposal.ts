@@ -20,6 +20,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import { callClaude } from "@/lib/claude";
 
 // ─────────────────────────────────────────────────────────────────
@@ -925,7 +926,7 @@ export async function extractProposal(
   ];
 
   const response = await callClaude({
-    model: "claude-sonnet-4-20250514",
+    model: ANTHROPIC_MODEL,
     max_tokens: 4096,
     system: systemBlocks,
     messages: [{ role: "user", content: userContent }],

@@ -18,9 +18,10 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import { callClaude } from "@/lib/claude";
 
-const SUGGESTION_MODEL = "claude-sonnet-4-20250514";
+const SUGGESTION_MODEL = ANTHROPIC_MODEL;
 
 export type ConversionSource =
   | "same_unit"

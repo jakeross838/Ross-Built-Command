@@ -22,7 +22,8 @@ import { checkPlanLimit, planDisplayName, type PlanSlug } from "@/lib/plan-limit
 // Anthropic pricing (USD per million tokens) for the Sonnet family. If we
 // start using Opus/Haiku in this app we'll branch here.
 const PRICING_PER_MTOK: Record<string, { input: number; output: number }> = {
-  "claude-sonnet-4-20250514": { input: 3, output: 15 },
+  "claude-sonnet-4-6": { input: 3, output: 15 }, // current — see @/lib/ai/model
+  "claude-sonnet-4-20250514": { input: 3, output: 15 }, // retired; kept for historical cost calc
   "claude-opus-4-20250514": { input: 15, output: 75 },
   "claude-haiku-4-5-20251001": { input: 1, output: 5 },
 };

@@ -48,6 +48,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentMembership } from "@/lib/org/session";
 import { ApiError, withApiError } from "@/lib/api/errors";
@@ -62,7 +63,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const EXTRACTION_PROMPT_VERSION = "phase-3.4-step2";
-const EXTRACTION_MODEL_TAG = "claude-sonnet-4-20250514";
+const EXTRACTION_MODEL_TAG = ANTHROPIC_MODEL;
 
 export const POST = withApiError(async (request: NextRequest) => {
   const membership = await getCurrentMembership();

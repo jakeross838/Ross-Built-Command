@@ -25,8 +25,9 @@
  */
 
 import { callClaude } from "@/lib/claude";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 
-const CLASSIFIER_MODEL = "claude-sonnet-4-20250514";
+const CLASSIFIER_MODEL = ANTHROPIC_MODEL;
 
 export type LineNature =
   | "material"

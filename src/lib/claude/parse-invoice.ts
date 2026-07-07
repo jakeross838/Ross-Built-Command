@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ParsedInvoice } from "@/lib/types/invoice";
 import { callClaude } from "@/lib/claude";
@@ -181,7 +182,7 @@ export async function parseInvoiceWithVision(
  });
 
  const response = await callClaude({
- model: "claude-sonnet-4-20250514",
+ model: ANTHROPIC_MODEL,
  max_tokens: 4096,
  messages: [
  {
@@ -225,7 +226,7 @@ export async function parseInvoiceFromText(
  const prompt = buildPrompt(costCodeList);
 
  const response = await callClaude({
- model: "claude-sonnet-4-20250514",
+ model: ANTHROPIC_MODEL,
  max_tokens: 4096,
  messages: [
  {

@@ -16,6 +16,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ANTHROPIC_MODEL } from "@/lib/ai/model";
 import { buildVendorContext, matchItem } from "./match-item";
 import { commitLineToSpine } from "./commit-line-to-spine";
 import {
@@ -162,7 +163,7 @@ async function persistLineComponents(
 }
 
 const EXTRACTION_PROMPT_VERSION = "v1.2";
-const EXTRACTION_MODEL = "claude-sonnet-4-20250514";
+const EXTRACTION_MODEL = ANTHROPIC_MODEL;
 
 /**
  * Map the regex detector's transaction_line_type into the skipped_lines
