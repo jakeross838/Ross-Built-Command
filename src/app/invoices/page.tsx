@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
 import { formatCents, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
 import InvoiceUploadModal from "@/components/invoice-upload-modal";
 import InvoiceImportModal from "@/components/invoice-import-modal";
@@ -153,7 +154,6 @@ export default function AllInvoicesPage() {
 
  // Filters
  const [search, setSearch] = useState("");
- const [jobFilter, setJobFilter] = useState("");
  const [pmFilter, setPmFilter] = useState("");
  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>("all");
 
@@ -168,18 +168,9 @@ export default function AllInvoicesPage() {
  const [sortKey, setSortKey] = useState<SortKey>("date");
  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
- // Jobs created via the global New Job slide-over this session — merged into
- // the Job filter so a brand-new job (which has no invoices yet) appears
- // immediately (Pattern 5, optimistic insertion).
- const [sessionJobNames, setSessionJobNames] = useState<string[]>([]);
- useEffect(() => {
- const onJobCreated = (e: Event) => {
- const name = (e as CustomEvent<{ name?: string }>).detail?.name;
- if (name) setSessionJobNames(prev => (prev.includes(name) ? prev : [...prev, name]));
- };
- window.addEventListener("nw:job-created", onJobCreated as EventListener);
- return () => window.removeEventListener("nw:job-created", onJobCreated as EventListener);
- }, []);
+ // Job filter is the cross-surface left rail (PART 2) — filter by job id, not a
+ // local dropdown. New jobs land in the rail via the provider's own listener.
+ const { selectedJobId, clear: clearJobFilter } = useJobFilter();
 
  useEffect(() => {
  // Backstop: the loading skeleton must NEVER be permanent. If fetchData
@@ -224,13 +215,6 @@ export default function AllInvoicesPage() {
  }, []);
 
  // Unique job names
- const jobNames = useMemo(() => {
- const names = new Set<string>();
- invoices.forEach(inv => { if (inv.jobs?.name) names.add(inv.jobs.name); });
- sessionJobNames.forEach(n => names.add(n));
- return Array.from(names).sort();
- }, [invoices, sessionJobNames]);
-
  // Stat cards removed — they used stale status buckets that contradicted the
  // approval-stage tabs. Per-stage counts now live on the tab chips + sub-line.
 
@@ -254,11 +238,10 @@ export default function AllInvoicesPage() {
  if (statusFilters.size > 0) count++;
  if (amountRange !== "all") count++;
  if (dateStart || dateEnd) count++;
- if (jobFilter) count++;
  if (pmFilter) count++;
  if (confidenceFilter !== "all") count++;
  return count;
- }, [statusFilters, amountRange, dateStart, dateEnd, jobFilter, pmFilter, confidenceFilter]);
+ }, [statusFilters, amountRange, dateStart, dateEnd, pmFilter, confidenceFilter]);
 
  // Filter + sort
  const filtered = useMemo(() => {
@@ -285,7 +268,7 @@ export default function AllInvoicesPage() {
  (inv.invoice_number ?? "").toLowerCase().includes(q)
  );
  }
- if (jobFilter) result = result.filter(inv => inv.jobs?.name === jobFilter);
+ if (selectedJobId) result = result.filter(inv => inv.jobs?.id === selectedJobId);
  if (pmFilter) {
  if (pmFilter === "__unassigned__") result = result.filter(inv => !inv.assigned_pm);
  else result = result.filter(inv => inv.assigned_pm?.id === pmFilter);
@@ -326,7 +309,7 @@ export default function AllInvoicesPage() {
  }
  return sortDir === "asc" ? cmp : -cmp;
  });
- }, [invoices, stageTab, reviewSub, search, jobFilter, pmFilter, confidenceFilter, statusFilters, amountRange, dateStart, dateEnd, sortKey, sortDir]);
+ }, [invoices, stageTab, reviewSub, search, selectedJobId, pmFilter, confidenceFilter, statusFilters, amountRange, dateStart, dateEnd, sortKey, sortDir]);
 
  const toggleSort = (key: SortKey) => {
  if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -341,9 +324,9 @@ export default function AllInvoicesPage() {
  });
  };
 
- const isFiltered = search.trim() !== "" || jobFilter !== "" || pmFilter !== "" || confidenceFilter !== "all" || statusFilters.size > 0 || amountRange !== "all" || dateStart !== "" || dateEnd !== "";
+ const isFiltered = search.trim() !== "" || selectedJobId !== null || pmFilter !== "" || confidenceFilter !== "all" || statusFilters.size > 0 || amountRange !== "all" || dateStart !== "" || dateEnd !== "";
 
- const clearAllFilters = () => { setSearch(""); setJobFilter(""); setPmFilter(""); setConfidenceFilter("all"); setStatusFilters(new Set()); setAmountRange("all"); setDateStart(""); setDateEnd(""); };
+ const clearAllFilters = () => { setSearch(""); clearJobFilter(); setPmFilter(""); setConfidenceFilter("all"); setStatusFilters(new Set()); setAmountRange("all"); setDateStart(""); setDateEnd(""); };
 
  // Payment tracking: filtered and grouped by payment_date
  const PAYMENT_STATUSES = ["qa_approved", "pushed_to_qb", "in_draw", "paid"];
@@ -541,14 +524,6 @@ export default function AllInvoicesPage() {
  </div>
  </div>
  <div className="flex flex-col md:flex-row gap-4 mb-4">
- <div>
- <p className="text-[11px] font-mono font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Job</p>
- <select value={jobFilter} onChange={(e) => setJobFilter(e.target.value)}
- className="px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none md:w-48">
- <option value="">All Jobs</option>
- {jobNames.map(n => <option key={n} value={n}>{n}</option>)}
- </select>
- </div>
  <div>
  <p className="text-[11px] font-mono font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">PM</p>
  <select value={pmFilter} onChange={(e) => setPmFilter(e.target.value)}

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
 import { logoutAction } from "@/app/login/actions";
 import { useOrgBranding } from "@/components/org-branding-provider";
 import { PUBLIC_APP_NAME } from "@/lib/org/public";
@@ -15,7 +14,6 @@ import { useTheme } from "@/components/theme-provider";
 import { MobileNavSection } from "@/components/nav/nav-dropdown";
 import AdminDropdown, { ADMIN_ITEMS } from "@/components/nav/admin-dropdown";
 import PlatformAdminBadge from "@/components/nav/platform-admin-badge";
-import { useCurrentRole } from "@/hooks/use-current-role";
 import { NwWordmark } from "@/components/branding/Wordmark";
 import { NwIcon } from "@/components/branding/Icon";
 
@@ -109,35 +107,31 @@ const PRIMARY_NAV: Array<{ key: NavItemKey; label: string; href: string }> = [
 
 export default function NavBar() {
   const pathname = usePathname();
-  const role = useCurrentRole();
+  // Role + profile come from the server (/api/me), NOT the client-auth
+  // useCurrentRole hook. That hook sits on the client-auth strand path and, when
+  // it stalled, dropped the whole nav to logo-only (PART 1 regression). The core
+  // surface links render UNCONDITIONALLY below; only role-dependent chrome
+  // (Admin ▾, ＋ New Job, badge/name) waits on this reliable server resolve.
   const [profile, setProfile] = useState<Profile | null>(null);
+  const role = profile?.role ?? null;
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!role) return;
     let cancelled = false;
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || cancelled) return;
-      const { data: profileRow } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("id", user.id)
-        .single();
-      if (cancelled) return;
-      if (profileRow) {
-        setProfile({
-          id: profileRow.id as string,
-          full_name: profileRow.full_name as string,
-          role: role as UserRole,
-        });
-      }
-    })();
+    fetch("/api/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(
+        (d: { authenticated?: boolean; id?: string; full_name?: string; role?: string } | null) => {
+          if (cancelled || !d || !d.authenticated || !d.role) return;
+          setProfile({ id: d.id ?? "", full_name: d.full_name ?? "", role: d.role as UserRole });
+        },
+      )
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [role]);
+  }, []);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -229,23 +223,22 @@ export default function NavBar() {
           )}
         </Link>
 
-        {/* Desktop nav — 3 surfaces + Admin dropdown */}
+        {/* Desktop nav — 3 surfaces (rendered UNCONDITIONALLY: they are links;
+            middleware enforces auth) + role-gated Admin dropdown. */}
         <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center h-full">
-          {PRIMARY_NAV.map((item) =>
-            show[item.key] ? (
-              <Link
-                key={item.key}
-                href={item.href}
-                className={`flex items-center gap-1.5 h-full px-[15px] font-mono text-[11px] tracking-[0.12em] uppercase transition-colors border-b-2 -mb-px ${
-                  isActive(item.key)
-                    ? "text-nw-white-sand border-b-nw-stone-blue bg-[rgba(91,134,153,0.12)]"
-                    : "text-[rgba(247,245,236,0.65)] hover:text-nw-white-sand border-transparent"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ) : null
-          )}
+          {PRIMARY_NAV.map((item) => (
+            <Link
+              key={item.key}
+              href={item.href}
+              className={`flex items-center gap-1.5 h-full px-[15px] font-mono text-[11px] tracking-[0.12em] uppercase transition-colors border-b-2 -mb-px ${
+                isActive(item.key)
+                  ? "text-nw-white-sand border-b-nw-stone-blue bg-[rgba(91,134,153,0.12)]"
+                  : "text-[rgba(247,245,236,0.65)] hover:text-nw-white-sand border-transparent"
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
           {show.admin && (
             <AdminDropdown active={isAdminActive} activeHref={adminActiveHref} />
           )}
@@ -314,22 +307,20 @@ export default function NavBar() {
               <NewJobButton full />
             </div>
           )}
-          {PRIMARY_NAV.map((item) =>
-            show[item.key] ? (
-              <Link
-                key={item.key}
-                href={item.href}
-                onClick={closeMobile}
-                className={`py-3 px-4 w-full text-[13px] font-medium font-sans transition-colors ${
-                  isActive(item.key)
-                    ? "text-nw-white-sand"
-                    : "text-[rgba(247,245,236,0.65)] hover:text-nw-white-sand"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ) : null
-          )}
+          {PRIMARY_NAV.map((item) => (
+            <Link
+              key={item.key}
+              href={item.href}
+              onClick={closeMobile}
+              className={`py-3 px-4 w-full text-[13px] font-medium font-sans transition-colors ${
+                isActive(item.key)
+                  ? "text-nw-white-sand"
+                  : "text-[rgba(247,245,236,0.65)] hover:text-nw-white-sand"
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
           {show.admin && (
             <MobileNavSection
               label="Admin"

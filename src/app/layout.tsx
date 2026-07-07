@@ -18,6 +18,7 @@ import { ThemeProvider, type Theme } from "@/components/theme-provider";
 import { ToastProvider } from "@/components/toast-provider";
 import { FlashProvider } from "@/components/nw/FlashProvider";
 import { NewJobProvider } from "@/components/new-job/NewJobProvider";
+import { JobFilterProvider } from "@/components/job-filter/JobFilterProvider";
 import KeyboardShortcutsProvider from "@/components/keyboard-shortcuts-provider";
 import { getOrgBranding } from "@/lib/org/branding";
 
@@ -103,7 +104,9 @@ export default async function RootLayout({
                 <ImpersonationBanner />
                 <ConnectionBanner />
                 <FlashProvider>
-                  <NewJobProvider>{children}</NewJobProvider>
+                  <NewJobProvider>
+                    <JobFilterProvider>{children}</JobFilterProvider>
+                  </NewJobProvider>
                 </FlashProvider>
                 <SupportChatMount />
               </KeyboardShortcutsProvider>

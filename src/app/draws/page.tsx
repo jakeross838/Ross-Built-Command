@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
 import { SkeletonList } from "@/components/loading-skeleton";
 import { formatDate, formatStatus } from "@/lib/utils/format";
@@ -35,7 +36,7 @@ interface Draw {
 export default function DrawsPage() {
   const [draws, setDraws] = useState<Draw[]>([]);
   const [loading, setLoading] = useState(true);
-  const [jobFilter, setJobFilter] = useState<string>("all");
+  const { selectedJobId } = useJobFilter();
 
   useEffect(() => {
     async function fetchDraws() {
@@ -49,15 +50,8 @@ export default function DrawsPage() {
     fetchDraws();
   }, []);
 
-  // Job filter options — unique jobs across all loaded draws (id-keyed so two
-  // jobs sharing a name don't collide), sorted by name.
-  const jobOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const d of draws) if (d.jobs) map.set(d.jobs.id, d.jobs.name);
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [draws]);
-
-  const filtered = jobFilter === "all" ? draws : draws.filter((d) => d.jobs?.id === jobFilter);
+  // Job filter comes from the cross-surface left rail (PART 2).
+  const filtered = selectedJobId ? draws.filter((d) => d.jobs?.id === selectedJobId) : draws;
 
   const th = "py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)]";
 
@@ -92,18 +86,6 @@ export default function DrawsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <select
-            value={jobFilter}
-            onChange={(e) => setJobFilter(e.target.value)}
-            className="h-9 px-3 text-[13px] border bg-[var(--bg-card)] text-[color:var(--text-primary)]"
-            style={{ borderColor: "var(--border-strong)" }}
-            aria-label="Filter draws by job"
-          >
-            <option value="all">All Jobs</option>
-            {jobOptions.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </select>
           <Link href="/financials/pay-apps/new"
             className="inline-flex items-center justify-center h-9 px-4 text-[11px] uppercase font-medium border transition-all shadow-[var(--shadow-raise-accent)] hover:-translate-y-px active:translate-y-px active:shadow-[var(--shadow-raise-accent-active)]"
             style={{
@@ -124,7 +106,7 @@ export default function DrawsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<EmptyIcons.Document />}
-          title={jobFilter === "all" ? "No draws yet" : "No draws for this job"}
+          title={!selectedJobId ? "No draws yet" : "No draws for this job"}
           message="Create a draw to generate an AIA G702/G703 pay application from approved invoices."
           primaryAction={{ label: "+ Create Draw", href: "/financials/pay-apps/new" }}
         />
