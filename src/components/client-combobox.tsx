@@ -152,6 +152,14 @@ export default function ClientCombobox({
         commitNew();
       }
     } else if (e.key === "Escape") {
+      // When the dropdown is open, consume Esc here so an enclosing overlay
+      // (e.g. the New Job slide-over) doesn't also close — Esc closes the
+      // topmost layer first (Pattern 1). A second Esc (dropdown now closed)
+      // falls through to the overlay.
+      if (open) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       setOpen(false);
     }
   }

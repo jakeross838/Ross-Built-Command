@@ -10,6 +10,7 @@ import { PUBLIC_APP_NAME } from "@/lib/org/public";
 import TrialBanner from "@/components/trial-banner";
 import NotificationBell from "@/components/notification-bell";
 import FeedbackTrigger from "@/components/feedback-trigger";
+import NewJobButton from "@/components/new-job/NewJobButton";
 import { useTheme } from "@/components/theme-provider";
 import { MobileNavSection } from "@/components/nav/nav-dropdown";
 import AdminDropdown, { ADMIN_ITEMS } from "@/components/nav/admin-dropdown";
@@ -252,6 +253,7 @@ export default function NavBar() {
 
         {/* Desktop: org identity + user + logout */}
         <div className="hidden md:flex items-center gap-3 shrink-0">
+          {(role === "owner" || role === "admin") && <NewJobButton />}
           <PlatformAdminBadge />
           {profile && <NotificationBell userId={profile.id} />}
           <NavThemeToggle />
@@ -305,6 +307,11 @@ export default function NavBar() {
                 </span>
                 <RoleBadge role={profile.role} />
               </div>
+            </div>
+          )}
+          {(role === "owner" || role === "admin") && (
+            <div className="px-4 py-2">
+              <NewJobButton full />
             </div>
           )}
           {PRIMARY_NAV.map((item) =>

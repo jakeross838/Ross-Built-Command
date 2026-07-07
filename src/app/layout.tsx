@@ -12,9 +12,12 @@ import "@/app/design-system/design-system.css";
 import ConnectionBanner from "@/components/connection-banner";
 import ImpersonationBanner from "@/components/impersonation-banner";
 import SupportChatMount from "@/components/support-chat-mount";
+import AuthStallGuard from "@/components/auth-stall-guard";
 import { OrgBrandingProvider } from "@/components/org-branding-provider";
 import { ThemeProvider, type Theme } from "@/components/theme-provider";
 import { ToastProvider } from "@/components/toast-provider";
+import { FlashProvider } from "@/components/nw/FlashProvider";
+import { NewJobProvider } from "@/components/new-job/NewJobProvider";
 import KeyboardShortcutsProvider from "@/components/keyboard-shortcuts-provider";
 import { getOrgBranding } from "@/lib/org/branding";
 
@@ -96,9 +99,12 @@ export default async function RootLayout({
           <OrgBrandingProvider branding={branding}>
             <ToastProvider>
               <KeyboardShortcutsProvider>
+                <AuthStallGuard />
                 <ImpersonationBanner />
                 <ConnectionBanner />
-                {children}
+                <FlashProvider>
+                  <NewJobProvider>{children}</NewJobProvider>
+                </FlashProvider>
                 <SupportChatMount />
               </KeyboardShortcutsProvider>
             </ToastProvider>

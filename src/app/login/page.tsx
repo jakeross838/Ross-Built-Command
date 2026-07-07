@@ -6,13 +6,19 @@ import LoginForm from "./LoginForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: { reason?: string };
+}) {
   // If already signed in, bounce to the home screen.
   const supabase = createServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (user) redirect("/");
+
+  const sessionStalled = searchParams?.reason === "session_stalled";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6 relative overflow-hidden">
@@ -23,6 +29,19 @@ export default async function LoginPage() {
             Sign in to {PUBLIC_APP_NAME}
           </p>
         </div>
+
+        {sessionStalled && (
+          <div
+            className="mb-4 border px-4 py-3 text-[13px]"
+            style={{
+              borderColor: "var(--flash-border)",
+              background: "var(--bg-subtle)",
+              color: "var(--text-primary)",
+            }}
+          >
+            Your session needed to refresh and timed out — please sign in again.
+          </div>
+        )}
 
         <div
           className="p-6 border"

@@ -168,6 +168,19 @@ export default function AllInvoicesPage() {
  const [sortKey, setSortKey] = useState<SortKey>("date");
  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
+ // Jobs created via the global New Job slide-over this session — merged into
+ // the Job filter so a brand-new job (which has no invoices yet) appears
+ // immediately (Pattern 5, optimistic insertion).
+ const [sessionJobNames, setSessionJobNames] = useState<string[]>([]);
+ useEffect(() => {
+ const onJobCreated = (e: Event) => {
+ const name = (e as CustomEvent<{ name?: string }>).detail?.name;
+ if (name) setSessionJobNames(prev => (prev.includes(name) ? prev : [...prev, name]));
+ };
+ window.addEventListener("nw:job-created", onJobCreated as EventListener);
+ return () => window.removeEventListener("nw:job-created", onJobCreated as EventListener);
+ }, []);
+
  useEffect(() => {
  // Backstop: the loading skeleton must NEVER be permanent. If fetchData
  // hasn't flipped `loading` within 15s (e.g. a hung network call), force it
@@ -214,8 +227,9 @@ export default function AllInvoicesPage() {
  const jobNames = useMemo(() => {
  const names = new Set<string>();
  invoices.forEach(inv => { if (inv.jobs?.name) names.add(inv.jobs.name); });
+ sessionJobNames.forEach(n => names.add(n));
  return Array.from(names).sort();
- }, [invoices]);
+ }, [invoices, sessionJobNames]);
 
  // Stat cards removed — they used stale status buckets that contradicted the
  // approval-stage tabs. Per-stage counts now live on the tab chips + sub-line.

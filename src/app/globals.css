@@ -129,6 +129,36 @@
     --shadow-raise-ghost-active: 0 1px 0 rgba(247, 245, 236, 0.14);
   }
 
+  /* ── Motion vocabulary (interaction-system handoff, Pattern 6) ──
+     The single house easing curve for all entrances. Keyframes + animation
+     utilities live in tailwind.config.ts (animate-pop-in / animate-slide-over-in
+     / animate-overlay-fade / animate-fade-up-fast). This var backs any inline
+     transition that needs the curve (e.g. the slide-over's transform). */
+  :root {
+    --ease-house: cubic-bezier(0.22, 1, 0.36, 1);
+    --overlay-backdrop: rgba(26, 40, 48, 0.5);
+  }
+
+  /* ── On-dark surface tokens (slate-deep headers / dark strips) ──
+     White-sand at reduced alpha for muted text, borders, and fills placed on
+     slate-deep surfaces (slide-over header, dark bulk bar, on-dark buttons per
+     Pattern 7). Defined here so components reference tokens, never raw rgba. */
+  :root {
+    --on-dark-text: var(--nw-white-sand);
+    --on-dark-text-muted: rgba(247, 245, 236, 0.55);
+    --on-dark-border: rgba(247, 245, 236, 0.28);
+    --on-dark-border-hover: rgba(247, 245, 236, 0.6);
+    --on-dark-fill: rgba(247, 245, 236, 0.1);
+  }
+
+  /* ── Flash strip (Pattern 5) — green confirmation wash ──
+     nw-success (#4A8A6F = rgb 74 138 111) at low alpha for the strip fill +
+     border. Tokenized so the component carries no raw color. */
+  :root {
+    --flash-bg: rgba(74, 138, 111, 0.1);
+    --flash-border: rgba(74, 138, 111, 0.3);
+  }
+
   body {
     background: var(--bg-page);
     color: var(--text-body);

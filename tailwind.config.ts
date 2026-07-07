@@ -91,6 +91,16 @@ const config: Config = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        // Interaction-system handoff — Pattern 6 motion vocabulary. The house
+        // curve cubic-bezier(0.22,1,0.36,1) is the entrance easing for all.
+        "pop-in": {
+          "0%": { opacity: "0", transform: "scale(0.96) translateY(8px)" },
+          "100%": { opacity: "1", transform: "scale(1) translateY(0)" },
+        },
+        "slide-over-in": {
+          "0%": { opacity: "0", transform: "translateX(56px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.4s ease-out forwards",
@@ -98,6 +108,14 @@ const config: Config = {
         "slide-in-left": "slide-in-left 0.2s ease-out",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        // Pattern 6 — exact spec timings + house curve.
+        "pop-in": "pop-in 0.3s cubic-bezier(0.22,1,0.36,1)",
+        "slide-over-in": "slide-over-in 0.32s cubic-bezier(0.22,1,0.36,1)",
+        "overlay-fade": "fade-in 0.2s ease forwards",
+        "fade-up-fast": "fade-up 0.2s cubic-bezier(0.22,1,0.36,1)",
+      },
+      transitionTimingFunction: {
+        house: "cubic-bezier(0.22,1,0.36,1)",
       },
     },
   },
