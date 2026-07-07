@@ -41,7 +41,7 @@ async function getCostCodeList(supabase: Client): Promise<string> {
 
 function buildPrompt(costCodeList: string): string {
  const costCodeSection = costCodeList
- ? `\n\nAlso suggest the most likely cost code from the list below. If the invoice references a change order (CO, PCCO, change order, extra work, additional), prefer the C-variant code. Return your suggestion in the cost_code_suggestion field.\n\nFor each line item, ALSO suggest the most appropriate cost code based on the line item description. A single invoice often spans multiple cost codes — e.g. a lumber invoice may have framing material AND strapping material on separate lines. A T&M invoice may have labor lines AND materials lines. Return a per-line suggestion in line_items[].cost_code_suggestion when you can identify a likely code.\n\nCOST CODES:\n${costCodeList}`
+ ? `\n\nAlso suggest the most likely cost code FROM THE LIST BELOW. Use ONLY codes that appear verbatim in the COST CODES list — NEVER invent a code and NEVER substitute a CSI/MasterFormat division number (e.g. do not emit "08110" or "8xxxx"); if no listed code fits, return null for the code. If the invoice references a change order (CO, PCCO, change order, extra work, additional), prefer the C-variant code. Return your suggestion in the cost_code_suggestion field.\n\nFor each line item, ALSO suggest the most appropriate cost code — again, ONLY codes verbatim from the list, else null — based on the line item description. A single invoice often spans multiple cost codes — e.g. a lumber invoice may have framing material AND strapping material on separate lines. A T&M invoice may have labor lines AND materials lines. Return a per-line suggestion in line_items[].cost_code_suggestion when a listed code fits.\n\nCOST CODES:\n${costCodeList}`
  : "";
 
  return `You are parsing a construction document for a luxury custom home builder running cost-plus (open book) projects.
@@ -67,18 +67,18 @@ When in doubt, prefer is_change_order: true. A false positive is cheap (PM un-to
 If is_change_order is true at the invoice level, suggest which PCCO number it might relate to in co_reference (e.g. "PCCO #3" or just the raw reference you see). Also prefer the C-variant cost code in cost_code_suggestion.
 ALSO determine is_change_order at the line-item level — a single invoice can mix base-contract lines and CO lines. Set line_items[].is_change_order accordingly, and line_items[].co_reference when the line references a specific PCCO.
 
-MATH CHECK (MANDATORY): You MUST verify that the sum of all line item amounts equals the stated subtotal and total. Specifically:
-1. Sum every line_items[].amount. Compare to the subtotal field.
+MATH CHECK (MANDATORY): Line items are PRE-TAX — they sum to the SUBTOTAL, not the total. Verify these separately:
+1. Sum every line_items[].amount. It should equal the SUBTOTAL (not the total).
 2. Check that subtotal + tax = total_amount (if tax applies).
-3. If any of these checks fail (difference > $0.01), you MUST include "math_mismatch" in the flags array. Do not skip this step.
-Report the discrepancy details in the description if found (e.g. "Line items sum to $X but stated total is $Y").
+3. Only if one of these genuinely fails (difference > $0.01) do you include "math_mismatch" in flags. A taxed invoice where line items = subtotal and subtotal + tax = total is CORRECT — do NOT flag it.
+Report the discrepancy in the description if found (e.g. "Line items sum to $X but the stated subtotal is $Y", or "subtotal + tax = $X but the stated total is $Y").
 
 Set confidence_score from 0.0 to 1.0 based on how confident you are in the overall extraction accuracy. Set per-field confidence in confidence_details.
 
 Flag issues in the flags array. Common flags:
 - "no_invoice_number" if no invoice number found
 - "handwritten_detected" if handwriting is present
-- "math_mismatch" if line items don't sum to the stated total, or subtotal + tax != total_amount
+- "math_mismatch" if line items don't sum to the SUBTOTAL (pre-tax), or subtotal + tax != total_amount
 - "blurry_or_low_quality" if image quality is poor
 - "multi_page" if it appears to span multiple pages
 - "credit_memo" if this is a credit/negative amount

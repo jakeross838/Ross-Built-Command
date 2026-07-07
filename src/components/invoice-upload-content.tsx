@@ -186,18 +186,35 @@ function ParsedDataCard({ parsed }: { parsed: ParsedInvoice }) {
  const isNotInvoice = parsed.document_type && parsed.document_type !== "invoice";
  const allLineItemsZero = parsed.line_items.length > 0 && parsed.line_items.every(i => !i.amount || i.amount === 0);
 
- // Math mismatch detection (client-side double-check)
+ // Math validation (client-side, tax-aware). Line items sum to the SUBTOTAL
+ // (pre-tax); SUBTOTAL + TAX must equal the TOTAL. A taxed invoice is NOT a
+ // mismatch just because the line items (pre-tax) are less than the total — we
+ // only flag when the arithmetic genuinely fails.
  const lineItemsSum = parsed.line_items.reduce((sum, item) => sum + (item.amount ?? 0), 0);
  const mathMismatchInfo = (() => {
- // Check line items sum vs stated total
- if (parsed.line_items.length > 0 && parsed.total_amount) {
- const diff = Math.abs(lineItemsSum - parsed.total_amount);
- if (diff > 0.01) return { lineItemsSum, statedTotal: parsed.total_amount, difference: diff };
+ const tax = parsed.tax ?? 0;
+ const total = parsed.total_amount ?? null;
+ const subtotal = parsed.subtotal && parsed.subtotal > 0 ? parsed.subtotal : null;
+
+ // 1) Line items should sum to the subtotal (pre-tax). If no subtotal is
+ //    stated, derive the pre-tax basis as total − tax.
+ const preTaxBasis = subtotal ?? (total != null ? total - tax : null);
+ if (parsed.line_items.length > 0 && preTaxBasis != null) {
+ const diff = Math.abs(lineItemsSum - preTaxBasis);
+ if (diff > 0.01) {
+ return {
+ message: `Line items sum to ${formatDollars(lineItemsSum)} but the ${subtotal != null ? "subtotal" : "pre-tax total"} is ${formatDollars(preTaxBasis)} — off by ${formatDollars(diff)}`,
+ };
  }
- // Check subtotal vs total (accounting for tax)
- if (parsed.subtotal && parsed.total_amount) {
- const diff = Math.abs(parsed.total_amount - parsed.subtotal - (parsed.tax ?? 0));
- if (diff > 0.01) return { lineItemsSum: parsed.subtotal, statedTotal: parsed.total_amount - (parsed.tax ?? 0), difference: diff };
+ }
+ // 2) Subtotal + tax must equal the total.
+ if (subtotal != null && total != null) {
+ const diff = Math.abs(subtotal + tax - total);
+ if (diff > 0.01) {
+ return {
+ message: `Subtotal ${formatDollars(subtotal)} + tax ${formatDollars(tax)} = ${formatDollars(subtotal + tax)}, but the stated total is ${formatDollars(total)} — off by ${formatDollars(diff)}`,
+ };
+ }
  }
  return null;
  })();
@@ -220,12 +237,13 @@ function ParsedDataCard({ parsed }: { parsed: ParsedInvoice }) {
  </span>
  )}
 
- {/* Math mismatch */}
- {(mathMismatchInfo || parsed.flags.includes("math_mismatch")) && (
+ {/* Math mismatch — only when the tax-aware arithmetic genuinely fails.
+     Driven by the client re-check (authoritative from the extracted
+     subtotal/tax/total), NOT the raw parser flag, which historically
+     red-flagged every taxed invoice. */}
+ {mathMismatchInfo && (
  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-[rgba(176,85,78,0.12)] text-[color:var(--nw-danger)] border border-[rgba(176,85,78,0.25)]">
- {mathMismatchInfo
- ? `Math Mismatch: Line items sum to ${formatDollars(mathMismatchInfo.lineItemsSum)} but invoice states ${formatDollars(mathMismatchInfo.statedTotal)} — difference of ${formatDollars(mathMismatchInfo.difference)}`
- : "Math Mismatch"}
+ Math Mismatch: {mathMismatchInfo.message}
  </span>
  )}
 
