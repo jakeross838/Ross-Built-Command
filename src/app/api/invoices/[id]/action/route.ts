@@ -13,6 +13,7 @@ import { logStatusChange } from "@/lib/activity-log";
 import { getWorkflowSettings } from "@/lib/workflow-settings";
 import { captureCorrections } from "@/lib/invoices/corrections";
 import { updateWithLock, isLockConflict } from "@/lib/api/optimistic-lock";
+import { applyApprovalStamp } from "@/lib/invoices/apply-approval-stamp";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -417,6 +418,30 @@ export async function POST(
  });
  if (isLockConflict(lockResult)) {
  return lockResult.response;
+ }
+
+ // ─── Item 5: approval stamp ────────────────────────────────────────
+ // On PM approval, generate a stamped PDF copy (job / cost code(s) / amount /
+ // approver / date) stored adjacent to the original — the original is never
+ // touched, and the detail view toggles between them. PDF originals only.
+ // Awaited so the stamped copy exists by the time accounting opens it, but a
+ // failure only logs — it never rolls back the approval.
+ if (action === "approve") {
+ try {
+ let approverName = "Approved";
+ if (actor?.id) {
+ const { data: prof } = await supabase
+ .from("profiles").select("full_name").eq("id", actor.id).maybeSingle();
+ approverName = (prof?.full_name as string | null) ?? approverName;
+ }
+ const approvedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+ const stampResult = await applyApprovalStamp(supabase, params.id, invoiceOrgId, approverName, approvedDate);
+ if (!stampResult.ok && stampResult.error) {
+ console.error(`[stamp] approval stamp failed for ${params.id}: ${stampResult.error}`);
+ }
+ } catch (stampErr) {
+ console.error(`[stamp] approval stamp threw for ${params.id}:`, stampErr);
+ }
  }
 
  // ─── Phase 7b: recalc downstream totals + activity log ─────────────

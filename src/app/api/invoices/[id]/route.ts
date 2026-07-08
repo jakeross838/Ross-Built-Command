@@ -7,6 +7,7 @@ import {
 import { createServerClient } from "@/lib/supabase/server";
 import { tryCreateServiceRoleClient } from "@/lib/supabase/service";
 import { captureCorrections } from "@/lib/invoices/corrections";
+import { stampedPathFor } from "@/lib/invoices/apply-approval-stamp";
 import {
   isInvoiceLocked,
   canEditLockedFields,
@@ -98,7 +99,7 @@ export const GET = withApiError(async (
     throw new ApiError("Invoice not found", 404);
   }
 
-  const [lineItemsRes, urlRes, pmUsersRes] = await Promise.all([
+  const [lineItemsRes, urlRes, stampedRes, pmUsersRes] = await Promise.all([
     supabase
       .from("invoice_line_items")
       .select(`
@@ -113,6 +114,12 @@ export const GET = withApiError(async (
     invoice.original_file_url
       ? supabase.storage.from("invoice-files").createSignedUrl(invoice.original_file_url, 3600)
       : Promise.resolve({ data: null as { signedUrl: string } | null }),
+    // Item 5 — stamped copy (adjacent derived path). createSignedUrl errors
+    // (data null) when no stamp exists yet, so unstamped invoices simply return
+    // stamped_file_url: null and the detail view shows the original only.
+    invoice.original_file_url
+      ? supabase.storage.from("invoice-files").createSignedUrl(stampedPathFor(invoice.original_file_url), 3600)
+      : Promise.resolve({ data: null as { signedUrl: string } | null }),
     // PM list sourced from org_members + profiles. Plan D-1 (Wave-D Issue 1
     // fix): hint syntax updated from the broken column-disambiguation form
     // (which returned PGRST200) to `profile:profiles (...)` resolving via the
@@ -126,6 +133,7 @@ export const GET = withApiError(async (
   ]);
 
   const signedUrl = (urlRes as { data: { signedUrl?: string } | null }).data?.signedUrl ?? null;
+  const stampedUrl = (stampedRes as { data: { signedUrl?: string } | null }).data?.signedUrl ?? null;
 
   let duplicateOf = null as null | {
     id: string;
@@ -161,6 +169,7 @@ export const GET = withApiError(async (
   return NextResponse.json({
     ...invoice,
     signed_file_url: signedUrl,
+    stamped_file_url: stampedUrl,
     pm_users: ((pmUsersRes.data ?? []) as Array<{ user_id: string; profile: { id: string; full_name: string } | { id: string; full_name: string }[] | null }>)
       .map((m) => {
         const profile = Array.isArray(m.profile) ? m.profile[0] : m.profile;

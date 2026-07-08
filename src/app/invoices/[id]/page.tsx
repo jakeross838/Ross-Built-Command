@@ -83,6 +83,7 @@ interface InvoiceData {
  pm_overrides: Record<string, { old: unknown; new: unknown }> | null;
  qa_overrides: Record<string, { old: unknown; new: unknown }> | null;
  signed_file_url: string | null;
+ stamped_file_url?: string | null;
  assigned_pm: { id: string; full_name: string; role: string } | null;
  jobs: Job | null; vendors: { id: string; name: string; phone: string | null; email: string | null; address: string | null } | null; cost_codes: CostCode | null;
  pm_users?: { id: string; full_name: string }[];
@@ -123,6 +124,9 @@ export default function InvoiceReviewPage() {
  const role = useCurrentRole();
 
  const [invoice, setInvoice] = useState<InvoiceData | null>(null);
+ // Item 5 — which copy of the document to show: the approval-stamped PDF (when
+ // one exists) or the untouched original. Defaults to stamped when available.
+ const [showStamped, setShowStamped] = useState(true);
  const [loading, setLoading] = useState(true);
  const [loadError, setLoadError] = useState<string | null>(null);
  const [saving, setSaving] = useState(false);
@@ -1339,28 +1343,51 @@ export default function InvoiceReviewPage() {
              >
                Source document
              </h3>
-             {invoice.signed_file_url ? (
-               <a
-                 href={invoice.signed_file_url}
-                 target="_blank"
-                 rel="noopener noreferrer"
-                 style={{
-                   fontFamily: "var(--font-mono)",
-                   fontSize: "10px",
-                   letterSpacing: "0.1em",
-                   textTransform: "uppercase",
-                   color: "var(--nw-stone-blue)",
-                 }}
-               >
-                 Open in new tab ↗
-               </a>
-             ) : null}
+             <div className="flex items-center gap-3">
+               {invoice.stamped_file_url ? (
+                 <div className="inline-flex border border-[var(--border-default)]" role="tablist" aria-label="Document copy">
+                   <button
+                     type="button"
+                     onClick={() => setShowStamped(true)}
+                     className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.1em] transition-colors ${showStamped ? "bg-[var(--nw-stone-blue)] text-[color:var(--bg-page)]" : "text-[color:var(--text-secondary)] hover:bg-[var(--bg-subtle)]"}`}
+                   >
+                     Stamped
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => setShowStamped(false)}
+                     className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.1em] transition-colors ${!showStamped ? "bg-[var(--nw-stone-blue)] text-[color:var(--bg-page)]" : "text-[color:var(--text-secondary)] hover:bg-[var(--bg-subtle)]"}`}
+                   >
+                     Original
+                   </button>
+                 </div>
+               ) : null}
+               {(() => {
+                 const activeUrl = invoice.stamped_file_url && showStamped ? invoice.stamped_file_url : invoice.signed_file_url;
+                 return activeUrl ? (
+                   <a
+                     href={activeUrl}
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     style={{
+                       fontFamily: "var(--font-mono)",
+                       fontSize: "10px",
+                       letterSpacing: "0.1em",
+                       textTransform: "uppercase",
+                       color: "var(--nw-stone-blue)",
+                     }}
+                   >
+                     Open in new tab ↗
+                   </a>
+                 ) : null;
+               })()}
+             </div>
            </div>
            <div className="relative">
              <InvoiceFilePreview
                invoiceId={invoice.id}
-               fileUrl={invoice.signed_file_url}
-               downloadUrl={invoice.signed_file_url}
+               fileUrl={invoice.stamped_file_url && showStamped ? invoice.stamped_file_url : invoice.signed_file_url}
+               downloadUrl={invoice.stamped_file_url && showStamped ? invoice.stamped_file_url : invoice.signed_file_url}
                fileName={invoiceDisplayName({
                  vendor_name_raw: invoice.vendor_name_raw,
                  invoice_number: invoice.invoice_number,
