@@ -22,9 +22,17 @@ interface AvailableInvoice {
   invoice_number: string | null;
   total_amount: number;
   received_date: string | null;
-  approved_at: string | null; // stamped/approved indicator
+  status: string | null; // drives the stamped/approved badge
   cost_code_id: string | null;
   cost_codes: { code: string; description: string } | null;
+}
+
+// An invoice is "stamped" once it has passed approval (the approval-stamp
+// pipeline runs at invoice approval). There is no approved_at column; derive
+// from the workflow status.
+const STAMPED_STATUSES = ["qa_approved", "pushed_to_qb", "in_draw", "paid"];
+function isStamped(status: string | null | undefined): boolean {
+  return !!status && STAMPED_STATUSES.includes(status);
 }
 
 interface PriorDraw {
@@ -331,7 +339,7 @@ export default function NewDrawWizardPage() {
       let query = supabase
         .from("invoices")
         .select(
-          "id, vendor_id, vendor_name_raw, invoice_number, total_amount, received_date, approved_at, cost_code_id, draw_id, status, cost_codes:cost_code_id (code, description)"
+          "id, vendor_id, vendor_name_raw, invoice_number, total_amount, received_date, cost_code_id, draw_id, status, cost_codes:cost_code_id (code, description)"
         )
         .eq("job_id", jobId)
         .is("deleted_at", null)
@@ -956,7 +964,7 @@ export default function NewDrawWizardPage() {
                               {inv.cost_codes ? inv.cost_codes.code : "—"}
                             </td>
                             <td className="py-2 px-3">
-                              {inv.approved_at ? (
+                              {isStamped(inv.status) ? (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] uppercase font-mono tracking-[0.08em] border border-[rgba(74,138,111,0.4)] text-[color:var(--nw-success)]">
                                   ✓ Stamped
                                 </span>

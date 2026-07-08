@@ -200,7 +200,7 @@ export async function loadPayAppViewData(
   // vendor/number/amount/cost-code also feed the statement "detailed" backup).
   const { data: invoices } = await supabase
     .from("invoices")
-    .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id, received_date, approved_at")
+    .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id, received_date, status")
     .eq("draw_id", drawId)
     .eq("org_id", membership.org_id)
     .is("deleted_at", null);
@@ -462,7 +462,10 @@ export async function loadPayAppViewData(
       amount: Number(i.total_amount ?? 0),
       cost_code_id: (i.cost_code_id as string | null) ?? null,
       code: i.cost_code_id ? invCcMap.get(i.cost_code_id as string) ?? null : null,
-      stamped: !!(i.approved_at as string | null),
+      // Stamped once approved (no approved_at column — derive from status).
+      stamped: ["qa_approved", "pushed_to_qb", "in_draw", "paid"].includes(
+        (i.status as string | null) ?? ""
+      ),
     }))
     .sort((a, b) => (a.received_date ?? "").localeCompare(b.received_date ?? ""));
 
