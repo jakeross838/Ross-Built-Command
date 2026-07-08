@@ -21,6 +21,7 @@
 
 import { notFound } from "next/navigation";
 import DrawPrintView from "@/components/prototypes/DrawPrintView";
+import CostPlusStatementPrintView from "@/components/prototypes/CostPlusStatementPrintView";
 import { loadPayAppViewData } from "../_data";
 
 export default async function PayAppPrintPage({
@@ -31,16 +32,26 @@ export default async function PayAppPrintPage({
   const data = await loadPayAppViewData(params.id);
   if (!data) return notFound();
 
+  const backHref = `/financials/pay-apps/${data.draw.id}`;
+
   return (
     <div data-direction="C" data-palette="B" className="design-system-scope">
-      <DrawPrintView
-        draw={data.draw}
-        job={data.job}
-        lineItems={data.lineItems}
-        costCodes={data.costCodes}
-        changeOrdersThroughThisDraw={data.changeOrdersThroughThisDraw}
-        backHref={`/financials/pay-apps/${data.draw.id}`}
-      />
+      {data.billingMethod === "cost_plus_statement" && data.statement ? (
+        <CostPlusStatementPrintView
+          jobName={data.job.name}
+          statement={data.statement}
+          backHref={backHref}
+        />
+      ) : (
+        <DrawPrintView
+          draw={data.draw}
+          job={data.job}
+          lineItems={data.lineItems}
+          costCodes={data.costCodes}
+          changeOrdersThroughThisDraw={data.changeOrdersThroughThisDraw}
+          backHref={backHref}
+        />
+      )}
     </div>
   );
 }

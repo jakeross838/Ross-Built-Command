@@ -140,6 +140,10 @@ const CONTRACT_TYPES = [
 ] as const;
 type ContractType = (typeof CONTRACT_TYPES)[number];
 
+const BILLING_METHODS = ["aia", "cost_plus_statement", "fixed_fee_schedule"] as const;
+const MARKUP_DISPLAYS = ["own_line", "blended"] as const;
+const BACKUP_DETAILS = ["summary", "detailed", "detailed_with_pdfs"] as const;
+
 const JOB_PHASES = [
   "lead",
   "estimating",
@@ -167,6 +171,9 @@ type JobBody = {
   client_id?: string | null;
   client_name_for_create?: string;
   contract_type?: ContractType;
+  billing_method?: string;           // 'aia' | 'cost_plus_statement' | 'fixed_fee_schedule'
+  markup_display?: string | null;    // 'own_line' | 'blended' | null (inherit org)
+  backup_detail?: string | null;     // 'summary' | 'detailed' | 'detailed_with_pdfs' | null
   phase?: JobPhase;
   original_contract_amount?: number; // cents
   deposit_percentage?: number;       // FRACTION 0..1 (e.g. 0.10 = 10%) — see contract-units
@@ -202,6 +209,9 @@ export const POST = withApiError(async (request: NextRequest) => {
   }
   if (body.contract_type && !CONTRACT_TYPES.includes(body.contract_type)) {
     throw new ApiError("Invalid contract_type", 400);
+  }
+  if (body.billing_method && !(BILLING_METHODS as readonly string[]).includes(body.billing_method)) {
+    throw new ApiError("Invalid billing_method", 400);
   }
   if (body.phase && !JOB_PHASES.includes(body.phase)) {
     throw new ApiError("Invalid phase", 400);
@@ -257,11 +267,15 @@ export const POST = withApiError(async (request: NextRequest) => {
       address: body.address ?? null,
       client_id: resolvedClientId,
       contract_type: body.contract_type ?? "cost_plus_aia",
+      ...(body.billing_method ? { billing_method: body.billing_method } : {}),
       ...(body.phase ? { phase: body.phase } : {}),
       original_contract_amount: original,
       current_contract_amount: original, // start equal; COs adjust later
-      deposit_percentage: body.deposit_percentage ?? 10,
-      gc_fee_percentage: body.gc_fee_percentage ?? 20,
+      // FRACTION scale (0..1) — draw-calc reads these directly. The prior
+      // ?? 10 / ?? 20 fallbacks were whole-scale (would store 1000%/2000%);
+      // all callers send fractions, but the safe default must match the scale.
+      deposit_percentage: body.deposit_percentage ?? 0.1,
+      gc_fee_percentage: body.gc_fee_percentage ?? 0.2,
       ...(retainageToUse !== undefined ? { retainage_percent: retainageToUse } : {}),
       pm_id: body.pm_id ?? null,
       contract_date: body.contract_date ?? null,
@@ -329,6 +343,24 @@ export const PATCH = withApiError(async (request: NextRequest) => {
       throw new ApiError("Invalid contract_type", 400);
     }
     patch.contract_type = body.contract_type;
+  }
+  if (body.billing_method !== undefined) {
+    if (!(BILLING_METHODS as readonly string[]).includes(body.billing_method)) {
+      throw new ApiError("Invalid billing_method", 400);
+    }
+    patch.billing_method = body.billing_method;
+  }
+  if (body.markup_display !== undefined) {
+    if (body.markup_display !== null && !(MARKUP_DISPLAYS as readonly string[]).includes(body.markup_display)) {
+      throw new ApiError("Invalid markup_display", 400);
+    }
+    patch.markup_display = body.markup_display; // null = inherit org default
+  }
+  if (body.backup_detail !== undefined) {
+    if (body.backup_detail !== null && !(BACKUP_DETAILS as readonly string[]).includes(body.backup_detail)) {
+      throw new ApiError("Invalid backup_detail", 400);
+    }
+    patch.backup_detail = body.backup_detail; // null = inherit org default
   }
   if (body.phase !== undefined) {
     if (!JOB_PHASES.includes(body.phase)) {

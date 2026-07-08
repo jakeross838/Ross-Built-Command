@@ -21,6 +21,7 @@
 
 import { notFound } from "next/navigation";
 import DrawApprovalView from "@/components/prototypes/DrawApprovalView";
+import CostPlusStatementView from "@/components/prototypes/CostPlusStatementView";
 import { loadPayAppViewData } from "./_data";
 
 export default async function PayAppReviewPage({
@@ -31,20 +32,42 @@ export default async function PayAppReviewPage({
   const data = await loadPayAppViewData(params.id);
   if (!data) return notFound();
 
+  // Billing-method fork (Phase 1): cost_plus_statement jobs render the
+  // statement; everything else (AIA) keeps the G702/G703 view. The lifecycle
+  // action bar is shared across both.
+  const printHref = `/financials/pay-apps/${data.draw.id}/print`;
+  const editHref = `/financials/pay-apps/new?edit=${data.draw.id}`;
+  const breadcrumbRoot = { href: "/financials/pay-apps", label: "Draws" };
+
   return (
     <div data-direction="C" data-palette="B" className="design-system-scope">
-      <DrawApprovalView
-        draw={data.draw}
-        job={{ id: data.job.id, name: data.job.name }}
-        lineItems={data.lineItems}
-        costCodes={data.costCodes}
-        changeOrdersThroughThisDraw={data.changeOrdersThroughThisDraw}
-        storedSummaryStale={data.storedSummaryStale}
-        printHref={`/financials/pay-apps/${data.draw.id}/print`}
-        breadcrumbRoot={{ href: "/financials/pay-apps", label: "Draws" }}
-        interactive
-        editHref={`/financials/pay-apps/new?edit=${data.draw.id}`}
-      />
+      {data.billingMethod === "cost_plus_statement" && data.statement ? (
+        <CostPlusStatementView
+          drawId={data.draw.id}
+          status={data.draw.status}
+          jobName={data.job.name}
+          revisionNumber={data.draw.revision_number}
+          statement={data.statement}
+          storedSummaryStale={data.storedSummaryStale}
+          printHref={printHref}
+          breadcrumbRoot={breadcrumbRoot}
+          interactive
+          editHref={editHref}
+        />
+      ) : (
+        <DrawApprovalView
+          draw={data.draw}
+          job={{ id: data.job.id, name: data.job.name }}
+          lineItems={data.lineItems}
+          costCodes={data.costCodes}
+          changeOrdersThroughThisDraw={data.changeOrdersThroughThisDraw}
+          storedSummaryStale={data.storedSummaryStale}
+          printHref={printHref}
+          breadcrumbRoot={breadcrumbRoot}
+          interactive
+          editHref={editHref}
+        />
+      )}
     </div>
   );
 }

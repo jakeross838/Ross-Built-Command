@@ -49,6 +49,7 @@ const ORG_COLUMNS =
   "company_address, company_city, company_state, company_zip, " +
   "company_phone, company_email, company_website, " +
   "default_gc_fee_percentage, default_deposit_percentage, " +
+  "default_billing_method, default_markup_display, default_backup_detail, " +
   "payment_schedule_type, payment_schedule_config, " +
   "subscription_plan, subscription_status, stripe_customer_id, stripe_subscription_id, trial_ends_at, " +
   "ai_calls_this_month, ai_calls_limit, storage_used_bytes, " +

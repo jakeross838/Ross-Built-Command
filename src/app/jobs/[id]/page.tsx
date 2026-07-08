@@ -86,6 +86,9 @@ interface Job {
   client_id: string | null;
   client: { id: string; full_name: string } | null;
   contract_type: ContractType;
+  billing_method: "aia" | "cost_plus_statement" | "fixed_fee_schedule";
+  markup_display: "own_line" | "blended" | null;
+  backup_detail: "summary" | "detailed" | "detailed_with_pdfs" | null;
   phase: JobPhase;
   original_contract_amount: number;
   current_contract_amount: number;
@@ -411,6 +414,16 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                 <Detail label="Client" value={job.client?.full_name ?? null} />
                 <Detail label="Contract Date" value={formatDate(job.contract_date)} />
                 <Detail label="Contract Type" value={contractTypeLabel(job.contract_type)} />
+                <Detail
+                  label="Billing Method"
+                  value={
+                    job.billing_method === "cost_plus_statement"
+                      ? "Cost-Plus Statement"
+                      : job.billing_method === "fixed_fee_schedule"
+                        ? "Fixed-Fee Schedule"
+                        : "AIA Pay Application (G702 / G703)"
+                  }
+                />
                 {/* deposit_percentage + gc_fee_percentage are FRACTION-scale
                     (0.10/0.20 per schema) — ×100 for display. retainage_percent
                     below is 0-100 scale and must NOT be ×100. Mixed column
@@ -471,6 +484,35 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                   ))}
                 </select>
               </EditField>
+              <EditField label="Billing Method">
+                <select className="input" value={form.billing_method ?? "aia"} onChange={(e) => setForm({ ...form, billing_method: e.target.value as Job["billing_method"] })}>
+                  <option value="aia">AIA Pay Application (G702 / G703)</option>
+                  <option value="cost_plus_statement">Cost-Plus Statement</option>
+                  <option value="fixed_fee_schedule">Fixed-Fee Schedule (coming soon)</option>
+                </select>
+                <p className="text-[11px] text-[color:var(--text-secondary)] mt-1">
+                  Which draw output this job produces. Forks the renderer + totals only — the review/approve/void lifecycle is shared.
+                </p>
+              </EditField>
+              {form.billing_method === "cost_plus_statement" && (
+                <>
+                  <EditField label="Markup Display">
+                    <select className="input" value={form.markup_display ?? ""} onChange={(e) => setForm({ ...form, markup_display: (e.target.value || null) as Job["markup_display"] })}>
+                      <option value="">Org default</option>
+                      <option value="own_line">Own line (open book)</option>
+                      <option value="blended">Blended into code amounts</option>
+                    </select>
+                  </EditField>
+                  <EditField label="Backup Detail">
+                    <select className="input" value={form.backup_detail ?? ""} onChange={(e) => setForm({ ...form, backup_detail: (e.target.value || null) as Job["backup_detail"] })}>
+                      <option value="">Org default</option>
+                      <option value="summary">Summary</option>
+                      <option value="detailed">Detailed (vendor · invoice #)</option>
+                      <option value="detailed_with_pdfs">Detailed + stamped PDFs</option>
+                    </select>
+                  </EditField>
+                </>
+              )}
               <EditField label="Status">
                 <select className="input" value={form.status ?? "active"} onChange={(e) => setForm({ ...form, status: e.target.value as Job["status"] })}>
                   <option value="active">Active</option>

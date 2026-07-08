@@ -54,6 +54,10 @@ import {
   rollupDrawTotals,
 } from "@/lib/draw-calc";
 import { computeDrawStaleness } from "@/lib/draw-staleness";
+import {
+  resolveMarkupDisplay,
+  resolveBackupDetail,
+} from "@/lib/statement-calc";
 import type {
   CaldwellChangeOrder,
   CaldwellCostCode,
@@ -61,6 +65,32 @@ import type {
   CaldwellDrawLineItem,
   CaldwellJob,
 } from "@/app/design-system/_fixtures/drummond/types";
+
+export type StatementCostLineData = {
+  cost_code_id: string;
+  code: string;
+  description: string;
+  cost: number; // cents (this-period)
+  invoices: { vendor: string; invoice_number: string | null; amount: number }[];
+};
+
+export type StatementViewData = {
+  costLines: StatementCostLineData[];
+  markupPercent: number; // FRACTION (jobs.gc_fee_percentage)
+  markupDisplay: "own_line" | "blended";
+  backupDetail: "summary" | "detailed" | "detailed_with_pdfs";
+  credits: {
+    deposit_application: number;
+    retainage: number;
+    prior_payments: number;
+  };
+  org: { name: string; logo_url: string | null };
+  clientName: string;
+  statementNumber: number; // application number
+  applicationDate: string;
+  periodStart: string;
+  periodEnd: string;
+};
 
 export type PayAppViewData = {
   draw: CaldwellDraw;
@@ -72,6 +102,10 @@ export type PayAppViewData = {
   // G702 summary diverges from a from-source recompute. Separate prop (the
   // CaldwellDraw fixture shape is locked). Always false for non-draft draws.
   storedSummaryStale: boolean;
+  // Billing-method fork (Phase 1). billingMethod drives which renderer the
+  // page mounts. `statement` is populated ONLY for cost_plus_statement jobs.
+  billingMethod: "aia" | "cost_plus_statement" | "fixed_fee_schedule";
+  statement: StatementViewData | null;
 };
 
 const KNOWN_DRAW_STATUSES: ReadonlyArray<CaldwellDraw["status"]> = [
@@ -103,6 +137,9 @@ type JobEmbed = {
   current_contract_amount: number | null;
   starting_application_number: number | null;
   previous_co_completed_amount: number | null;
+  billing_method: string | null;
+  markup_display: string | null;
+  backup_detail: string | null;
   pm_id: string | null;
   client: { id: string; full_name: string | null } | { id: string; full_name: string | null }[] | null;
 };
@@ -118,7 +155,7 @@ export async function loadPayAppViewData(
   const { data: draw, error } = await supabase
     .from("draws")
     .select(
-      `*, jobs:job_id (id, name, address, contract_type, status, deposit_percentage, gc_fee_percentage, retainage_percent, original_contract_amount, current_contract_amount, starting_application_number, previous_co_completed_amount, pm_id, client:clients(id, full_name))`
+      `*, jobs:job_id (id, name, address, contract_type, status, deposit_percentage, gc_fee_percentage, retainage_percent, original_contract_amount, current_contract_amount, starting_application_number, previous_co_completed_amount, billing_method, markup_display, backup_detail, pm_id, client:clients(id, full_name))`
     )
     .eq("id", drawId)
     .eq("org_id", membership.org_id)
@@ -145,10 +182,11 @@ export async function loadPayAppViewData(
     ? jobEmbed.client[0] ?? null
     : jobEmbed.client;
 
-  // Invoices linked to this draw (this_period source for computeDrawLines).
+  // Invoices linked to this draw (this_period source for computeDrawLines;
+  // vendor/number/amount/cost-code also feed the statement "detailed" backup).
   const { data: invoices } = await supabase
     .from("invoices")
-    .select("id")
+    .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id")
     .eq("draw_id", drawId)
     .eq("org_id", membership.org_id)
     .is("deleted_at", null);
@@ -386,6 +424,104 @@ export async function loadPayAppViewData(
     draw_number: (co.draw_number as number | null) ?? null,
   }));
 
+  // ---- Billing-method fork data (Phase 1) ----
+  const billingMethod = ((jobEmbed.billing_method as string) ??
+    "aia") as PayAppViewData["billingMethod"];
+
+  let statement: StatementViewData | null = null;
+  if (billingMethod === "cost_plus_statement") {
+    // Org identity + config defaults for the statement header / inherit chain.
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("name, logo_url, default_markup_display, default_backup_detail")
+      .eq("id", membership.org_id)
+      .maybeSingle();
+
+    // Resolve code/description for EVERY cost code carrying this-period cost
+    // (snapshot spans the union of budget-line + invoice codes; unbudgeted
+    // codes aren't in `costCodes` which is budget-line-derived).
+    const costCodeIds = Array.from(
+      new Set(snapshot.filter((l) => l.this_period > 0).map((l) => l.cost_code_id))
+    );
+    const ccMap = new Map<string, { code: string; description: string; sort: number }>();
+    if (costCodeIds.length > 0) {
+      const { data: ccRows } = await supabase
+        .from("cost_codes")
+        .select("id, code, description, sort_order")
+        .eq("org_id", membership.org_id)
+        .in("id", costCodeIds);
+      for (const cc of ccRows ?? []) {
+        ccMap.set(cc.id as string, {
+          code: (cc.code as string) ?? "—",
+          description: (cc.description as string) ?? "",
+          sort: (cc.sort_order as number | null) ?? 0,
+        });
+      }
+    }
+
+    // Invoices grouped by cost code (invoice-level cost_code_id) for the
+    // "detailed" backup rows.
+    const invByCode = new Map<
+      string,
+      { vendor: string; invoice_number: string | null; amount: number }[]
+    >();
+    for (const inv of invoices ?? []) {
+      const cc = (inv.cost_code_id as string | null) ?? "__unassigned__";
+      const list = invByCode.get(cc) ?? [];
+      list.push({
+        vendor: (inv.vendor_name_raw as string | null) ?? "—",
+        invoice_number: (inv.invoice_number as string | null) ?? null,
+        amount: Number(inv.total_amount ?? 0),
+      });
+      invByCode.set(cc, list);
+    }
+
+    const costLines: StatementCostLineData[] = snapshot
+      .filter((l) => l.this_period > 0)
+      .map((l) => {
+        const meta = ccMap.get(l.cost_code_id);
+        return {
+          cost_code_id: l.cost_code_id,
+          code: meta?.code ?? "—",
+          description: meta?.description ?? "",
+          cost: l.this_period,
+          invoices: invByCode.get(l.cost_code_id) ?? [],
+          _sort: meta?.sort ?? 0,
+        };
+      })
+      .sort((a, b) => a._sort - b._sort)
+      .map(({ _sort, ...rest }) => rest);
+
+    statement = {
+      costLines,
+      markupPercent: Number(jobEmbed.gc_fee_percentage ?? 0.2),
+      markupDisplay: resolveMarkupDisplay(
+        jobEmbed.markup_display,
+        (orgRow?.default_markup_display as string | null) ?? null
+      ),
+      backupDetail: resolveBackupDetail(
+        jobEmbed.backup_detail,
+        (orgRow?.default_backup_detail as string | null) ?? null
+      ),
+      // Credits render only when nonzero (statement-calc drops zeros). Sourced
+      // from the same recomputed totals the AIA cover sheet uses.
+      credits: {
+        deposit_application: totals.deposit_amount,
+        retainage: totals.total_retainage,
+        prior_payments: totals.less_previous_payments,
+      },
+      org: {
+        name: (orgRow?.name as string | null) ?? "",
+        logo_url: (orgRow?.logo_url as string | null) ?? null,
+      },
+      clientName: jobShim.client_name,
+      statementNumber: drawShim.draw_number,
+      applicationDate: drawShim.application_date,
+      periodStart: drawShim.period_start,
+      periodEnd: drawShim.period_end,
+    };
+  }
+
   return {
     draw: drawShim,
     job: jobShim,
@@ -393,5 +529,7 @@ export async function loadPayAppViewData(
     costCodes,
     changeOrdersThroughThisDraw,
     storedSummaryStale,
+    billingMethod,
+    statement,
   };
 }

@@ -22,9 +22,18 @@ type ContractType = (typeof CONTRACT_TYPES)[number]["value"];
 
 const DEFAULT_CONTRACT: ContractType = "cost_plus_aia";
 
+// Billing method — which draw output this job produces. Phase 1 offers two
+// (fixed-fee is Phase 2, not surfaced). Defaulted from the org setting.
+const BILLING_METHODS = [
+  { value: "cost_plus_statement", label: "COST-PLUS STATEMENT" },
+  { value: "aia", label: "AIA PAY APPLICATION (G702/G703)" },
+] as const;
+type BillingMethod = (typeof BILLING_METHODS)[number]["value"];
+
 interface OrgDefaults {
   deposit: number; // decimal 0-1
   gcFee: number; // decimal 0-1
+  billingMethod?: string;
   pms: { id: string; full_name: string }[];
 }
 
@@ -53,6 +62,7 @@ export default function NewJobSlideOver({
   const [name, setName] = useState("");
   const [client, setClient] = useState<ClientComboboxValue>({ kind: "empty" });
   const [contractType, setContractType] = useState<ContractType>(DEFAULT_CONTRACT);
+  const [billingMethod, setBillingMethod] = useState<BillingMethod>("cost_plus_statement");
 
   // Org-settings card
   const [defaults, setDefaults] = useState<OrgDefaults | null>(null);
@@ -76,6 +86,7 @@ export default function NewJobSlideOver({
     setName("");
     setClient({ kind: "empty" });
     setContractType(DEFAULT_CONTRACT);
+    setBillingMethod("cost_plus_statement");
     setAdjustOpen(false);
     setMoreOpen(false);
     setAddress("");
@@ -92,6 +103,9 @@ export default function NewJobSlideOver({
         setDefaults(d);
         setDepositPct(pctLabel(d.deposit ?? 0.1));
         setGcFeePct(pctLabel(d.gcFee ?? 0.2));
+        if (d.billingMethod === "aia" || d.billingMethod === "cost_plus_statement") {
+          setBillingMethod(d.billingMethod);
+        }
       })
       .catch(() => {});
     return () => {
@@ -124,6 +138,7 @@ export default function NewJobSlideOver({
     const body: Record<string, unknown> = {
       name: trimmedName,
       contract_type: contractType,
+      billing_method: billingMethod,
       deposit_percentage: (Number(depositPct) || 0) / 100,
       gc_fee_percentage: (Number(gcFeePct) || 0) / 100,
       status: "active",
@@ -277,6 +292,35 @@ export default function NewJobSlideOver({
             </div>
             <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-muted)]">
               Org default: {CONTRACT_TYPES.find((c) => c.value === DEFAULT_CONTRACT)?.label}
+            </p>
+          </div>
+
+          <div>
+            <span className={fieldLabel}>Billing Method</span>
+            <div className="flex border border-[var(--border-default)]">
+              {BILLING_METHODS.map((bm, i) => {
+                const selected = bm.value === billingMethod;
+                return (
+                  <button
+                    key={bm.value}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setBillingMethod(bm.value)}
+                    className={[
+                      "flex-1 px-2 py-2 text-center font-mono text-[10px] uppercase leading-tight tracking-[0.08em] transition-colors",
+                      i > 0 ? "border-l border-[var(--border-default)]" : "",
+                      selected
+                        ? "bg-nw-stone-blue text-nw-white-sand"
+                        : "bg-[var(--bg-card)] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]",
+                    ].join(" ")}
+                  >
+                    {bm.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-muted)]">
+              How this job&apos;s draws are billed. Cost-Plus Statement = cost + markup invoice; AIA = G702/G703 pay app.
             </p>
           </div>
         </div>

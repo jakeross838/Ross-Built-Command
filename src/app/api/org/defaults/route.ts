@@ -46,6 +46,9 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     deposit: org?.default_deposit_percentage ?? 0.1,
     gcFee: org?.default_gc_fee_percentage ?? 0.2,
+    billingMethod:
+      (org as { default_billing_method?: string } | null)?.default_billing_method ??
+      "cost_plus_statement",
     pms,
   });
 }

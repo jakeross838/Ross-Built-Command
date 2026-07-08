@@ -2743,8 +2743,10 @@ export type Database = {
         Row: {
           address: string | null
           approved_cos_total: number
+          backup_detail: string | null
           bathroom_count: number | null
           bedroom_count: number | null
+          billing_method: string
           characteristics_enrichment_source: Json | null
           client_id: string | null
           complexity_factors: Json | null
@@ -2763,6 +2765,7 @@ export type Database = {
           heated_sf: number | null
           id: string
           lot_size_sf: number | null
+          markup_display: string | null
           name: string
           org_id: string
           original_contract_amount: number
@@ -2786,8 +2789,10 @@ export type Database = {
         Insert: {
           address?: string | null
           approved_cos_total?: number
+          backup_detail?: string | null
           bathroom_count?: number | null
           bedroom_count?: number | null
+          billing_method?: string
           characteristics_enrichment_source?: Json | null
           client_id?: string | null
           complexity_factors?: Json | null
@@ -2806,6 +2811,7 @@ export type Database = {
           heated_sf?: number | null
           id?: string
           lot_size_sf?: number | null
+          markup_display?: string | null
           name: string
           org_id: string
           original_contract_amount?: number
@@ -2829,8 +2835,10 @@ export type Database = {
         Update: {
           address?: string | null
           approved_cos_total?: number
+          backup_detail?: string | null
           bathroom_count?: number | null
           bedroom_count?: number | null
+          billing_method?: string
           characteristics_enrichment_source?: Json | null
           client_id?: string | null
           complexity_factors?: Json | null
@@ -2849,6 +2857,7 @@ export type Database = {
           heated_sf?: number | null
           id?: string
           lot_size_sf?: number | null
+          markup_display?: string | null
           name?: string
           org_id?: string
           original_contract_amount?: number
@@ -3467,8 +3476,11 @@ export type Database = {
           company_zip: string | null
           cost_intelligence_settings: Json | null
           created_at: string
+          default_backup_detail: string
+          default_billing_method: string
           default_deposit_percentage: number
           default_gc_fee_percentage: number
+          default_markup_display: string
           default_retainage_percent: number
           deleted_at: string | null
           id: string
@@ -3504,8 +3516,11 @@ export type Database = {
           company_zip?: string | null
           cost_intelligence_settings?: Json | null
           created_at?: string
+          default_backup_detail?: string
+          default_billing_method?: string
           default_deposit_percentage?: number
           default_gc_fee_percentage?: number
+          default_markup_display?: string
           default_retainage_percent?: number
           deleted_at?: string | null
           id?: string
@@ -3541,8 +3556,11 @@ export type Database = {
           company_zip?: string | null
           cost_intelligence_settings?: Json | null
           created_at?: string
+          default_backup_detail?: string
+          default_billing_method?: string
           default_deposit_percentage?: number
           default_gc_fee_percentage?: number
+          default_markup_display?: string
           default_retainage_percent?: number
           deleted_at?: string | null
           id?: string
