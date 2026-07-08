@@ -5,6 +5,7 @@ import { ApiError, withApiError } from "@/lib/api/errors";
 import { getCurrentMembership } from "@/lib/org/session";
 import { checkPlanLimit, planDisplayName } from "@/lib/plan-limits";
 import { recalcDraftDrawsForJob } from "@/lib/draw-calc";
+import { recalcJobContract } from "@/lib/recalc";
 import { logActivity, logStatusChange } from "@/lib/activity-log";
 
 /**
@@ -168,9 +169,8 @@ type JobBody = {
   contract_type?: ContractType;
   phase?: JobPhase;
   original_contract_amount?: number; // cents
-  set_current_contract?: boolean;    // default true — keep current_contract_amount = original on setup
-  deposit_percentage?: number;       // 0..100 (whole percent, e.g. 10 = 10%)
-  gc_fee_percentage?: number;        // 0..100 (whole percent)
+  deposit_percentage?: number;       // FRACTION 0..1 (e.g. 0.10 = 10%) — see contract-units
+  gc_fee_percentage?: number;        // FRACTION 0..1 (e.g. 0.20 = 20%) — see contract-units
   retainage_percent?: number;        // 0..100 (whole percent, e.g. 10 = 10%)
   // Phase D baseline fields — how much of the job's history predates Nightwork.
   starting_application_number?: number;  // 1-based; default 1 = Nightwork's first draw is App #1
@@ -336,16 +336,15 @@ export const PATCH = withApiError(async (request: NextRequest) => {
     }
     patch.phase = body.phase;
   }
+  let originalContractChanged = false;
   if (body.original_contract_amount !== undefined) {
     patch.original_contract_amount = body.original_contract_amount;
-    // Keep current_contract_amount in lockstep with original on a first-draw /
-    // setup write (mirrors the POST create path, api/jobs/route.ts:261). The UI
-    // + G702 read current_contract_amount first; leaving it at 0 made the
-    // setup card re-prompt forever and G702 read $0. Approved COs bump current
-    // upward later via the co_cache trigger.
-    if (body.set_current_contract !== false) {
-      patch.current_contract_amount = body.original_contract_amount;
-    }
+    originalContractChanged = true;
+    // current_contract_amount is NOT set here. It is DERIVED (original +
+    // approved COs) and re-stamped by recalcJobContract() after the UPDATE
+    // (see below). That both fixes the setup-card $0 re-prompt (Gavin: no COs
+    // -> current = original) AND is CO-safe (Fish: current = original + COs),
+    // where the old current = original lockstep would have wiped CO value.
   }
   if (body.deposit_percentage !== undefined) patch.deposit_percentage = body.deposit_percentage;
   if (body.gc_fee_percentage !== undefined) patch.gc_fee_percentage = body.gc_fee_percentage;
@@ -448,7 +447,15 @@ export const PATCH = withApiError(async (request: NextRequest) => {
   // in sync. Submitted/approved/locked/paid draws keep their captured
   // values — retroactive changes there would be a revision event, not a
   // silent edit.
+  // When the original contract changes, re-derive current_contract_amount
+  // (= original + approved COs) from source. Runs BEFORE the draft-draw
+  // recompute so draws read the fresh contract.
+  if (originalContractChanged) {
+    await recalcJobContract(body.id);
+  }
+
   const baselineChanged =
+    originalContractChanged ||
     body.starting_application_number !== undefined ||
     body.previous_certificates_total !== undefined ||
     body.previous_change_orders_total !== undefined;

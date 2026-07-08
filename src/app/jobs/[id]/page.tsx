@@ -16,6 +16,16 @@ import NwButton from "@/components/nw/Button";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import HomeCharacteristicsPanel from "@/components/jobs/home-characteristics-panel";
 import ClientCombobox, { type ClientComboboxValue } from "@/components/client-combobox";
+import {
+  centsToDollars,
+  dollarsToCents,
+  fractionToPercent,
+  percentToFraction,
+  wholePercent,
+  formatDollars,
+  contractTypeLabel,
+  CONTRACT_TYPE_OPTIONS,
+} from "@/lib/jobs/contract-units";
 
 function jobStatusVariant(status: string): BadgeVariant {
   if (status === "active") return "success";
@@ -354,7 +364,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
             <p className="text-sm mt-1 flex items-center gap-2 flex-wrap" style={{ color: "var(--text-secondary)" }}>
               <span>{job.address ?? "No address"}</span>
               <span>·</span>
-              <span>{job.contract_type}</span>
+              <span>{contractTypeLabel(job.contract_type)}</span>
               <NwBadge variant={jobStatusVariant(job.status)} size="sm">{job.status}</NwBadge>
             </p>
           </div>
@@ -386,7 +396,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                     Portal Path A) via /api/clients/[id] GET per TD-B1abis-01. */}
                 <Detail label="Client" value={job.client?.full_name ?? null} />
                 <Detail label="Contract Date" value={formatDate(job.contract_date)} />
-                <Detail label="Contract Type" value={job.contract_type} />
+                <Detail label="Contract Type" value={contractTypeLabel(job.contract_type)} />
                 {/* deposit_percentage + gc_fee_percentage are FRACTION-scale
                     (0.10/0.20 per schema) — ×100 for display. retainage_percent
                     below is 0-100 scale and must NOT be ×100. Mixed column
@@ -442,12 +452,9 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
               </EditField>
               <EditField label="Contract Type">
                 <select className="input" value={form.contract_type ?? "cost_plus_aia"} onChange={(e) => setForm({ ...form, contract_type: e.target.value as Job["contract_type"] })}>
-                  <option value="cost_plus_aia">cost_plus_aia</option>
-                  <option value="cost_plus_open_book">cost_plus_open_book</option>
-                  <option value="fixed_price">fixed_price</option>
-                  <option value="gmp">gmp</option>
-                  <option value="time_and_materials">time_and_materials</option>
-                  <option value="unit_price">unit_price</option>
+                  {CONTRACT_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </select>
               </EditField>
               <EditField label="Status">
@@ -458,24 +465,68 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                   <option value="cancelled">Cancelled</option>
                 </select>
               </EditField>
-              <EditField label="Original Contract (cents)">
-                <input type="number" className="input" value={form.original_contract_amount ?? 0} onChange={(e) => setForm({ ...form, original_contract_amount: Number(e.target.value) })} />
+              {/* Money in DOLLARS (store is cents) — see @/lib/jobs/contract-units. */}
+              <EditField label="Original Contract ($)">
+                <div className="flex items-center gap-2">
+                  <span className="text-[color:var(--text-secondary)] text-sm">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    className="input"
+                    value={centsToDollars(form.original_contract_amount ?? 0)}
+                    onChange={(e) => setForm({ ...form, original_contract_amount: dollarsToCents(e.target.value) })}
+                  />
+                </div>
               </EditField>
-              <EditField label="Current Contract (cents)">
-                <input type="number" className="input" value={form.current_contract_amount ?? 0} onChange={(e) => setForm({ ...form, current_contract_amount: Number(e.target.value) })} />
+              {/* Current Contract is DERIVED (original + approved COs), maintained
+                  by recalcJobContract on the server — read-only here so the form
+                  can never desync it. */}
+              <EditField label="Current Contract ($)">
+                <div className="flex items-center gap-2 h-[38px]">
+                  <span className="text-[color:var(--text-primary)] text-sm">
+                    {formatDollars(form.current_contract_amount ?? 0)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-[color:var(--text-secondary)] mt-1">
+                  Original + approved change orders. Recomputed automatically.
+                </p>
               </EditField>
-              {/* HAZARD (inert today): these two fields collect 0-100 values but
-                  the DB columns are FRACTION-scale (0.10/0.20). The jobs PATCH
-                  route currently ignores both fields, so nothing corrupts — but
-                  wiring them without a /100 conversion would poison draw math.
-                  See PART-2C N3 (nwrp274); convention unification TD pending. */}
-              <EditField label="Deposit % (0–100)">
-                <input type="number" step="0.5" min={0} max={100} className="input" value={form.deposit_percentage ?? 10} onChange={(e) => setForm({ ...form, deposit_percentage: Number(e.target.value) })} />
+              {/* Percents shown as PERCENTS. Deposit + Contract Fee are FRACTION-
+                  scale in the DB (0.10/0.20) — routed through percentToFraction /
+                  fractionToPercent so 30% round-trips to a stored 0.30, never
+                  0.3% or 3000% (the prior hazard). Retainage below is WHOLE-scale
+                  and uses wholePercent (identity). Tested in contract-units.test.ts. */}
+              <EditField label="Deposit %">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    max={100}
+                    className="input"
+                    value={fractionToPercent(form.deposit_percentage ?? 0.1)}
+                    onChange={(e) => setForm({ ...form, deposit_percentage: percentToFraction(e.target.value) })}
+                  />
+                  <span className="text-[color:var(--text-secondary)] text-sm">%</span>
+                </div>
               </EditField>
-              <EditField label="Contract Fee % (0–100)">
-                <input type="number" step="0.5" min={0} max={100} className="input" value={form.gc_fee_percentage ?? 20} onChange={(e) => setForm({ ...form, gc_fee_percentage: Number(e.target.value) })} />
+              <EditField label="Contract Fee %">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    max={100}
+                    className="input"
+                    value={fractionToPercent(form.gc_fee_percentage ?? 0.2)}
+                    onChange={(e) => setForm({ ...form, gc_fee_percentage: percentToFraction(e.target.value) })}
+                  />
+                  <span className="text-[color:var(--text-secondary)] text-sm">%</span>
+                </div>
               </EditField>
-              <EditField label="Retainage % (0–100)">
+              <EditField label="Retainage %">
+                <div className="flex items-center gap-2">
                 <input
                   type="number"
                   step="0.5"
@@ -483,8 +534,10 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                   max={100}
                   className="input"
                   value={form.retainage_percent ?? 0}
-                  onChange={(e) => setForm({ ...form, retainage_percent: Number(e.target.value) })}
+                  onChange={(e) => setForm({ ...form, retainage_percent: wholePercent(e.target.value) })}
                 />
+                <span className="text-[color:var(--text-secondary)] text-sm">%</span>
+                </div>
                 {Number(form.retainage_percent ?? 0) >= 90 && (
                   <p
                     className="mt-1.5 text-[11px]"

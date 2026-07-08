@@ -37,6 +37,9 @@ export default function DrawsPage() {
   const [draws, setDraws] = useState<Draw[]>([]);
   const [loading, setLoading] = useState(true);
   const { selectedJobId } = useJobFilter();
+  // Voided draws stay in the record (soft-delete only) but are noise in the
+  // active list, so they're hidden by default and revealed via this filter.
+  const [statusFilter, setStatusFilter] = useState<"active" | "voided" | "all">("active");
 
   useEffect(() => {
     async function fetchDraws() {
@@ -51,7 +54,21 @@ export default function DrawsPage() {
   }, []);
 
   // Job filter comes from the cross-surface left rail (PART 2).
-  const filtered = selectedJobId ? draws.filter((d) => d.jobs?.id === selectedJobId) : draws;
+  const jobFiltered = selectedJobId ? draws.filter((d) => d.jobs?.id === selectedJobId) : draws;
+  const voidedCount = jobFiltered.filter((d) => d.status === "void").length;
+  const filtered = jobFiltered.filter((d) =>
+    statusFilter === "all"
+      ? true
+      : statusFilter === "voided"
+        ? d.status === "void"
+        : d.status !== "void"
+  );
+
+  const STATUS_TABS: { key: typeof statusFilter; label: string; count?: number }[] = [
+    { key: "active", label: "Active" },
+    { key: "voided", label: "Voided", count: voidedCount },
+    { key: "all", label: "All" },
+  ];
 
   const th = "py-3 px-5 text-[10px] uppercase font-mono font-medium tracking-[0.14em] text-[color:var(--text-secondary)]";
 
@@ -101,12 +118,43 @@ export default function DrawsPage() {
         </div>
       </div>
 
+      {!loading && (draws.length > 0) && (
+        <div className="flex items-center gap-2 mb-4">
+          {STATUS_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setStatusFilter(t.key)}
+              className="px-3 py-1.5 text-[10px] uppercase font-medium border transition-colors"
+              style={{
+                fontFamily: "var(--font-jetbrains-mono)",
+                letterSpacing: "0.12em",
+                borderColor: statusFilter === t.key ? "var(--nw-stone-blue)" : "var(--border-default)",
+                background: statusFilter === t.key ? "var(--nw-stone-blue)" : "var(--bg-card)",
+                color: statusFilter === t.key ? "var(--nw-white-sand)" : "var(--text-secondary)",
+              }}
+            >
+              {t.label}
+              {typeof t.count === "number" && t.count > 0 ? ` (${t.count})` : ""}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <SkeletonList rows={5} columns={["w-32", "w-16", "w-32", "w-24", "w-32"]} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<EmptyIcons.Document />}
-          title={!selectedJobId ? "No draws yet" : "No draws for this job"}
+          title={
+            statusFilter === "voided"
+              ? "No voided draws"
+              : jobFiltered.length > 0
+                ? "No draws match this filter"
+                : !selectedJobId
+                  ? "No draws yet"
+                  : "No draws for this job"
+          }
           message="Create a draw to generate an AIA G702/G703 pay application from approved invoices."
           primaryAction={{ label: "+ Create Draw", href: "/financials/pay-apps/new" }}
         />

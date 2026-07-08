@@ -154,9 +154,11 @@ export default function DrawApprovalView({
     draw.status === "submitted" || draw.status === "pm_review";
   const canSendBack =
     draw.status === "submitted" || draw.status === "pm_review";
-  const canVoid = ["draft", "pm_review", "submitted", "approved"].includes(
-    draw.status
-  );
+  // Void is offered for draft/pm_review/submitted only. Voiding an APPROVED
+  // draw is reversal territory (post-snapshot) and deliberately out of scope
+  // here — the RPC still permits it for the legacy path, but this surface
+  // doesn't expose it.
+  const canVoid = ["draft", "pm_review", "submitted"].includes(draw.status);
   const isTerminal = ["locked", "paid", "void"].includes(draw.status);
 
   // Reason text shown on a disabled action, so a dead-looking button always
