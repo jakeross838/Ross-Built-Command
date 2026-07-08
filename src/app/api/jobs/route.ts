@@ -387,18 +387,24 @@ export const PATCH = withApiError(async (request: NextRequest) => {
     };
     patch.status_history = [...existingHistory, entry];
   }
-  if (body.starting_application_number !== undefined) {
+  // `!= null` (not `!== undefined`): a form field that's null in the DB
+  // reaches the body as null, and Number(null) === 0 would fail the `< 1`
+  // guard even though the field displayed its `?? 1` default. Skip null +
+  // undefined alike so an untouched field never trips its own validator.
+  if (body.starting_application_number != null) {
     const n = Number(body.starting_application_number);
     if (Number.isNaN(n) || n < 1) {
       throw new ApiError("starting_application_number must be ≥ 1", 400);
     }
     patch.starting_application_number = n;
   }
-  if (body.previous_certificates_total !== undefined) {
-    patch.previous_certificates_total = Math.max(0, Math.round(body.previous_certificates_total));
+  if (body.previous_certificates_total != null) {
+    const n = Number(body.previous_certificates_total);
+    patch.previous_certificates_total = Number.isNaN(n) ? 0 : Math.max(0, Math.round(n));
   }
-  if (body.previous_change_orders_total !== undefined) {
-    patch.previous_change_orders_total = Math.round(body.previous_change_orders_total);
+  if (body.previous_change_orders_total != null) {
+    const n = Number(body.previous_change_orders_total);
+    patch.previous_change_orders_total = Number.isNaN(n) ? 0 : Math.round(n);
   }
 
   // F1-Wave-B Slice-2 B-4 Task 4 (MEDIUM-1 fix) per nwrp166 §10 carry-forward +

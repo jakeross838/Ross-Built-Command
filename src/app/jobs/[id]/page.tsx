@@ -35,6 +35,20 @@ function jobStatusVariant(status: string): BadgeVariant {
   return "neutral";
 }
 
+// Coerce the DB row's nullable numeric fields to the SAME defaults the form
+// inputs display (`?? 1` / `?? 0`). Without this, an untouched field shows its
+// default (e.g. "1") but the form still holds null and POSTs null — which
+// trips the server's ">= 1" validator (Number(null) === 0). Keeping the shown
+// value === the sent value is the transform layer these fields were missing.
+function hydrateForm(job: Job): Partial<Job> {
+  return {
+    ...job,
+    starting_application_number: job.starting_application_number ?? 1,
+    previous_certificates_total: job.previous_certificates_total ?? 0,
+    previous_change_orders_total: job.previous_change_orders_total ?? 0,
+  };
+}
+
 interface PmUser {
   id: string;
   full_name: string;
@@ -221,7 +235,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       }
       setAuthorized(true);
       setJob(data.job);
-      setForm(data.job);
+      setForm(hydrateForm(data.job));
       // F1-Wave-B Slice-1 B-1a-bis: hydrate ClientCombobox from embed.
       if (data.job.client) {
         setClientSelection({
@@ -277,7 +291,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       if (refreshedRes.ok) {
         const refreshedData = await refreshedRes.json();
         setJob(refreshedData.job as Job);
-        setForm(refreshedData.job as Job);
+        setForm(hydrateForm(refreshedData.job as Job));
         if (refreshedData.job.client) {
           setClientSelection({
             kind: "existing",
@@ -611,7 +625,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                 size="md"
                 onClick={() => {
                   setEditing(false);
-                  setForm(job);
+                  setForm(hydrateForm(job));
                   setFormError(null);
                   // F1-Wave-B Slice-1 B-1a-bis: reset ClientCombobox to current job's client.
                   if (job.client) {
