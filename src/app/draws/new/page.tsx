@@ -132,6 +132,13 @@ export default function NewDrawWizardPage() {
   const [draftId, setDraftId] = useState<string | null>(search.get("resume"));
   const lastSavedRef = useRef<string>("");
 
+  // Stage 1.2 — first-draw setup for jobs (esp. quick-created) with no contract
+  // amount. Without it, G702 contract/balance math is all $0.
+  const [setupContract, setSetupContract] = useState("");
+  const [setupRetainage, setSetupRetainage] = useState("");
+  const [savingSetup, setSavingSetup] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+
   // Load active jobs on mount.
   useEffect(() => {
     (async () => {
@@ -362,9 +369,60 @@ export default function NewDrawWizardPage() {
 
   // ----- Derived UI helpers -----
   const job = useMemo(() => jobs.find((j) => j.id === jobId) ?? null, [jobs, jobId]);
+  // Stage 1.2 — a job with no contract amount can't produce correct G702 math.
+  const needsSetup = !!(jobMeta && jobMeta.contractAmount <= 0);
   const blockingOpenDraw = priorDraws.find((d) =>
     ["draft", "pm_review", "submitted"].includes(d.status)
   );
+
+  // Prefill the setup form when a job needing setup is selected.
+  useEffect(() => {
+    if (needsSetup && job) {
+      setSetupContract("");
+      setSetupRetainage(String(job.retainage_percent ?? 10));
+      setSetupError(null);
+    }
+  }, [needsSetup, job]);
+
+  const saveJobSetup = async () => {
+    if (!job) return;
+    const contractCents = Math.round(parseFloat(setupContract || "0") * 100);
+    if (!contractCents || contractCents <= 0) {
+      setSetupError("Enter the contract amount.");
+      return;
+    }
+    const retainage = Math.max(0, Math.min(100, parseFloat(setupRetainage || "0") || 0));
+    setSavingSetup(true);
+    setSetupError(null);
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: job.id,
+          original_contract_amount: contractCents,
+          retainage_percent: retainage,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSetupError(d.error ?? "Failed to save. Owner/admin only.");
+        return;
+      }
+      // Reflect the saved values locally so jobMeta/G702 recompute immediately.
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === job.id
+            ? { ...j, original_contract_amount: contractCents, current_contract_amount: contractCents, retainage_percent: retainage }
+            : j
+        )
+      );
+    } catch {
+      setSetupError("Failed to save.");
+    } finally {
+      setSavingSetup(false);
+    }
+  };
   const nextDrawNumber = useMemo(() => {
     const existing = priorDraws.filter((d) => d.revision_number === 0);
     const max = existing.reduce((m, d) => Math.max(m, d.draw_number), 0);
@@ -606,7 +664,45 @@ export default function NewDrawWizardPage() {
                 </div>
               )}
 
-              {jobId && jobMeta && jobMeta.invoicesSinceLastDraw === 0 && (
+              {needsSetup && job && (
+                <div className="bg-[rgba(201,138,59,0.1)] border border-[rgba(201,138,59,0.4)] p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-[color:var(--nw-warn)]">Set up {job.name} before its first pay app</p>
+                    <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">
+                      This job has no contract amount yet, so the G702 math would come out $0. Set the contract (and confirm retainage) — it saves to the job.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider mb-1 block">Contract amount ($)</label>
+                      <input
+                        type="number" step="0.01" min="0" value={setupContract}
+                        onChange={(e) => setSetupContract(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider mb-1 block">Retainage %</label>
+                      <input
+                        type="number" step="0.1" min="0" max="100" value={setupRetainage}
+                        onChange={(e) => setSetupRetainage(e.target.value)}
+                        className="w-full px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  {setupError && <p className="text-[11px] text-[color:var(--nw-danger)]">{setupError}</p>}
+                  <button
+                    onClick={saveJobSetup}
+                    disabled={savingSetup}
+                    className="px-4 py-2 text-sm disabled:opacity-50 transition-colors nw-primary-btn"
+                  >
+                    {savingSetup ? "Saving…" : "Save & continue"}
+                  </button>
+                </div>
+              )}
+
+              {jobId && jobMeta && !needsSetup && jobMeta.invoicesSinceLastDraw === 0 && (
                 <div className="bg-[rgba(201,138,59,0.12)] border border-[rgba(201,138,59,0.35)] px-4 py-3 text-sm text-[color:var(--nw-warn)]">
                   No new approved invoices since{" "}
                   {jobMeta.lastDrawNumber
@@ -640,7 +736,8 @@ export default function NewDrawWizardPage() {
             <div className="flex justify-end">
               <button
                 onClick={() => setStep(2)}
-                disabled={!jobId || !!blockingOpenDraw}
+                disabled={!jobId || !!blockingOpenDraw || needsSetup}
+                title={needsSetup ? "Set the contract amount for this job first" : undefined}
                 className="px-6 py-2.5 disabled:opacity-50 transition-colors nw-primary-btn"
               >
                 Next: Period
