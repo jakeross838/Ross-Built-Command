@@ -184,10 +184,18 @@ export default function NewDrawWizardPage() {
     (async () => {
       const { data } = await supabase
         .from("draws")
-        .select("id, job_id, wizard_draft, application_date, period_start, period_end, is_final")
+        .select("id, job_id, status, wizard_draft, application_date, period_start, period_end, is_final")
         .eq("id", draftId)
         .single();
       if (!data) return;
+      // Only DRAFT draws are editable. A void/submitted/approved/locked/paid
+      // draw opened via ?edit= or ?resume= must not present an editable form
+      // (the update-draft API 409s anyway, but the UI must not invite it) —
+      // send the user to the read-only detail instead.
+      if (data.status !== "draft") {
+        router.replace(`/financials/pay-apps/${draftId}`);
+        return;
+      }
       const draft = data.wizard_draft as Record<string, unknown> | null;
       if (data.job_id) setJobId(data.job_id as string);
       if (data.application_date) setAppDate(data.application_date as string);
