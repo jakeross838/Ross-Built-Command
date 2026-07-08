@@ -143,6 +143,29 @@ async function matchCostCode(supabase: SupabaseClient, code: string) {
 }
 
 /**
+ * Item 1 — the invoice-level cost code is DERIVED from the line codes, not a
+ * separate header pick. Returns the id of the dominant line code (the code with
+ * the largest summed amount across line items), or null when no line carries a
+ * code. The incoming line_items already reflect the card's per-line edits.
+ */
+async function resolveDominantLineCode(
+  supabase: SupabaseClient,
+  parsed: ParsedInvoice
+): Promise<string | null> {
+  if (!Array.isArray(parsed.line_items) || parsed.line_items.length === 0) return null;
+  const byCode = new Map<string, number>();
+  for (const li of parsed.line_items) {
+    const code = li.cost_code_suggestion?.code;
+    const amt = li.amount ?? 0;
+    if (code && amt > 0) byCode.set(code, (byCode.get(code) ?? 0) + amt);
+  }
+  if (byCode.size === 0) return null;
+  const domCode = Array.from(byCode.entries()).sort((a, b) => b[1] - a[1])[0][0];
+  const cc = await matchCostCode(supabase, domCode);
+  return (cc?.id as string) ?? null;
+}
+
+/**
  * Resolve the budget_line for a given job + cost code pair. Returns null
  * if no row exists yet — the G703 endpoint auto-creates budget lines on
  * the fly when it sees an invoice referencing a code without one.
@@ -413,12 +436,15 @@ export async function saveParsedInvoice(
   const effectivePmId =
     effectiveJobId && effectiveJobId === match?.job.id ? (match?.job.pm_id ?? null) : null;
 
-  // Final invoice-level cost code: a human override from the card wins over the
-  // AI/auto-assigned match. Line-level codes + allocations still derive from the
-  // AI match (unchanged from the prior two-step behaviour); the correction is
-  // captured below against the AI baseline in ai_raw_response.
+  // Final invoice-level cost code (Item 1 — ONE model): derived from the line
+  // codes (dominant by amount). A human override from the card still wins; when
+  // no line carries a code we fall back to the AI header match. The correction
+  // (for vendor→code learning) is captured below against the AI baseline.
+  const dominantLineCodeId = await resolveDominantLineCode(supabase, parsed);
   const finalCostCodeId =
-    "cost_code_id" in overrides ? (overrides.cost_code_id as string | null) : (matchedCostCode?.id ?? null);
+    "cost_code_id" in overrides
+      ? (overrides.cost_code_id as string | null)
+      : (dominantLineCodeId ?? matchedCostCode?.id ?? null);
 
   const statusEntry = {
     who: "system",

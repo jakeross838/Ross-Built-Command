@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import DOMPurify from "isomorphic-dompurify";
 import type { ParseResult, ParsedInvoice } from "@/lib/types/invoice";
 import {
@@ -202,18 +203,45 @@ function FilePreview({ fileStatus }: { fileStatus: FileStatus }) {
  );
 }
 
+/** Effective (edited-or-parsed) cost code per line, grouped by code with summed
+ *  amount + line count. The invoice-level cost code is DERIVED from this — there
+ *  is no separate header picker. Dominant = the code with the largest amount. */
+function summarizeLineCodes(
+ parsed: ParsedInvoice,
+ edits: FileEdits,
+ options: CostCodeOption[]
+) {
+ const byCode = new Map<string, { id: string; code: string; description: string; amount: number; count: number }>();
+ parsed.line_items.forEach((li, i) => {
+ const edited = edits.lineCodes?.[i];
+ const code = edited?.code ?? li.cost_code_suggestion?.code ?? null;
+ if (!code) return;
+ const opt = options.find((o) => o.code === code);
+ const amt = li.amount ?? 0;
+ const prev = byCode.get(code);
+ if (prev) { prev.amount += amt; prev.count += 1; }
+ else byCode.set(code, { id: edited?.id ?? opt?.id ?? "", code, description: opt?.description ?? "", amount: amt, count: 1 });
+ });
+ const codes = Array.from(byCode.values());
+ const dominant = codes.slice().sort((a, b) => b.amount - a.amount)[0] ?? null;
+ const withCode = codes.reduce((s, c) => s + c.count, 0);
+ return { codes, dominant, distinct: codes.length, withCode, totalLines: parsed.line_items.length };
+}
+
 function ParsedDataCard({
  parsed,
  edits,
  onEdit,
  costCodeOptions,
  jobOptions,
+ fileName,
 }: {
  parsed: ParsedInvoice;
  edits: FileEdits;
  onEdit: (patch: Partial<FileEdits>) => void;
  costCodeOptions: CostCodeOption[];
  jobOptions: { id: string; name: string }[];
+ fileName: string;
 }) {
  const isNotInvoice = parsed.document_type && parsed.document_type !== "invoice";
  const allLineItemsZero = parsed.line_items.length > 0 && parsed.line_items.every(i => !i.amount || i.amount === 0);
@@ -221,6 +249,13 @@ function ParsedDataCard({
  // Effective (edited-or-parsed) values used throughout the card.
  const effJob = edits.job !== undefined ? edits.job : (parsed.job_resolution ?? null);
  const isCO = !edits.coDismissed && (!!parsed.is_change_order || !!parsed.co_reference);
+
+ // ONE cost-code model. Normal invoices with real line amounts: the invoice cost
+ // code is DERIVED from the line codes (read-only summary; edit on the lines).
+ // No-line / scope-only lump sums have nothing to edit per-line, so they fall
+ // back to a single whole-invoice picker. Never both pickers at once.
+ const codeSummary = summarizeLineCodes(parsed, edits, costCodeOptions);
+ const hasCodeableLines = parsed.line_items.length > 0 && !allLineItemsZero;
 
  // Math validation (client-side, tax-aware). Line items sum to the SUBTOTAL
  // (pre-tax); SUBTOTAL + TAX must equal the TOTAL. A taxed invoice is NOT a
@@ -305,7 +340,9 @@ function ParsedDataCard({
      shows the raw reference text as if it were an assigned job. */}
  <JobResolver
  rawReference={parsed.job_reference}
+ signals={{ job_reference: parsed.job_reference, vendor_name: parsed.vendor_name, description: parsed.description, filename: fileName }}
  job={effJob}
+ untouched={edits.job === undefined}
  jobOptions={jobOptions}
  onChange={(job) => onEdit({ job })}
  />
@@ -320,14 +357,19 @@ function ParsedDataCard({
  {parsed.vendor_address && <Field label="Vendor Address" value={parsed.vendor_address} />}
  </div>
 
- {/* Cost code (Item 2 + 4) — editable primary code; a learned code is labeled
-     "from your history". */}
+ {/* Cost code — ONE model (Item 1). Codeable lines → read-only summary derived
+     from the lines (edit on the lines below). No-line / scope-only → a single
+     whole-invoice picker. Never a header picker alongside line pickers. */}
+ {hasCodeableLines ? (
+ <CostCodeSummary summary={codeSummary} />
+ ) : (
  <CostCodeField
  parsed={parsed}
  edited={edits.costCode}
  options={costCodeOptions}
  onChange={(cc) => onEdit({ costCode: cc })}
  />
+ )}
 
 
  {/* Description */}
@@ -493,24 +535,58 @@ function EditableField({ label, value, onSave, type = "text", display }: {
  );
 }
 
-// Item 1 — resolved job display OR NO MATCHING JOB + picker. Never presents raw
-// reference text as an assigned job.
-function JobResolver({ rawReference, job, jobOptions, onChange }: {
+type JobSignals = { job_reference: string | null; vendor_name: string | null; description: string | null; filename: string | null };
+
+// Item 1 + 3 — resolved job display OR NO MATCHING JOB + picker. Never presents
+// raw reference text as an assigned job. Re-runs server resolution when the job
+// list changes / the picker opens, so a job that didn't exist at parse time (or
+// wasn't loaded yet) resolves without the user having to type.
+function JobResolver({ rawReference, signals, job, untouched, jobOptions, onChange }: {
  rawReference: string | null;
+ signals: JobSignals;
  job: { id: string; name: string } | null;
+ untouched: boolean;
  jobOptions: { id: string; name: string }[];
  onChange: (job: { id: string; name: string } | null) => void;
 }) {
  const [picking, setPicking] = useState(false);
+ const [autoMatched, setAutoMatched] = useState(false);
+ const triedRef = useRef("");
+
+ // Re-resolve against the current job list when it changes (or on first mount)
+ // — but only while the user hasn't touched the job and none is resolved yet.
+ const reresolve = useCallback(async () => {
+ if (!untouched || job) return;
+ const key = jobOptions.map((j) => j.id).join(",");
+ if (triedRef.current === key) return; // already tried this exact list
+ triedRef.current = key;
+ try {
+ const res = await fetch("/api/jobs/resolve", {
+ method: "POST",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify(signals),
+ });
+ const data = await res.json();
+ if (data.job) { setAutoMatched(true); onChange(data.job); }
+ } catch { /* silent — the manual picker remains */ }
+ }, [untouched, job, jobOptions, signals, onChange]);
+
+ useEffect(() => { reresolve(); }, [reresolve]);
+ useEffect(() => {
+ const h = () => { triedRef.current = ""; reresolve(); };
+ window.addEventListener("nw:job-created", h);
+ return () => window.removeEventListener("nw:job-created", h);
+ }, [reresolve]);
+
  if (job && !picking) {
  return (
  <div className="border border-[var(--border-default)] bg-[var(--bg-subtle)] px-3 py-2.5">
  <div className="flex items-center gap-2">
  <span className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider flex-shrink-0">Job</span>
  <span className="text-sm text-[color:var(--text-primary)] font-medium truncate">{job.name}</span>
- <button type="button" onClick={() => setPicking(true)} className="ml-auto text-[11px] uppercase tracking-wider text-nw-stone-blue hover:underline">Change</button>
+ <button type="button" onClick={() => setPicking(true)} className="ml-auto text-[11px] uppercase tracking-wider text-nw-stone-blue hover:underline flex-shrink-0">Change</button>
  </div>
- {rawReference && <p className="mt-1 text-[11px] text-[color:var(--text-muted)]">Matched from &ldquo;{rawReference}&rdquo;</p>}
+ {(autoMatched || rawReference) && <p className="mt-1 text-[11px] text-[color:var(--text-muted)]">Matched{rawReference ? ` from “${rawReference}”` : " automatically"}</p>}
  </div>
  );
  }
@@ -520,30 +596,62 @@ function JobResolver({ rawReference, job, jobOptions, onChange }: {
  <span className="text-[11px] font-semibold text-[color:var(--nw-warn)] uppercase tracking-wider">No Matching Job</span>
  {rawReference && <span className="text-[11px] text-[color:var(--text-muted)] truncate">reference: &ldquo;{rawReference}&rdquo;</span>}
  </div>
- <JobCombobox jobOptions={jobOptions} onPick={(j) => { onChange(j); setPicking(false); }} />
+ <JobCombobox jobOptions={jobOptions} onOpen={() => reresolve()} onPick={(j) => { onChange(j); setPicking(false); }} />
  </div>
  );
 }
 
-// Searchable job picker with create-in-place (POST /api/jobs).
-function JobCombobox({ jobOptions, onPick }: {
+// Searchable job picker with create-in-place (POST /api/jobs). Dropdown portals
+// to <body> so it escapes the card's overflow/scroll container (Item 2).
+function JobCombobox({ jobOptions, onPick, onOpen }: {
  jobOptions: { id: string; name: string }[];
  onPick: (job: { id: string; name: string }) => void;
+ onOpen?: () => void;
 }) {
  const [search, setSearch] = useState("");
  const [open, setOpen] = useState(false);
  const [creating, setCreating] = useState(false);
+ const [pos, setPos] = useState<{ left: number; width: number; maxHeight: number; top?: number; bottom?: number } | null>(null);
  const rootRef = useRef<HTMLDivElement>(null);
+ const inputRef = useRef<HTMLInputElement>(null);
+ const panelRef = useRef<HTMLDivElement>(null);
+
  useEffect(() => {
  if (!open) return;
- const h = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
+ const h = (e: MouseEvent) => {
+ const t = e.target as Node;
+ if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+ setOpen(false);
+ };
  document.addEventListener("mousedown", h);
  return () => document.removeEventListener("mousedown", h);
  }, [open]);
+
+ useLayoutEffect(() => {
+ if (!open || !inputRef.current) return;
+ const reposition = () => {
+ const el = inputRef.current;
+ if (!el) return;
+ const r = el.getBoundingClientRect();
+ const vh = window.innerHeight, vw = window.innerWidth;
+ const spaceBelow = vh - r.bottom, spaceAbove = r.top;
+ const openUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+ const maxHeight = Math.max(160, Math.min(320, (openUp ? spaceAbove : spaceBelow) - 12));
+ const width = Math.min(Math.max(r.width, 280), vw - 16);
+ let left = r.left; if (left + width > vw - 8) left = Math.max(8, vw - 8 - width);
+ setPos(openUp ? { left, width, maxHeight, bottom: vh - r.top + 4 } : { left, width, maxHeight, top: r.bottom + 4 });
+ };
+ reposition();
+ window.addEventListener("scroll", reposition, true);
+ window.addEventListener("resize", reposition);
+ return () => { window.removeEventListener("scroll", reposition, true); window.removeEventListener("resize", reposition); };
+ }, [open]);
+
  const q = search.trim().toLowerCase();
  const filtered = q ? jobOptions.filter(j => j.name.toLowerCase().includes(q)) : jobOptions;
  const exact = jobOptions.some(j => j.name.toLowerCase() === q);
  const showCreate = search.trim().length >= 2 && !exact;
+ function openMenu() { setOpen(true); onOpen?.(); }
  async function createJob() {
  const name = search.trim();
  if (!name) return;
@@ -567,14 +675,20 @@ function JobCombobox({ jobOptions, onPick }: {
  return (
  <div ref={rootRef} className="relative">
  <input
+ ref={inputRef}
  value={search}
- onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
- onFocus={() => setOpen(true)}
+ onChange={(e) => { setSearch(e.target.value); openMenu(); }}
+ onFocus={openMenu}
  placeholder="Search jobs or type a new job name…"
  className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-tertiary)] focus:border-nw-stone-blue focus:outline-none"
  />
- {open && (
- <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-panel)]">
+ {open && pos && typeof document !== "undefined" &&
+ createPortal(
+ <div
+ ref={panelRef}
+ style={{ position: "fixed", left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight }}
+ className="z-[1000] overflow-y-auto border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-panel)]"
+ >
  {filtered.map((j) => (
  <button key={j.id} type="button" onClick={() => { onPick(j); setOpen(false); }} className="block w-full truncate text-left px-3 py-2 text-sm text-[color:var(--text-primary)] hover:bg-[var(--bg-subtle)]">{j.name}</button>
  ))}
@@ -584,7 +698,42 @@ function JobCombobox({ jobOptions, onPick }: {
  <span className="font-mono text-[10px] uppercase tracking-[0.12em] mr-1">Create</span>&ldquo;{search.trim()}&rdquo; as new job
  </button>
  )}
+ </div>,
+ document.body
+ )}
  </div>
+ );
+}
+
+// Item 1 — read-only invoice-level cost code, DERIVED from the line codes. Shows
+// the single code (+ line count), or "Mixed · N codes". Edited on the lines.
+function CostCodeSummary({ summary }: { summary: ReturnType<typeof summarizeLineCodes> }) {
+ const { codes, dominant, distinct, withCode, totalLines } = summary;
+ const unassigned = totalLines - withCode;
+ return (
+ <div>
+ <div className="flex items-center gap-2 mb-1.5">
+ <span className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">Cost Code</span>
+ <span className="text-[10px] text-[color:var(--text-tertiary)] normal-case tracking-normal">derived from lines — edit below</span>
+ </div>
+ {distinct === 0 ? (
+ <div className="border border-[rgba(201,138,59,0.35)] bg-[rgba(201,138,59,0.06)] px-3 py-2 text-sm text-[color:var(--nw-warn)]">
+ No cost code assigned — set one on each line below.
+ </div>
+ ) : distinct === 1 && dominant ? (
+ <div className="border border-[var(--border-default)] bg-[var(--bg-subtle)] px-3 py-2 text-sm flex items-baseline gap-2">
+ <span className="font-mono text-[13px] text-[color:var(--text-primary)]">{dominant.code}</span>
+ {dominant.description && <span className="text-[color:var(--text-secondary)] truncate">— {dominant.description}</span>}
+ <span className="text-[color:var(--text-tertiary)] ml-auto flex-shrink-0">{withCode} {withCode === 1 ? "line" : "lines"}</span>
+ </div>
+ ) : (
+ <div className="border border-[var(--border-default)] bg-[var(--bg-subtle)] px-3 py-2 text-sm">
+ <span className="font-medium text-[color:var(--text-primary)]">Mixed · {distinct} codes</span>
+ <span className="text-[color:var(--text-secondary)] font-mono text-[12px]"> ({codes.map((c) => c.code).join(", ")})</span>
+ </div>
+ )}
+ {unassigned > 0 && distinct > 0 && (
+ <p className="mt-1 text-[11px] text-[color:var(--nw-warn)]">{unassigned} {unassigned === 1 ? "line" : "lines"} without a cost code</p>
  )}
  </div>
  );
@@ -802,7 +951,20 @@ export default function UploadContent() {
  // the vendor→code default is learned — item 2). Folding this in removes the
  // second PATCH round-trip that made the Save button hang.
  const fieldOverrides: Record<string, unknown> = {};
- if (edits.costCode !== undefined) fieldOverrides.cost_code_id = edits.costCode?.id ?? null;
+ // Cost code is line-derived (Item 1). When the user edits a line code, the
+ // dominant line code (by amount) is the invoice-level correction that feeds
+ // vendor→code learning. No-line / scope-only lump sums use the single whole-
+ // invoice picker (edits.costCode). The server also derives the stored invoice
+ // cost code from the lines, so a no-edit save still records the dominant.
+ const hasCodeableLines = parsed.line_items.length > 0 && !parsed.line_items.every((li) => !li.amount || li.amount === 0);
+ if (hasCodeableLines) {
+ if (edits.lineCodes && Object.keys(edits.lineCodes).length > 0) {
+ const summary = summarizeLineCodes(parsed, edits, costCodeOptions);
+ if (summary.dominant?.id) fieldOverrides.cost_code_id = summary.dominant.id;
+ }
+ } else if (edits.costCode !== undefined) {
+ fieldOverrides.cost_code_id = edits.costCode?.id ?? null;
+ }
  if (edits.vendor !== undefined && edits.vendor !== parsed.vendor_name) fieldOverrides.vendor_name_raw = edits.vendor;
  if (edits.invoiceNumber !== undefined && edits.invoiceNumber !== parsed.invoice_number) fieldOverrides.invoice_number = edits.invoiceNumber;
  if (edits.invoiceDate !== undefined && edits.invoiceDate !== parsed.invoice_date) fieldOverrides.invoice_date = edits.invoiceDate;
@@ -926,8 +1088,8 @@ export default function UploadContent() {
  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
  </svg>
  </div>
- <p className="text-lg text-[color:var(--text-primary)] font-display">{isDragging ? "Drop files here" : <><span className="hidden md:inline">Drag & drop {documentType === "receipt" ? "receipts" : "invoices"}</span><span className="md:hidden">Upload {documentType === "receipt" ? "Receipts" : "Invoices"}</span></>}</p>
- <p className="mt-1.5 text-sm text-[color:var(--text-secondary)] hidden md:block">or click to browse &mdash; PDF, DOCX, XLSX, JPG, PNG</p>
+ <p className="text-lg text-[color:var(--text-primary)] font-display">{isDragging ? "Drop files here" : <><span className="hidden md:inline">Drag & drop {documentType === "receipt" ? "receipts" : "invoices"} &mdash; one or many</span><span className="md:hidden">Upload {documentType === "receipt" ? "Receipts" : "Invoices"}</span></>}</p>
+ <p className="mt-1.5 text-sm text-[color:var(--text-secondary)] hidden md:block">Select or drop multiple files to upload a batch &mdash; each gets its own review card. Click to browse &mdash; PDF, DOCX, XLSX, JPG, PNG</p>
  <div className="mt-4 md:hidden">
  <NwButton variant="primary" size="md">Browse Files</NwButton>
  </div>
@@ -1038,6 +1200,7 @@ export default function UploadContent() {
  onEdit={(patch) => updateEdit(index, patch)}
  costCodeOptions={costCodeOptions}
  jobOptions={jobOptions}
+ fileName={fileStatus.file.name}
  />
  </div>
  </div>

@@ -1,6 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+/** Fixed-position coordinates for a portaled popover, anchored to a trigger. */
+type PopoverPos = { left: number; width: number; maxHeight: number; top?: number; bottom?: number };
+
+/**
+ * Collision-aware placement for a popover anchored to `triggerEl`, rendered in a
+ * body portal (position: fixed) so it escapes any overflow/scroll container.
+ * Flips above the trigger when there isn't room below, clamps to the viewport.
+ */
+function computePopoverPos(triggerEl: HTMLElement, minWidth = 300, desiredHeight = 320): PopoverPos {
+  const r = triggerEl.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const spaceBelow = vh - r.bottom;
+  const spaceAbove = r.top;
+  const openUp = spaceBelow < Math.min(desiredHeight, 220) && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(160, Math.min(desiredHeight, (openUp ? spaceAbove : spaceBelow) - 12));
+  const width = Math.min(Math.max(r.width, minWidth), vw - 16);
+  let left = r.left;
+  if (left + width > vw - 8) left = Math.max(8, vw - 8 - width);
+  if (left < 8) left = 8;
+  return openUp
+    ? { left, width, maxHeight, bottom: vh - r.top + 4 }
+    : { left, width, maxHeight, top: r.bottom + 4 };
+}
 
 export interface CostCodeOption {
   id: string;
@@ -50,7 +76,10 @@ export default function CostCodeCombobox({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [highlight, setHighlight] = useState(0);
+  const [pos, setPos] = useState<PopoverPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -93,15 +122,35 @@ export default function CostCodeCombobox({
   // Flat list for keyboard navigation.
   const flat = useMemo(() => filtered, [filtered]);
 
+  // Click-outside — must also exclude the portaled panel (it lives on <body>,
+  // outside rootRef, so a plain rootRef.contains() check would close on its own
+  // clicks).
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  // Position the portaled popover against the trigger, and keep it anchored on
+  // scroll/resize so it tracks the field inside the modal's scroll container.
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return;
+    const reposition = () => {
+      if (triggerRef.current) setPos(computePopoverPos(triggerRef.current));
+    };
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -144,6 +193,7 @@ export default function CostCodeCombobox({
         </label>
       )}
       <div
+        ref={triggerRef}
         role="combobox"
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -190,75 +240,88 @@ export default function CostCodeCombobox({
         </div>
       </div>
 
-      {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[280px] bg-[var(--bg-card)] border border-[var(--border-default)] shadow-2xl">
-          <div className="p-2 border-b border-[var(--border-default)] bg-[var(--bg-subtle)]">
-            <input
-              ref={inputRef}
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setHighlight(0);
-              }}
-              placeholder="Type code, description, or category…"
-              className="w-full px-2 py-1.5 bg-[var(--bg-card)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-secondary)] focus:outline-none focus:border-[var(--nw-stone-blue)]"
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setOpen(false);
-                } else if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setHighlight((h) => Math.min(h + 1, flat.length - 1));
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setHighlight((h) => Math.max(h - 1, 0));
-                } else if (e.key === "Enter" && flat[highlight]) {
-                  e.preventDefault();
-                  commit(flat[highlight].id);
-                }
-              }}
-            />
-          </div>
-          <div ref={listRef} className="max-h-72 overflow-y-auto" role="listbox">
-            {grouped.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-[color:var(--text-secondary)] text-center">No matches</div>
-            ) : (
-              grouped.map(([cat, items]) => (
-                <div key={cat}>
-                  <div className="sticky top-0 px-3 py-1.5 text-[10px] font-semibold text-[color:var(--text-secondary)] uppercase tracking-wider bg-[var(--bg-subtle)] border-b border-[var(--border-default)]">
-                    {cat}
+      {open && pos && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={panelRef}
+            style={{
+              position: "fixed",
+              left: pos.left,
+              width: pos.width,
+              top: pos.top,
+              bottom: pos.bottom,
+              maxHeight: pos.maxHeight,
+            }}
+            className="z-[1000] flex flex-col bg-[var(--bg-card)] border border-[var(--border-default)] shadow-[var(--shadow-panel)]"
+          >
+            <div className="p-2 border-b border-[var(--border-default)] bg-[var(--bg-subtle)]">
+              <input
+                ref={inputRef}
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setHighlight(0);
+                }}
+                placeholder="Type code, description, or category…"
+                className="w-full px-2 py-1.5 bg-[var(--bg-card)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-secondary)] focus:outline-none focus:border-[var(--nw-stone-blue)]"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setOpen(false);
+                  } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setHighlight((h) => Math.min(h + 1, flat.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setHighlight((h) => Math.max(h - 1, 0));
+                  } else if (e.key === "Enter" && flat[highlight]) {
+                    e.preventDefault();
+                    commit(flat[highlight].id);
+                  }
+                }}
+              />
+            </div>
+            <div ref={listRef} className="flex-1 overflow-y-auto" role="listbox">
+              {grouped.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-[color:var(--text-secondary)] text-center">No matches</div>
+              ) : (
+                grouped.map(([cat, items]) => (
+                  <div key={cat}>
+                    <div className="sticky top-0 px-3 py-1.5 text-[10px] font-semibold text-[color:var(--text-secondary)] uppercase tracking-wider bg-[var(--bg-subtle)] border-b border-[var(--border-default)]">
+                      {cat}
+                    </div>
+                    {items.map((o) => {
+                      const idx = flat.indexOf(o);
+                      const isSelected = o.id === value;
+                      const isHighlighted = idx === highlight;
+                      return (
+                        <button
+                          key={o.id}
+                          data-index={idx}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onMouseEnter={() => setHighlight(idx)}
+                          onClick={() => commit(o.id)}
+                          className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-baseline gap-2 ${
+                            isHighlighted ? "bg-[rgba(91,134,153,0.12)]" : ""
+                          } ${isSelected ? "text-[color:var(--nw-stone-blue)] font-medium" : "text-[color:var(--text-primary)]"}`}
+                        >
+                          <span className="font-mono text-[12px] shrink-0 w-14">{o.code}</span>
+                          <span className="flex-1 truncate">{o.description}</span>
+                          {o.is_change_order && (
+                            <span className="text-[10px] uppercase tracking-wider text-[color:var(--nw-warn)]">CO</span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
-                  {items.map((o) => {
-                    const idx = flat.indexOf(o);
-                    const isSelected = o.id === value;
-                    const isHighlighted = idx === highlight;
-                    return (
-                      <button
-                        key={o.id}
-                        data-index={idx}
-                        type="button"
-                        role="option"
-                        aria-selected={isSelected}
-                        onMouseEnter={() => setHighlight(idx)}
-                        onClick={() => commit(o.id)}
-                        className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-baseline gap-2 ${
-                          isHighlighted ? "bg-[rgba(91,134,153,0.12)]" : ""
-                        } ${isSelected ? "text-[color:var(--nw-stone-blue)] font-medium" : "text-[color:var(--text-primary)]"}`}
-                      >
-                        <span className="font-mono text-[12px] shrink-0 w-14">{o.code}</span>
-                        <span className="flex-1 truncate">{o.description}</span>
-                        {o.is_change_order && (
-                          <span className="text-[10px] uppercase tracking-wider text-[color:var(--nw-warn)]">CO</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+                ))
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
