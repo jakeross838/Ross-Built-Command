@@ -94,6 +94,38 @@ export async function POST(request: NextRequest) {
  }
  }
 
+ // Item 2 — vendor→code learning (read path): if this vendor has a learned
+ // default cost code (from a prior human correction), prefer it over the AI's
+ // guess and mark it source:"history" so the review card labels it
+ // "from your history" (shows the code explicitly; stays overridable).
+ if (parsed.vendor_name && parsed.vendor_name.trim()) {
+ const { data: vendorRow } = await supabase
+ .from("vendors")
+ .select("default_cost_code_id")
+ .eq("org_id", orgId)
+ .ilike("name", parsed.vendor_name.trim())
+ .is("deleted_at", null)
+ .limit(1)
+ .maybeSingle();
+ if (vendorRow?.default_cost_code_id) {
+ const { data: cc } = await supabase
+ .from("cost_codes")
+ .select("code, description, is_change_order")
+ .eq("id", vendorRow.default_cost_code_id as string)
+ .is("deleted_at", null)
+ .maybeSingle();
+ if (cc) {
+ parsed.cost_code_suggestion = {
+ code: cc.code as string,
+ description: (cc.description as string) ?? "",
+ confidence: 1,
+ is_change_order: !!cc.is_change_order,
+ source: "history",
+ };
+ }
+ }
+ }
+
  // DOCX: render HTML once here so the upload preview can display it
  // without a second roundtrip. The file is still in storage for the
  // eventual invoice record to reference.

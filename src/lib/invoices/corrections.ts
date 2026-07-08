@@ -92,7 +92,7 @@ export async function captureCorrections(
   const { data: invoice } = await supabase
     .from("invoices")
     .select(
-      "id, org_id, vendor_name_raw, invoice_number, invoice_date, total_amount, " +
+      "id, org_id, vendor_id, vendor_name_raw, invoice_number, invoice_date, total_amount, " +
       "cost_code_id, description, document_type, is_change_order, " +
       "ai_raw_response, confidence_details, confidence_score"
     )
@@ -170,6 +170,23 @@ export async function captureCorrections(
       cost_code_id: field === "cost_code_id" ? newCostCodeId : (row.cost_code_id as string | null),
       corrected_by: userId,
     });
+  }
+
+  // Item 2 — vendor→code learning (write path). When the user corrected the
+  // cost code, remember it as this vendor's default so the NEXT parse of the
+  // same vendor prefers it (last-correction-wins). The default is a soft,
+  // always-overridable hint; safe to overwrite on each correction.
+  const vendorId = row.vendor_id as string | null;
+  const costCodeCorrected = rows.some((r) => r.field_name === "cost_code_id");
+  if (vendorId && costCodeCorrected && newCostCodeId) {
+    const { error: vErr } = await supabase
+      .from("vendors")
+      .update({ default_cost_code_id: newCostCodeId })
+      .eq("id", vendorId)
+      .eq("org_id", orgId);
+    if (vErr) {
+      console.warn(`[corrections] vendor default update failed for ${vendorId}: ${vErr.message}`);
+    }
   }
 
   if (rows.length === 0) return;

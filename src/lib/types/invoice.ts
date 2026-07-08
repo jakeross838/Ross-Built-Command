@@ -2,6 +2,9 @@ export interface LineItemCostCodeSuggestion {
  code: string | null;
  description: string | null;
  confidence: number;
+ /** "history" when learned from a prior human correction; "ai" (or undefined)
+  *  when it's the model's own guess. */
+ source?: "ai" | "history";
 }
 
 export interface ParsedLineItem {
@@ -35,6 +38,10 @@ export interface CostCodeSuggestion {
  description: string;
  confidence: number;
  is_change_order: boolean;
+ /** "history" when the code came from this vendor's learned default (a prior
+  *  human correction), "ai" (or undefined) when it's the model's own guess.
+  *  The upload card labels a "history" code "from your history". */
+ source?: "ai" | "history";
 }
 
 export interface JobSuggestion {
