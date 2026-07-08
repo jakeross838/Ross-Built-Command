@@ -32,11 +32,16 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   PrinterIcon,
   CheckBadgeIcon,
   ArrowUturnLeftIcon,
   ChevronRightIcon,
+  PaperAirplaneIcon,
+  ArrowPathIcon,
+  XCircleIcon,
 } from "@heroicons/react/24/outline";
 
 import type {
@@ -68,6 +73,13 @@ export interface DrawApprovalViewProps {
   printHref?: string;
   /** Optional breadcrumb root link. Defaults to /design-system/prototypes/. */
   breadcrumbRoot?: { href: string; label: string };
+  /** When true, the action bar (Submit / Approve / Send back / Void / Refresh
+   *  totals) posts to the real /api/draws/[id] endpoints and refreshes. The
+   *  production /financials/pay-apps/[id] route passes this. The portfolio
+   *  prototype gallery leaves it false so its fixture UUIDs never fire a POST. */
+  interactive?: boolean;
+  /** Where to go after a draft is edited. Production passes the wizard edit URL. */
+  editHref?: string;
 }
 
 const STATUS_BADGE: Record<
@@ -117,11 +129,99 @@ export default function DrawApprovalView({
   storedSummaryStale = false,
   printHref,
   breadcrumbRoot = { href: "/design-system/prototypes/", label: "Prototypes" },
+  interactive = false,
+  editHref,
 }: DrawApprovalViewProps) {
   const status = STATUS_BADGE[draw.status];
   const timeline = buildTimeline(draw);
   const resolvedPrintHref =
     printHref ?? `${breadcrumbRoot.href}draws/${draw.id}/print`;
+
+  const router = useRouter();
+  const [acting, setActing] = useState<null | string>(null);
+  const [actionMsg, setActionMsg] = useState<{
+    tone: "success" | "danger";
+    text: string;
+  } | null>(null);
+  const [confirmVoid, setConfirmVoid] = useState(false);
+
+  // Which workflow actions are legal from the current status. Mirrors the
+  // server ACTION_MAP in src/app/api/draws/[id]/action/route.ts so the UI
+  // never offers a button the server would 400. Draft draws submit first
+  // (draft → submitted); approve/send-back only apply once submitted.
+  const isDraft = draw.status === "draft";
+  const canApprove =
+    draw.status === "submitted" || draw.status === "pm_review";
+  const canSendBack =
+    draw.status === "submitted" || draw.status === "pm_review";
+  const canVoid = ["draft", "pm_review", "submitted", "approved"].includes(
+    draw.status
+  );
+  const isTerminal = ["locked", "paid", "void"].includes(draw.status);
+
+  // Reason text shown on a disabled action, so a dead-looking button always
+  // explains itself (Defect-2 contract: every button works OR says why not).
+  const disabledReason = (() => {
+    if (draw.status === "draft") return "Submit for approval first";
+    if (draw.status === "approved") return "Already approved";
+    if (draw.status === "paid") return "Paid — closed";
+    if (draw.status === "void") return "Voided";
+    return "Not available in this status";
+  })();
+
+  async function runAction(action: string, label: string) {
+    if (!interactive) return;
+    setActing(action);
+    setActionMsg(null);
+    try {
+      const res = await fetch(`/api/draws/${draw.id}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        setActionMsg({ tone: "success", text: `${label} — done.` });
+        router.refresh();
+      } else {
+        const data = await res
+          .json()
+          .catch(() => ({ error: `${label} failed` }));
+        setActionMsg({ tone: "danger", text: data.error ?? `${label} failed` });
+      }
+    } catch {
+      setActionMsg({ tone: "danger", text: `${label} failed — network error` });
+    } finally {
+      setActing(null);
+      setConfirmVoid(false);
+    }
+  }
+
+  async function refreshTotals() {
+    if (!interactive) return;
+    setActing("refresh");
+    setActionMsg(null);
+    try {
+      const res = await fetch(`/api/draws/${draw.id}/refresh-totals`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        setActionMsg({
+          tone: "success",
+          text: "Stored totals refreshed from recompute.",
+        });
+        router.refresh();
+      } else {
+        const data = await res
+          .json()
+          .catch(() => ({ error: "Refresh failed" }));
+        setActionMsg({ tone: "danger", text: data.error ?? "Refresh failed" });
+      }
+    } catch {
+      setActionMsg({ tone: "danger", text: "Refresh failed — network error" });
+    } finally {
+      setActing(null);
+    }
+  }
 
   return (
     <div className="px-6 py-8 max-w-[1600px] mx-auto">
@@ -179,35 +279,158 @@ export default function DrawApprovalView({
             </span>
             <Badge variant={status.variant}>{status.label}</Badge>
             {draw.status === "draft" && storedSummaryStale && (
-              <Badge variant="warning">Recomputed — stored value stale</Badge>
+              <span className="inline-flex items-center gap-1.5">
+                <Badge variant="warning">Recomputed — stored value stale</Badge>
+                {interactive && (
+                  <button
+                    type="button"
+                    onClick={refreshTotals}
+                    disabled={acting !== null}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-[10px] border uppercase font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                      fontFamily: "var(--font-jetbrains-mono)",
+                      letterSpacing: "0.08em",
+                      borderColor: "var(--border-default)",
+                      color: "var(--text-primary)",
+                      background: "var(--bg-card)",
+                    }}
+                    title="Re-save the stored G702 totals from a fresh recompute"
+                  >
+                    <ArrowPathIcon
+                      className={`w-3 h-3 ${acting === "refresh" ? "animate-spin" : ""}`}
+                      strokeWidth={1.5}
+                    />{" "}
+                    Refresh
+                  </button>
+                )}
+              </span>
             )}
           </div>
         </div>
-        {/* TD-20 fix: NwButton replaces raw button elements for Send back +
-            Approve. Print remains a Link (not a button-action) so it
-            preserves its visual contract — Plan 2 architect's TD-20 scope
-            targets CTA action buttons; Print is a navigation link. */}
-        <div className="flex items-center gap-2">
-          <Link
-            href={resolvedPrintHref}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-[11px] border uppercase font-medium"
-            style={{
-              fontFamily: "var(--font-jetbrains-mono)",
-              letterSpacing: "0.12em",
-              borderColor: "var(--border-default)",
-              color: "var(--text-primary)",
-              background: "var(--bg-card)",
-            }}
-          >
-            <PrinterIcon className="w-3.5 h-3.5" strokeWidth={1.5} /> Print
-          </Link>
-          <NwButton variant="secondary" size="md">
-            <ArrowUturnLeftIcon className="w-3.5 h-3.5" strokeWidth={1.5} />{" "}
-            Send back
-          </NwButton>
-          <NwButton variant="primary" size="md">
-            <CheckBadgeIcon className="w-3.5 h-3.5" strokeWidth={1.5} /> Approve
-          </NwButton>
+        {/* Action bar — wired to /api/draws/[id]/action when `interactive`.
+            Every button either fires a real workflow transition or is
+            disabled with a reason (Defect-2 contract). For a DRAFT draw the
+            active CTA is "Submit for approval" (draft → submitted); Approve /
+            Send back light up only once submitted. Void (draft/submitted/
+            approved) is the escape hatch that also unblocks creating the next
+            Pay App. Print + Edit are navigation links. */}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Link
+              href={resolvedPrintHref}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-[11px] border uppercase font-medium"
+              style={{
+                fontFamily: "var(--font-jetbrains-mono)",
+                letterSpacing: "0.12em",
+                borderColor: "var(--border-default)",
+                color: "var(--text-primary)",
+                background: "var(--bg-card)",
+              }}
+            >
+              <PrinterIcon className="w-3.5 h-3.5" strokeWidth={1.5} /> Print
+            </Link>
+
+            {isDraft && editHref && (
+              <Link
+                href={editHref}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-[11px] border uppercase font-medium"
+                style={{
+                  fontFamily: "var(--font-jetbrains-mono)",
+                  letterSpacing: "0.12em",
+                  borderColor: "var(--border-default)",
+                  color: "var(--text-primary)",
+                  background: "var(--bg-card)",
+                }}
+              >
+                <ArrowPathIcon className="w-3.5 h-3.5" strokeWidth={1.5} /> Edit
+                draft
+              </Link>
+            )}
+
+            {canVoid && (
+              <NwButton
+                variant="danger"
+                size="md"
+                loading={acting === "void"}
+                disabled={!interactive || acting !== null}
+                onClick={() =>
+                  confirmVoid
+                    ? runAction("void", "Voided")
+                    : setConfirmVoid(true)
+                }
+              >
+                <XCircleIcon className="w-3.5 h-3.5" strokeWidth={1.5} />{" "}
+                {confirmVoid ? "Confirm void" : "Void"}
+              </NwButton>
+            )}
+
+            <NwButton
+              variant="secondary"
+              size="md"
+              loading={acting === "send_back"}
+              disabled={!interactive || !canSendBack || acting !== null}
+              title={canSendBack ? undefined : disabledReason}
+              onClick={() => runAction("send_back", "Sent back")}
+            >
+              <ArrowUturnLeftIcon className="w-3.5 h-3.5" strokeWidth={1.5} />{" "}
+              Send back
+            </NwButton>
+
+            {isDraft ? (
+              <NwButton
+                variant="primary"
+                size="md"
+                loading={acting === "submit"}
+                disabled={!interactive || acting !== null}
+                onClick={() => runAction("submit", "Submitted for approval")}
+              >
+                <PaperAirplaneIcon className="w-3.5 h-3.5" strokeWidth={1.5} />{" "}
+                Submit for approval
+              </NwButton>
+            ) : (
+              <NwButton
+                variant="primary"
+                size="md"
+                loading={acting === "approve"}
+                disabled={!interactive || !canApprove || acting !== null}
+                title={canApprove ? undefined : disabledReason}
+                onClick={() => runAction("approve", "Approved")}
+              >
+                <CheckBadgeIcon className="w-3.5 h-3.5" strokeWidth={1.5} />{" "}
+                Approve
+              </NwButton>
+            )}
+          </div>
+
+          {/* Inline status line — never a blocking dialog (keeps browser
+              automation + real users out of modal-alert traps). */}
+          {actionMsg && (
+            <span
+              className="text-[11px]"
+              style={{
+                fontFamily: "var(--font-jetbrains-mono)",
+                letterSpacing: "0.04em",
+                color:
+                  actionMsg.tone === "success"
+                    ? "var(--nw-success)"
+                    : "var(--nw-danger)",
+              }}
+            >
+              {actionMsg.text}
+            </span>
+          )}
+          {!interactive && !isTerminal && (
+            <span
+              className="text-[10px]"
+              style={{
+                fontFamily: "var(--font-jetbrains-mono)",
+                letterSpacing: "0.04em",
+                color: "var(--text-tertiary)",
+              }}
+            >
+              Preview — actions disabled
+            </span>
+          )}
         </div>
       </div>
 

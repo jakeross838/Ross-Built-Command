@@ -102,7 +102,12 @@ export default function NewDrawWizardPage() {
   const [jobId, setJobId] = useState("");
   const [jobMeta, setJobMeta] = useState<{
     contractAmount: number;
-    billedToDate: number;
+    // Costs to date = approved vendor bills (what's been spent). Billed to
+    // client = sum of pay-apps that have gone out (draw current_payment_due,
+    // submitted+). On a cost-plus open-book job these differ — costs can be
+    // approved before they're billed on a draw. Defect 5a split.
+    costsToDate: number;
+    billedToClient: number;
     remaining: number;
     invoicesSinceLastDraw: number;
     lastDrawNumber: number | null;
@@ -129,7 +134,17 @@ export default function NewDrawWizardPage() {
   const [priorDraws, setPriorDraws] = useState<PriorDraw[]>([]);
 
   // --- Draft handling ---
-  const [draftId, setDraftId] = useState<string | null>(search.get("resume"));
+  // `?edit=<drawId>` (Defect 3) re-opens an existing DRAFT draw for full
+  // editing; `?resume=<drawId>` re-opens a mid-wizard autosaved draft. Both
+  // hydrate the same draftId; editMode additionally seeds `selected` from the
+  // draw's currently-attached invoices and saves via PUT update-draft (not a
+  // second POST /new, which would duplicate the draw and trip the open-draw
+  // guard).
+  const editId = search.get("edit");
+  const [draftId, setDraftId] = useState<string | null>(
+    search.get("resume") ?? search.get("edit")
+  );
+  const editMode = !!editId;
   const lastSavedRef = useRef<string>("");
 
   // Stage 1.2 — first-draw setup for jobs (esp. quick-created) with no contract
@@ -170,7 +185,10 @@ export default function NewDrawWizardPage() {
       if (data.period_start) setPeriodStart(data.period_start as string);
       if (data.period_end) setPeriodEnd(data.period_end as string);
       if (typeof data.is_final === "boolean") setIsFinal(data.is_final);
-      if (draft) {
+      if (draft && !editMode) {
+        // Resume mode restores the mid-wizard snapshot verbatim (incl. step +
+        // overrides). Edit mode ignores it — the attached invoices below are
+        // the source of truth for what's actually on the draw.
         if (Array.isArray(draft.selected)) setSelected(new Set(draft.selected as string[]));
         if (typeof draft.step === "number") setStep(draft.step as number);
         if (draft.overrides && typeof draft.overrides === "object") {
@@ -180,8 +198,17 @@ export default function NewDrawWizardPage() {
           setOverrideReasons(draft.overrideReasons as Record<string, string>);
         }
       }
+      if (editMode) {
+        // Seed selection from the invoices currently attached to this draft.
+        const { data: attached } = await supabase
+          .from("invoices")
+          .select("id")
+          .eq("draw_id", draftId)
+          .is("deleted_at", null);
+        setSelected(new Set((attached ?? []).map((r) => (r as { id: string }).id)));
+      }
     })();
-  }, [draftId]);
+  }, [draftId, editMode]);
 
   // Job context: contract, billed-to-date, last draw, invoices since.
   useEffect(() => {
@@ -192,7 +219,10 @@ export default function NewDrawWizardPage() {
     (async () => {
       const job = jobs.find((j) => j.id === jobId);
       if (!job) return;
-      const contractAmount = job.current_contract_amount ?? job.original_contract_amount;
+      // `||` not `??` — a $0 current_contract_amount must fall through to
+      // original (?? only falls through on null/undefined, so a stored 0 stuck
+      // the setup card re-prompting even after the contract was set).
+      const contractAmount = job.current_contract_amount || job.original_contract_amount;
 
       // Parallel: billed invoices + prior draws (independent queries)
       const [{ data: billed }, { data: priors }] = await Promise.all([
@@ -209,12 +239,28 @@ export default function NewDrawWizardPage() {
           .is("deleted_at", null)
           .order("draw_number", { ascending: false }),
       ]);
-      const billedToDate = (billed ?? []).reduce(
+      const costsToDate = (billed ?? []).reduce(
         (s, i) => s + ((i as { total_amount?: number }).total_amount ?? 0),
         0
       );
       const priorList = (priors ?? []) as PriorDraw[];
       setPriorDraws(priorList);
+
+      // Billed to client = latest revision of each already-issued draw's
+      // current_payment_due (dedupe by draw_number so a revised draw isn't
+      // counted twice).
+      const billedByNumber = new Map<number, { rev: number; amt: number }>();
+      for (const d of priorList) {
+        if (!["submitted", "approved", "locked", "paid"].includes(d.status)) continue;
+        const rev = (d as { revision_number?: number }).revision_number ?? 0;
+        const amt = (d as { current_payment_due?: number }).current_payment_due ?? 0;
+        const cur = billedByNumber.get(d.draw_number);
+        if (!cur || rev > cur.rev) billedByNumber.set(d.draw_number, { rev, amt });
+      }
+      const billedToClient = Array.from(billedByNumber.values()).reduce(
+        (s, v) => s + v.amt,
+        0
+      );
 
       const lockedPrior = priorList.find((d) =>
         ["submitted", "approved", "locked", "paid"].includes(d.status)
@@ -247,8 +293,9 @@ export default function NewDrawWizardPage() {
 
       setJobMeta({
         contractAmount,
-        billedToDate,
-        remaining: contractAmount - billedToDate,
+        costsToDate,
+        billedToClient,
+        remaining: contractAmount - billedToClient,
         invoicesSinceLastDraw: (sinceInvs ?? []).length,
         lastDrawNumber: lockedPrior?.draw_number ?? null,
         lastDrawPeriodEnd: lockedPrior?.period_end ?? null,
@@ -504,6 +551,38 @@ export default function NewDrawWizardPage() {
     setSubmitting(true);
     setError(null);
     try {
+      // Defect 3 — edit mode UPDATES the existing draft in place (period,
+      // application date, attached invoices, recomputed lines) rather than
+      // creating a duplicate. Line amounts stay derived from allocations.
+      if (editMode && draftId) {
+        const res = await fetch(`/api/draws/${draftId}/update-draft`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            application_date: appDate,
+            period_start: periodStart,
+            period_end: periodEnd,
+            invoice_ids: Array.from(selected),
+            is_final: isFinal,
+            wizard_draft: {
+              step,
+              selected: Array.from(selected),
+              isFinal,
+              periodStart,
+              periodEnd,
+              appDate,
+            },
+          }),
+        });
+        if (res.ok) {
+          router.push(`/financials/pay-apps/${draftId}`);
+        } else {
+          const data = await res.json().catch(() => ({ error: "Save failed" }));
+          setError(data.error ?? "Save failed");
+        }
+        return;
+      }
+
       // Drafts persist only via creating a real draws row. We re-use POST
       // /api/draws/new which always creates with status='draft'.
       const res = await fetch("/api/draws/new", {
@@ -651,10 +730,19 @@ export default function NewDrawWizardPage() {
 
               {jobMeta && job && (
                 <div className="bg-[rgba(91,134,153,0.08)] border border-[rgba(91,134,153,0.3)] p-4 space-y-2">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-sm">
                     <Stat label="Contract" value={formatCents(jobMeta.contractAmount)} />
-                    <Stat label="Billed to date" value={formatCents(jobMeta.billedToDate)} />
-                    <Stat label="Remaining" value={formatCents(jobMeta.remaining)} />
+                    <Stat
+                      label="Costs to date"
+                      value={formatCents(jobMeta.costsToDate)}
+                      sub="Approved bills"
+                    />
+                    <Stat
+                      label="Billed to client"
+                      value={formatCents(jobMeta.billedToClient)}
+                      sub="Issued pay apps"
+                    />
+                    <Stat label="Remaining" value={formatCents(jobMeta.remaining)} sub="Contract left" />
                     <Stat
                       label="Next draw"
                       value={`#${nextDrawNumber}`}
@@ -1056,7 +1144,13 @@ export default function NewDrawWizardPage() {
                   disabled={submitting}
                   className="w-full sm:w-auto px-8 py-2.5 disabled:opacity-50 transition-colors nw-primary-btn"
                 >
-                  {submitting ? "Creating…" : "Create Draw"}
+                  {submitting
+                    ? editMode
+                      ? "Saving…"
+                      : "Creating…"
+                    : editMode
+                      ? "Save Changes"
+                      : "Create Draw"}
                 </button>
               </div>
             </div>

@@ -35,9 +35,13 @@ const UploadContent = dynamic(
 export default function InvoiceUploadModal({
   open,
   onClose,
+  onSaved,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Fired after an invoice is saved & routed from inside the modal, so the
+   *  host can close the modal + flash the list (never strand the user here). */
+  onSaved?: (count: number) => void;
 }) {
   // Lock body scroll when open
   useEffect(() => {
@@ -93,7 +97,7 @@ export default function InvoiceUploadModal({
       </div>
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        <UploadContent />
+        <UploadContent onSaved={onSaved} />
       </div>
     </div>,
     document.body

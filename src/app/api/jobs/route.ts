@@ -168,6 +168,7 @@ type JobBody = {
   contract_type?: ContractType;
   phase?: JobPhase;
   original_contract_amount?: number; // cents
+  set_current_contract?: boolean;    // default true — keep current_contract_amount = original on setup
   deposit_percentage?: number;       // 0..100 (whole percent, e.g. 10 = 10%)
   gc_fee_percentage?: number;        // 0..100 (whole percent)
   retainage_percent?: number;        // 0..100 (whole percent, e.g. 10 = 10%)
@@ -335,7 +336,17 @@ export const PATCH = withApiError(async (request: NextRequest) => {
     }
     patch.phase = body.phase;
   }
-  if (body.original_contract_amount !== undefined) patch.original_contract_amount = body.original_contract_amount;
+  if (body.original_contract_amount !== undefined) {
+    patch.original_contract_amount = body.original_contract_amount;
+    // Keep current_contract_amount in lockstep with original on a first-draw /
+    // setup write (mirrors the POST create path, api/jobs/route.ts:261). The UI
+    // + G702 read current_contract_amount first; leaving it at 0 made the
+    // setup card re-prompt forever and G702 read $0. Approved COs bump current
+    // upward later via the co_cache trigger.
+    if (body.set_current_contract !== false) {
+      patch.current_contract_amount = body.original_contract_amount;
+    }
+  }
   if (body.deposit_percentage !== undefined) patch.deposit_percentage = body.deposit_percentage;
   if (body.gc_fee_percentage !== undefined) patch.gc_fee_percentage = body.gc_fee_percentage;
 

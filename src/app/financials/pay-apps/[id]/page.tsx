@@ -42,6 +42,8 @@ export default async function PayAppReviewPage({
         storedSummaryStale={data.storedSummaryStale}
         printHref={`/financials/pay-apps/${data.draw.id}/print`}
         breadcrumbRoot={{ href: "/financials/pay-apps", label: "Draws" }}
+        interactive
+        editHref={`/financials/pay-apps/new?edit=${data.draw.id}`}
       />
     </div>
   );

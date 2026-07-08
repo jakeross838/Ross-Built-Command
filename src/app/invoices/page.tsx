@@ -138,6 +138,9 @@ export default function AllInvoicesPage() {
  const [loading, setLoading] = useState(true);
  const [uploadOpen, setUploadOpen] = useState(searchParams.get("action") === "upload");
  const [importOpen, setImportOpen] = useState(searchParams.get("action") === "import");
+ // Flash strip (Pattern 5) shown after a Save & Route so the user lands back
+ // on the list with confirmation instead of being stranded in the modal.
+ const [flashMsg, setFlashMsg] = useState<string | null>(null);
 
  // Tabs — STEP 2 approval stages. (Legacy `activeTab` retained but no longer
  // switched: the Payment-Tracking branch below is now dormant, superseded by
@@ -213,6 +216,13 @@ export default function AllInvoicesPage() {
  fetchData();
  return () => clearTimeout(loadingSafety);
  }, []);
+
+ // Auto-dismiss the Save & Route flash strip.
+ useEffect(() => {
+ if (!flashMsg) return;
+ const t = setTimeout(() => setFlashMsg(null), 6000);
+ return () => clearTimeout(t);
+ }, [flashMsg]);
 
  // Unique job names
  // Stat cards removed — they used stale status buckets that contradicted the
@@ -373,6 +383,17 @@ export default function AllInvoicesPage() {
  return (
  <>
  <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
+ {/* Flash strip (Pattern 5) — confirms a Save & Route landed, so the user
+     is never stranded in the upload modal. Auto-dismisses. */}
+ {flashMsg && (
+ <div className="mb-5 flex items-center gap-3 border border-[rgba(74,138,111,0.4)] bg-[rgba(74,138,111,0.1)] px-4 py-3 animate-fade-up">
+ <svg className="w-4 h-4 flex-shrink-0 text-[color:var(--nw-success)]" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+ <span className="text-sm text-[color:var(--text-primary)] flex-1">{flashMsg}</span>
+ <button type="button" onClick={() => setFlashMsg(null)} aria-label="Dismiss" className="text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]">
+ <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+ </button>
+ </div>
+ )}
  {/* Invoices/Queue/QA sub-nav replaced by the STEP 2 approval-stage tabs below. */}
  <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
  <div>
@@ -845,11 +866,20 @@ export default function AllInvoicesPage() {
  </>
  )}
  </main>
- <InvoiceUploadModal open={uploadOpen} onClose={() => {
+ <InvoiceUploadModal
+ open={uploadOpen}
+ onClose={() => {
  setUploadOpen(false);
  if (searchParams.get("action")) router.replace("/invoices");
  router.refresh();
- }} />
+ }}
+ onSaved={(count) => {
+ setUploadOpen(false);
+ if (searchParams.get("action")) router.replace("/invoices");
+ router.refresh();
+ setFlashMsg(`${count} invoice${count === 1 ? "" : "s"} saved & routed for review.`);
+ }}
+ />
  <InvoiceImportModal open={importOpen} onClose={() => {
  setImportOpen(false);
  if (searchParams.get("action")) router.replace("/invoices");

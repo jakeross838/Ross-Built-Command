@@ -882,7 +882,7 @@ function DuplicateModal({
  * When `onSaved` is provided, it's called after each successful save
  * so the caller can close the modal / refresh a list.
  */
-export default function UploadContent() {
+export default function UploadContent({ onSaved }: { onSaved?: (count: number) => void } = {}) {
  const [files, setFiles] = useState<FileStatus[]>([]);
  const [isDragging, setIsDragging] = useState(false);
  const [savingAll, setSavingAll] = useState(false);
@@ -890,6 +890,9 @@ export default function UploadContent() {
  const [duplicateSaving, setDuplicateSaving] = useState(false);
  const [documentType, setDocumentType] = useState<"invoice" | "receipt">("invoice");
  const duplicateHitRef = useRef(false);
+ // Suppresses the per-file onSaved close while Save-All is looping — we fire
+ // onSaved once at the end of the batch instead.
+ const batchRef = useRef(false);
  const inputRef = useRef<HTMLInputElement>(null);
 
  // Item 1/4 — cost-code options for the editable cost-code comboboxes + the org
@@ -1025,6 +1028,10 @@ export default function UploadContent() {
  }
 
  setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, saving: false, saved: true } : f)));
+ // Save & Route on a single card must NOT strand the user on the upload
+ // screen — hand back to the host to close the modal + flash the list.
+ // Suppressed during a Save-All batch (fired once at the end instead).
+ if (!batchRef.current) onSaved?.(1);
  } catch (err) {
  const message = err instanceof Error ? err.message : "Save failed";
  setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, saving: false, error: message } : f)));
@@ -1034,16 +1041,21 @@ export default function UploadContent() {
  const saveAll = async () => {
  setSavingAll(true);
  duplicateHitRef.current = false;
+ batchRef.current = true;
  // Save one at a time so duplicates can be resolved individually
+ let savedCount = 0;
  for (let i = 0; i < files.length; i++) {
  const f = files[i];
  if (f.status === "done" && f.result && !f.saved && !f.saving) {
  await saveOne(i);
  // If a duplicate was detected, stop batch so user can resolve it
  if (duplicateHitRef.current) break;
+ savedCount += 1;
  }
  }
+ batchRef.current = false;
  setSavingAll(false);
+ if (savedCount > 0 && !duplicateHitRef.current) onSaved?.(savedCount);
  };
 
  const handleDuplicateSaveAnyway = async () => {
