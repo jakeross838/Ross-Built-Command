@@ -8,6 +8,8 @@ import {
  formatInvoiceType, formatFlag, formatDocumentType, formatDate,
 } from "@/lib/utils/format";
 import NwButton from "@/components/nw/Button";
+import CostCodeCombobox, { type CostCodeOption } from "@/components/cost-code-combobox";
+import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
 
 
 type ParseStep = "uploading" | "analyzing" | "extracting" | "matching" | "complete";
@@ -20,6 +22,23 @@ const PARSE_STEPS: { key: ParseStep; label: string }[] = [
  { key: "complete", label: "Complete" },
 ];
 
+/** Per-file edits the user makes in the review card before Save & Route.
+ *  undefined on a key = untouched; the card falls back to the parsed value. */
+type FileEdits = {
+ /** Job resolution override. undefined = untouched (use parsed.job_resolution);
+  *  a job = assigned/created; null = explicitly cleared (NO job). */
+ job?: { id: string; name: string } | null;
+ /** Invoice-level cost-code correction (id + code). */
+ costCode?: { id: string; code: string } | null;
+ vendor?: string;
+ invoiceNumber?: string;
+ invoiceDate?: string;
+ /** CO badge dismissed by the user. */
+ coDismissed?: boolean;
+ /** Per-line-item cost-code overrides, keyed by line index. */
+ lineCodes?: Record<number, { id: string; code: string }>;
+};
+
 type FileStatus = {
  file: File;
  objectUrl: string;
@@ -30,6 +49,7 @@ type FileStatus = {
  error?: string;
  saved?: boolean;
  saving?: boolean;
+ edits?: FileEdits;
 };
 
 type DuplicateInfo = {
@@ -182,9 +202,25 @@ function FilePreview({ fileStatus }: { fileStatus: FileStatus }) {
  );
 }
 
-function ParsedDataCard({ parsed }: { parsed: ParsedInvoice }) {
+function ParsedDataCard({
+ parsed,
+ edits,
+ onEdit,
+ costCodeOptions,
+ jobOptions,
+}: {
+ parsed: ParsedInvoice;
+ edits: FileEdits;
+ onEdit: (patch: Partial<FileEdits>) => void;
+ costCodeOptions: CostCodeOption[];
+ jobOptions: { id: string; name: string }[];
+}) {
  const isNotInvoice = parsed.document_type && parsed.document_type !== "invoice";
  const allLineItemsZero = parsed.line_items.length > 0 && parsed.line_items.every(i => !i.amount || i.amount === 0);
+
+ // Effective (edited-or-parsed) values used throughout the card.
+ const effJob = edits.job !== undefined ? edits.job : (parsed.job_resolution ?? null);
+ const isCO = !edits.coDismissed && (!!parsed.is_change_order || !!parsed.co_reference);
 
  // Math validation (client-side, tax-aware). Line items sum to the SUBTOTAL
  // (pre-tax); SUBTOTAL + TAX must equal the TOTAL. A taxed invoice is NOT a
@@ -247,53 +283,52 @@ function ParsedDataCard({ parsed }: { parsed: ParsedInvoice }) {
  </span>
  )}
 
+ {/* CO badge — dismissible (Item 3). Only shows on explicit CO language. */}
+ {isCO && (
+ <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-[rgba(201,138,59,0.12)] text-[color:var(--nw-warn)] border border-[rgba(201,138,59,0.25)]">
+ Change Order{parsed.co_reference ? ` — ${parsed.co_reference}` : ""}
+ <button type="button" onClick={() => onEdit({ coDismissed: true })} aria-label="Dismiss change-order flag" className="ml-0.5 hover:opacity-70">
+ <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+ </button>
+ </span>
+ )}
+
  {/* Other flags */}
- {parsed.flags.filter(f => f !== "math_mismatch" && f !== "not_an_invoice").map((flag) => (
+ {parsed.flags.filter(f => f !== "math_mismatch" && f !== "not_an_invoice" && f !== "change_order").map((flag) => (
  <span key={flag} className="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-[rgba(201,138,59,0.12)] text-[color:var(--nw-warn)] border border-[rgba(201,138,59,0.25)]">
  {formatFlag(flag)}
  </span>
  ))}
  </div>
 
- {/* Core Fields */}
+ {/* Job resolution (Item 1) — resolved real job or NO MATCH + picker. Never
+     shows the raw reference text as if it were an assigned job. */}
+ <JobResolver
+ rawReference={parsed.job_reference}
+ job={effJob}
+ jobOptions={jobOptions}
+ onChange={(job) => onEdit({ job })}
+ />
+
+ {/* Core Fields — vendor / # / date are click-to-edit (Item 4). */}
  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
- <Field label="Vendor" value={parsed.vendor_name} />
- <Field label="Invoice #" value={parsed.invoice_number} />
- <Field label="Date" value={formatDate(parsed.invoice_date)} />
+ <EditableField label="Vendor" value={edits.vendor ?? parsed.vendor_name} onSave={(v) => onEdit({ vendor: v })} />
+ <EditableField label="Invoice #" value={edits.invoiceNumber ?? parsed.invoice_number} onSave={(v) => onEdit({ invoiceNumber: v })} />
+ <EditableField label="Date" type="date" value={edits.invoiceDate ?? parsed.invoice_date} display={formatDate(edits.invoiceDate ?? parsed.invoice_date)} onSave={(v) => onEdit({ invoiceDate: v })} />
  <Field label="Type" value={formatInvoiceType(parsed.invoice_type)} />
- <Field label="Job Reference" value={parsed.job_reference} />
  <Field label="PO Reference" value={parsed.po_reference} />
- {parsed.co_reference && <Field label="CO Reference" value={parsed.co_reference} />}
  {parsed.vendor_address && <Field label="Vendor Address" value={parsed.vendor_address} />}
  </div>
 
- {/* AI Suggestions */}
- {(parsed.job_suggestion || parsed.cost_code_suggestion) && (
- <div className="space-y-2">
- {parsed.job_suggestion && (
- <div className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-subtle)] border border-[var(--border-default)] ">
- <span className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider flex-shrink-0">Suggested Job</span>
- <span className="text-sm text-[color:var(--text-primary)] font-medium truncate">
- {parsed.job_suggestion.name}
- </span>
- <span className={`ml-auto flex-shrink-0 px-2 py-0.5 text-xs ${confidenceColor(parsed.job_suggestion.confidence)}`}>
- {Math.round(parsed.job_suggestion.confidence * 100)}%
- </span>
- </div>
- )}
- {parsed.cost_code_suggestion && (
- <div className="flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-subtle)] border border-[var(--border-default)] ">
- <span className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider flex-shrink-0">Suggested Cost Code</span>
- <span className="text-sm text-[color:var(--text-primary)] font-medium truncate">
- {parsed.cost_code_suggestion.code} — {parsed.cost_code_suggestion.description}
- </span>
- <span className={`ml-auto flex-shrink-0 px-2 py-0.5 text-xs ${confidenceColor(parsed.cost_code_suggestion.confidence)}`}>
- {Math.round(parsed.cost_code_suggestion.confidence * 100)}%
- </span>
- </div>
- )}
- </div>
- )}
+ {/* Cost code (Item 2 + 4) — editable primary code; a learned code is labeled
+     "from your history". */}
+ <CostCodeField
+ parsed={parsed}
+ edited={edits.costCode}
+ options={costCodeOptions}
+ onChange={(cc) => onEdit({ costCode: cc })}
+ />
+
 
  {/* Description */}
  {parsed.description && (
@@ -335,20 +370,25 @@ function ParsedDataCard({ parsed }: { parsed: ParsedInvoice }) {
  <tbody>
  {parsed.line_items.map((item, i) => {
  const lineCode = item.cost_code_suggestion?.code ?? null;
+ const editedLine = edits.lineCodes?.[i];
+ const initialOpt = lineCode ? costCodeOptions.find(o => o.code === lineCode) : undefined;
+ const lineValue = editedLine?.id ?? initialOpt?.id ?? null;
  return (
  <tr key={i} className="border-t border-[var(--border-default)]">
  <td className="py-2 px-3 text-[color:var(--text-muted)]">{item.description}</td>
- <td className="py-2 px-3 text-xs">
- {lineCode ? (
- <span className="font-mono text-[color:var(--nw-stone-blue)]">{lineCode}</span>
- ) : (
- <span
- className="text-[color:var(--text-secondary)] italic"
- title="AI did not assign a per-line cost code — allocate after save"
- >
- —
- </span>
- )}
+ <td className="py-2 px-3 text-xs min-w-[180px]">
+ <CostCodeCombobox
+ size="sm"
+ value={lineValue}
+ options={costCodeOptions}
+ placeholder="Assign…"
+ onChange={(id) => {
+ const next = { ...(edits.lineCodes ?? {}) };
+ if (id) { const opt = costCodeOptions.find(o => o.id === id); if (opt) next[i] = { id: opt.id, code: opt.code }; }
+ else delete next[i];
+ onEdit({ lineCodes: next });
+ }}
+ />
  </td>
  <td className="py-2 px-3 text-[color:var(--text-muted)] text-right">{item.qty ?? "—"}</td>
  <td className="py-2 px-3 text-[color:var(--text-secondary)]">{item.unit ?? "—"}</td>
@@ -409,6 +449,178 @@ function Field({ label, value }: { label: string; value: string | null | undefin
  <div>
  <p className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">{label}</p>
  <p className="text-sm text-[color:var(--text-primary)] mt-0.5">{value || "—"}</p>
+ </div>
+ );
+}
+
+// Click-to-edit field (Item 4). Click the value → inline input; Enter/blur saves.
+function EditableField({ label, value, onSave, type = "text", display }: {
+ label: string;
+ value: string | null | undefined;
+ onSave: (v: string) => void;
+ type?: string;
+ display?: string | null;
+}) {
+ const [editing, setEditing] = useState(false);
+ const [draft, setDraft] = useState(value ?? "");
+ useEffect(() => { setDraft(value ?? ""); }, [value]);
+ if (editing) {
+ return (
+ <div>
+ <p className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">{label}</p>
+ <input
+ autoFocus
+ type={type}
+ value={draft}
+ onChange={(e) => setDraft(e.target.value)}
+ onBlur={() => { setEditing(false); if (draft !== (value ?? "")) onSave(draft); }}
+ onKeyDown={(e) => {
+ if (e.key === "Enter") e.currentTarget.blur();
+ if (e.key === "Escape") { setDraft(value ?? ""); setEditing(false); }
+ }}
+ className="mt-0.5 w-full px-2 py-1 bg-[var(--bg-subtle)] border border-nw-stone-blue text-sm text-[color:var(--text-primary)] focus:outline-none"
+ />
+ </div>
+ );
+ }
+ return (
+ <button type="button" onClick={() => setEditing(true)} className="group text-left w-full">
+ <p className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">{label}</p>
+ <p className="text-sm text-[color:var(--text-primary)] mt-0.5 border-b border-dashed border-transparent group-hover:border-[var(--border-strong)]">
+ {(display ?? value) || <span className="text-[color:var(--text-muted)] italic">— click to add</span>}
+ </p>
+ </button>
+ );
+}
+
+// Item 1 — resolved job display OR NO MATCHING JOB + picker. Never presents raw
+// reference text as an assigned job.
+function JobResolver({ rawReference, job, jobOptions, onChange }: {
+ rawReference: string | null;
+ job: { id: string; name: string } | null;
+ jobOptions: { id: string; name: string }[];
+ onChange: (job: { id: string; name: string } | null) => void;
+}) {
+ const [picking, setPicking] = useState(false);
+ if (job && !picking) {
+ return (
+ <div className="border border-[var(--border-default)] bg-[var(--bg-subtle)] px-3 py-2.5">
+ <div className="flex items-center gap-2">
+ <span className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider flex-shrink-0">Job</span>
+ <span className="text-sm text-[color:var(--text-primary)] font-medium truncate">{job.name}</span>
+ <button type="button" onClick={() => setPicking(true)} className="ml-auto text-[11px] uppercase tracking-wider text-nw-stone-blue hover:underline">Change</button>
+ </div>
+ {rawReference && <p className="mt-1 text-[11px] text-[color:var(--text-muted)]">Matched from &ldquo;{rawReference}&rdquo;</p>}
+ </div>
+ );
+ }
+ return (
+ <div className="border border-[rgba(201,138,59,0.35)] bg-[rgba(201,138,59,0.06)] px-3 py-2.5 space-y-2">
+ <div className="flex items-center gap-2 flex-wrap">
+ <span className="text-[11px] font-semibold text-[color:var(--nw-warn)] uppercase tracking-wider">No Matching Job</span>
+ {rawReference && <span className="text-[11px] text-[color:var(--text-muted)] truncate">reference: &ldquo;{rawReference}&rdquo;</span>}
+ </div>
+ <JobCombobox jobOptions={jobOptions} onPick={(j) => { onChange(j); setPicking(false); }} />
+ </div>
+ );
+}
+
+// Searchable job picker with create-in-place (POST /api/jobs).
+function JobCombobox({ jobOptions, onPick }: {
+ jobOptions: { id: string; name: string }[];
+ onPick: (job: { id: string; name: string }) => void;
+}) {
+ const [search, setSearch] = useState("");
+ const [open, setOpen] = useState(false);
+ const [creating, setCreating] = useState(false);
+ const rootRef = useRef<HTMLDivElement>(null);
+ useEffect(() => {
+ if (!open) return;
+ const h = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
+ document.addEventListener("mousedown", h);
+ return () => document.removeEventListener("mousedown", h);
+ }, [open]);
+ const q = search.trim().toLowerCase();
+ const filtered = q ? jobOptions.filter(j => j.name.toLowerCase().includes(q)) : jobOptions;
+ const exact = jobOptions.some(j => j.name.toLowerCase() === q);
+ const showCreate = search.trim().length >= 2 && !exact;
+ async function createJob() {
+ const name = search.trim();
+ if (!name) return;
+ setCreating(true);
+ try {
+ const res = await fetch("/api/jobs", {
+ method: "POST",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify({ name, client_name_for_create: name }),
+ });
+ const data = await res.json();
+ if (res.ok && data.id) {
+ window.dispatchEvent(new CustomEvent("nw:job-created", { detail: { id: data.id, name } }));
+ onPick({ id: data.id, name });
+ setOpen(false);
+ }
+ } finally {
+ setCreating(false);
+ }
+ }
+ return (
+ <div ref={rootRef} className="relative">
+ <input
+ value={search}
+ onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+ onFocus={() => setOpen(true)}
+ placeholder="Search jobs or type a new job name…"
+ className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-tertiary)] focus:border-nw-stone-blue focus:outline-none"
+ />
+ {open && (
+ <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-panel)]">
+ {filtered.map((j) => (
+ <button key={j.id} type="button" onClick={() => { onPick(j); setOpen(false); }} className="block w-full truncate text-left px-3 py-2 text-sm text-[color:var(--text-primary)] hover:bg-[var(--bg-subtle)]">{j.name}</button>
+ ))}
+ {filtered.length === 0 && !showCreate && <div className="px-3 py-2 text-xs text-[color:var(--text-tertiary)]">No jobs — type 2+ characters to create one</div>}
+ {showCreate && (
+ <button type="button" disabled={creating} onClick={createJob} className="block w-full text-left px-3 py-2 text-sm border-t border-[var(--border-default)] text-nw-stone-blue hover:bg-[var(--bg-subtle)] disabled:opacity-60">
+ <span className="font-mono text-[10px] uppercase tracking-[0.12em] mr-1">Create</span>&ldquo;{search.trim()}&rdquo; as new job
+ </button>
+ )}
+ </div>
+ )}
+ </div>
+ );
+}
+
+// Item 2 + 4 — editable primary cost code; labels a learned code "from your history".
+function CostCodeField({ parsed, edited, options, onChange }: {
+ parsed: ParsedInvoice;
+ edited: { id: string; code: string } | null | undefined;
+ options: CostCodeOption[];
+ onChange: (cc: { id: string; code: string } | null) => void;
+}) {
+ const sug = parsed.cost_code_suggestion;
+ const fromHistory = sug?.source === "history";
+ const suggestionOpt = sug?.code ? options.find(o => o.code === sug.code) : undefined;
+ const value = edited !== undefined ? (edited?.id ?? null) : (suggestionOpt?.id ?? null);
+ return (
+ <div>
+ <div className="flex items-center gap-2 mb-1.5">
+ <span className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">Cost Code</span>
+ {edited === undefined && fromHistory && sug && (
+ <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium text-nw-stone-blue border border-nw-stone-blue uppercase tracking-wider">from your history &middot; {sug.code}</span>
+ )}
+ {edited === undefined && !fromHistory && sug && (
+ <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--text-secondary)] border border-[var(--border-default)] uppercase tracking-wider">AI {Math.round((sug.confidence ?? 0) * 100)}%</span>
+ )}
+ </div>
+ <CostCodeCombobox
+ value={value}
+ options={options}
+ placeholder="Select cost code…"
+ onChange={(id) => {
+ if (id) { const opt = options.find(o => o.id === id); onChange(opt ? { id: opt.id, code: opt.code } : null); }
+ else onChange(null);
+ }}
+ />
  </div>
  );
 }
@@ -499,6 +711,27 @@ export default function UploadContent() {
  const duplicateHitRef = useRef(false);
  const inputRef = useRef<HTMLInputElement>(null);
 
+ // Item 1/4 — cost-code options for the editable cost-code comboboxes + the org
+ // jobs list for the NO-MATCH job picker. Server route + provider (standing
+ // pattern — no client-auth mount fetch here).
+ const [costCodeOptions, setCostCodeOptions] = useState<CostCodeOption[]>([]);
+ const { jobs: jobOptions, ensureLoaded: ensureJobsLoaded } = useJobFilter();
+ useEffect(() => {
+ ensureJobsLoaded();
+ let cancelled = false;
+ fetch("/api/cost-codes", { cache: "no-store" })
+ .then((r) => (r.ok ? r.json() : null))
+ .then((d: { codes?: CostCodeOption[] } | null) => {
+ if (!cancelled && d?.codes) setCostCodeOptions(d.codes);
+ })
+ .catch(() => {});
+ return () => { cancelled = true; };
+ }, [ensureJobsLoaded]);
+
+ const updateEdit = useCallback((index: number, patch: Partial<FileEdits>) => {
+ setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, edits: { ...f.edits, ...patch } } : f)));
+ }, []);
+
  const processFiles = useCallback(async (newFiles: File[]) => {
  const accepted = newFiles.filter(isAcceptedFile);
  if (accepted.length === 0) return;
@@ -548,8 +781,26 @@ export default function UploadContent() {
  if (!fs.result || fs.saved) return;
  setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, saving: true } : f)));
  try {
+ const edits = fs.edits ?? {};
+ const parsed = fs.result.parsed;
+
+ // Effective job: an explicit card edit wins; else the parse-time resolution.
+ const effectiveJob = edits.job !== undefined ? edits.job : (parsed.job_resolution ?? null);
+
+ // Per-line cost-code overrides fold into the line_items sent to save (line
+ // codes are stored at save; they are not tracked corrections).
+ const lineItems = parsed.line_items.map((li, i) => {
+ const override = edits.lineCodes?.[i];
+ return override
+ ? { ...li, cost_code_suggestion: { code: override.code, description: null, confidence: 1 } }
+ : li;
+ });
+
+ // STEP 1 — save the AI baseline (keeping ai_raw_response as the AI original so
+ // corrections are detectable), with the resolved job + line codes applied.
  const payload = {
  ...fs.result,
+ parsed: { ...parsed, job_resolution: effectiveJob, line_items: lineItems },
  ...(forceSave ? { force_save: true } : {}),
  document_type: documentType,
  };
@@ -561,12 +812,30 @@ export default function UploadContent() {
  const data = await res.json();
  if (!res.ok) throw new Error(data.error);
 
- // Handle duplicate response
+ // Duplicate → surface the modal, don't mark saved.
  if (data.duplicate && data.existing) {
  setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, saving: false } : f)));
  duplicateHitRef.current = true;
  setDuplicateModal({ fileIndex: index, existing: data.existing });
  return;
+ }
+
+ // STEP 2 — apply header/cost-code corrections via PATCH so captureCorrections
+ // records them AND learns the vendor→code default (item 2).
+ const invoiceId: string | undefined = Array.isArray(data.saved) ? data.saved[0] : undefined;
+ if (invoiceId) {
+ const patch: Record<string, unknown> = {};
+ if (edits.costCode !== undefined) patch.cost_code_id = edits.costCode?.id ?? null;
+ if (edits.vendor !== undefined && edits.vendor !== parsed.vendor_name) patch.vendor_name_raw = edits.vendor;
+ if (edits.invoiceNumber !== undefined && edits.invoiceNumber !== parsed.invoice_number) patch.invoice_number = edits.invoiceNumber;
+ if (edits.invoiceDate !== undefined && edits.invoiceDate !== parsed.invoice_date) patch.invoice_date = edits.invoiceDate;
+ if (Object.keys(patch).length > 0) {
+ await fetch(`/api/invoices/${invoiceId}`, {
+ method: "PATCH",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify(patch),
+ }).catch(() => {});
+ }
  }
 
  setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, saving: false, saved: true } : f)));
@@ -771,7 +1040,13 @@ export default function UploadContent() {
  </div>
  <div className="p-5">
  <p className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider mb-3">AI Extracted Data</p>
- <ParsedDataCard parsed={fileStatus.result.parsed} />
+ <ParsedDataCard
+ parsed={fileStatus.result.parsed}
+ edits={fileStatus.edits ?? {}}
+ onEdit={(patch) => updateEdit(index, patch)}
+ costCodeOptions={costCodeOptions}
+ jobOptions={jobOptions}
+ />
  </div>
  </div>
  )}
