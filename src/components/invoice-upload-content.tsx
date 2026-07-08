@@ -796,11 +796,21 @@ export default function UploadContent() {
  : li;
  });
 
- // STEP 1 — save the AI baseline (keeping ai_raw_response as the AI original so
- // corrections are detectable), with the resolved job + line codes applied.
+ // Human header/cost-code edits → field_overrides. The save route stores these
+ // as the invoice's FINAL values AND records them as corrections in the SAME
+ // request (ai_raw_response keeps the AI baseline, so the delta is captured and
+ // the vendor→code default is learned — item 2). Folding this in removes the
+ // second PATCH round-trip that made the Save button hang.
+ const fieldOverrides: Record<string, unknown> = {};
+ if (edits.costCode !== undefined) fieldOverrides.cost_code_id = edits.costCode?.id ?? null;
+ if (edits.vendor !== undefined && edits.vendor !== parsed.vendor_name) fieldOverrides.vendor_name_raw = edits.vendor;
+ if (edits.invoiceNumber !== undefined && edits.invoiceNumber !== parsed.invoice_number) fieldOverrides.invoice_number = edits.invoiceNumber;
+ if (edits.invoiceDate !== undefined && edits.invoiceDate !== parsed.invoice_date) fieldOverrides.invoice_date = edits.invoiceDate;
+
  const payload = {
  ...fs.result,
  parsed: { ...parsed, job_resolution: effectiveJob, line_items: lineItems },
+ ...(Object.keys(fieldOverrides).length > 0 ? { field_overrides: fieldOverrides } : {}),
  ...(forceSave ? { force_save: true } : {}),
  document_type: documentType,
  };
@@ -818,24 +828,6 @@ export default function UploadContent() {
  duplicateHitRef.current = true;
  setDuplicateModal({ fileIndex: index, existing: data.existing });
  return;
- }
-
- // STEP 2 — apply header/cost-code corrections via PATCH so captureCorrections
- // records them AND learns the vendor→code default (item 2).
- const invoiceId: string | undefined = Array.isArray(data.saved) ? data.saved[0] : undefined;
- if (invoiceId) {
- const patch: Record<string, unknown> = {};
- if (edits.costCode !== undefined) patch.cost_code_id = edits.costCode?.id ?? null;
- if (edits.vendor !== undefined && edits.vendor !== parsed.vendor_name) patch.vendor_name_raw = edits.vendor;
- if (edits.invoiceNumber !== undefined && edits.invoiceNumber !== parsed.invoice_number) patch.invoice_number = edits.invoiceNumber;
- if (edits.invoiceDate !== undefined && edits.invoiceDate !== parsed.invoice_date) patch.invoice_date = edits.invoiceDate;
- if (Object.keys(patch).length > 0) {
- await fetch(`/api/invoices/${invoiceId}`, {
- method: "PATCH",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify(patch),
- }).catch(() => {});
- }
  }
 
  setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, saving: false, saved: true } : f)));

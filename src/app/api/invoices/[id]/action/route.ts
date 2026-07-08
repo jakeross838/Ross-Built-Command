@@ -390,13 +390,20 @@ export async function POST(
  updatePayload.qa_overrides = mergedQaOverrides;
  }
 
- // Capture parser corrections before applying updates
+ // Capture parser corrections before applying updates. Awaited (not fire-and-
+ // forget) so serverless can't kill the write after the response; failures are
+ // surfaced, never silently dropped. Never blocks the action.
  if (updates && Object.keys(updates).length > 0) {
  const { data: { user } } = await supabase.auth.getUser();
  if (user) {
- captureCorrections(supabase, params.id, updates, user.id).catch((err) => {
- console.warn("[corrections] capture failed:", err);
- });
+ try {
+ const result = await captureCorrections(supabase, params.id, updates, user.id);
+ if (!result.ok && result.error) {
+ console.error(`[corrections] capture failed for ${params.id}: ${result.error}`);
+ }
+ } catch (err) {
+ console.error(`[corrections] capture threw for ${params.id}:`, err);
+ }
  }
  }
 

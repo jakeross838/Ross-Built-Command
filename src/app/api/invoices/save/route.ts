@@ -20,10 +20,6 @@ export async function POST(request: NextRequest) {
 
  const body = await request.json();
  const rawItems: Array<Omit<SaveInvoiceRequest, "org_id">> = Array.isArray(body) ? body : [body];
- const items: SaveInvoiceRequest[] = rawItems.map((item) => ({
- ...item,
- org_id: membership.org_id,
- }));
  const ctx = await getClientForRequest();
  if (!ctx.ok) {
    return NextResponse.json(
@@ -31,6 +27,24 @@ export async function POST(request: NextRequest) {
      { status: 401 }
    );
  }
+
+ // Resolve the acting user for invoices.created_by (attribution) + correction
+ // authorship. x-user-id is set by the middleware for every authenticated
+ // request (reliable + cheap); fall back to a session lookup. Server-set only —
+ // never trusted from the request body.
+ let userId = request.headers.get("x-user-id");
+ if (!userId) {
+   const {
+     data: { user },
+   } = await ctx.client.auth.getUser();
+   userId = user?.id ?? null;
+ }
+
+ const items: SaveInvoiceRequest[] = rawItems.map((item) => ({
+ ...item,
+ org_id: membership.org_id,
+ created_by: userId,
+ }));
  // @supabase/ssr's server client and plain supabase-js share the same
  // query surface; the shared saveParsedInvoice helper only relies on that.
  const supabase = ctx.client as unknown as Parameters<typeof saveParsedInvoice>[0];

@@ -87,7 +87,7 @@ export async function captureCorrections(
   invoiceId: string,
   updates: Record<string, unknown>,
   userId: string
-): Promise<void> {
+): Promise<{ ok: boolean; inserted: number; error?: string }> {
   // Load the current invoice with parser originals
   const { data: invoice } = await supabase
     .from("invoices")
@@ -99,7 +99,7 @@ export async function captureCorrections(
     .eq("id", invoiceId)
     .single();
 
-  if (!invoice) return;
+  if (!invoice) return { ok: false, inserted: 0, error: "invoice not found" };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const row = invoice as any;
@@ -189,13 +189,17 @@ export async function captureCorrections(
     }
   }
 
-  if (rows.length === 0) return;
+  if (rows.length === 0) return { ok: true, inserted: 0 };
 
   const { error } = await supabase.from("parser_corrections").insert(rows);
   if (error) {
-    // Log but don't fail the invoice save — corrections are observability, not critical path
-    console.warn(
+    // Surface loudly (Sentry-visible) — a dropped correction is a real
+    // attribution/learning gap, not silent observability noise. Callers await
+    // this so serverless can't kill the write mid-flight; they flag on !ok.
+    console.error(
       `[corrections] Failed to insert ${rows.length} correction(s) for invoice ${invoiceId}: ${error.message}`
     );
+    return { ok: false, inserted: 0, error: error.message };
   }
+  return { ok: true, inserted: rows.length };
 }

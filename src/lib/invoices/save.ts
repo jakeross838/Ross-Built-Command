@@ -18,6 +18,7 @@ import { notifyPmsForJob } from "@/lib/notifications";
 import { findPotentialDuplicate } from "@/lib/invoices/duplicate-detection";
 import { getWorkflowSettings } from "@/lib/workflow-settings";
 import { extractInvoice } from "@/lib/cost-intelligence/extract-invoice";
+import { captureCorrections } from "@/lib/invoices/corrections";
 
 const INVOICES_BUCKET = "invoice-files";
 
@@ -31,6 +32,17 @@ export interface SaveInvoiceRequest {
   document_type?: "invoice" | "receipt";
   /** Caller-resolved org_id — must be the authenticated user's membership org. */
   org_id: string;
+  /** Server-resolved authenticated user id (from the x-user-id header set by
+   *  middleware). Recorded as invoices.created_by so "who uploaded this" is
+   *  always answerable, and used to attribute captured corrections. Never
+   *  trusted from the client — the route sets it. */
+  created_by?: string | null;
+  /** Human field edits from the upload card, keyed by DB column
+   *  (cost_code_id, vendor_name_raw, invoice_number, invoice_date). Applied as
+   *  the invoice's final values while ai_raw_response keeps the AI baseline, so
+   *  captureCorrections records the correction in this SAME request — no
+   *  follow-up PATCH round-trip (which caused the SAVE-button hang). */
+  field_overrides?: Record<string, unknown>;
 }
 
 export interface SaveInvoiceResult {
@@ -225,12 +237,33 @@ export async function saveParsedInvoice(
   supabase: SupabaseClient,
   req: SaveInvoiceRequest
 ): Promise<SaveInvoiceResult> {
-  const { parsed, file_url, file_name, file_type, force_save, document_type, org_id: orgId } = req;
+  const {
+    parsed,
+    file_url,
+    file_name,
+    file_type,
+    force_save,
+    document_type,
+    org_id: orgId,
+    created_by: createdBy = null,
+    field_overrides: fieldOverrides,
+  } = req;
   if (!orgId) {
     throw new Error("saveParsedInvoice called without org_id");
   }
 
   const totalAmountCents = dollarsToCents(parsed.total_amount);
+
+  // Human edits from the upload card, applied as the invoice's FINAL stored
+  // values. ai_raw_response stays = parsed (the AI baseline) so captureCorrections
+  // can still diff the human choice against what the model suggested.
+  const overrides = fieldOverrides ?? {};
+  const finalInvoiceNumber =
+    "invoice_number" in overrides ? (overrides.invoice_number as string | null) : parsed.invoice_number;
+  const finalInvoiceDate =
+    "invoice_date" in overrides ? (overrides.invoice_date as string | null) : parsed.invoice_date;
+  const finalVendorNameRaw =
+    "vendor_name_raw" in overrides ? (overrides.vendor_name_raw as string | null) : parsed.vendor_name;
 
   const existingDuplicate = await checkDuplicate(
     supabase,
@@ -380,6 +413,13 @@ export async function saveParsedInvoice(
   const effectivePmId =
     effectiveJobId && effectiveJobId === match?.job.id ? (match?.job.pm_id ?? null) : null;
 
+  // Final invoice-level cost code: a human override from the card wins over the
+  // AI/auto-assigned match. Line-level codes + allocations still derive from the
+  // AI match (unchanged from the prior two-step behaviour); the correction is
+  // captured below against the AI baseline in ai_raw_response.
+  const finalCostCodeId =
+    "cost_code_id" in overrides ? (overrides.cost_code_id as string | null) : (matchedCostCode?.id ?? null);
+
   const statusEntry = {
     who: "system",
     when: new Date().toISOString(),
@@ -394,10 +434,11 @@ export async function saveParsedInvoice(
       vendor_id: matchedVendor?.id ?? null,
       job_id: effectiveJobId,
       assigned_pm_id: effectivePmId,
-      cost_code_id: matchedCostCode?.id ?? null,
-      invoice_number: parsed.invoice_number,
-      invoice_date: parsed.invoice_date,
-      vendor_name_raw: parsed.vendor_name,
+      created_by: createdBy ?? null,
+      cost_code_id: finalCostCodeId,
+      invoice_number: finalInvoiceNumber,
+      invoice_date: finalInvoiceDate,
+      vendor_name_raw: finalVendorNameRaw,
       job_reference_raw: parsed.job_reference,
       po_reference_raw: parsed.po_reference,
       description: parsed.description,
@@ -447,6 +488,27 @@ export async function saveParsedInvoice(
   }
 
   const invoiceId = data.id as string;
+
+  // ---- Capture human corrections from the upload card (item 2 learning) ----
+  // The invoice already stores the human's FINAL values; here we record the
+  // delta against the AI baseline (ai_raw_response) so parser_corrections logs
+  // it AND the vendor→code default is learned. Awaited (not fire-and-forget) so
+  // serverless can't kill the write mid-flight; a failure is surfaced, not
+  // swallowed. Never fails the save — the invoice is already persisted.
+  if (createdBy && Object.keys(overrides).length > 0) {
+    try {
+      const result = await captureCorrections(supabase, invoiceId, overrides, createdBy);
+      if (!result.ok && result.error) {
+        console.error(
+          `[save] correction capture failed for ${invoiceId}: ${result.error}`
+        );
+      }
+    } catch (corrErr) {
+      console.error(
+        `[save] correction capture threw for ${invoiceId}: ${corrErr instanceof Error ? corrErr.message : corrErr}`
+      );
+    }
+  }
 
   // ---- Soft duplicate detection (Phase 8e) ----
   // Runs per org settings. Flags (not blocks) invoices that match an existing

@@ -252,12 +252,19 @@ export const PATCH = withApiError(async (
   }
 
   // 4. Capture parser corrections BEFORE applying the update so the
-  //    corrections module can diff against pre-update values. Fire-
-  //    and-forget — never blocks the save (pre-existing behaviour).
+  //    corrections module can diff against pre-update values. Awaited (not
+  //    fire-and-forget) so serverless can't freeze the instance and kill the
+  //    write after the response is sent; a failure is surfaced (console.error →
+  //    Sentry), never silently dropped. Still never fails the edit.
   if (user) {
-    captureCorrections(supabase, params.id, body, user.id).catch((err) => {
-      console.warn("[corrections] capture failed:", err);
-    });
+    try {
+      const result = await captureCorrections(supabase, params.id, body, user.id);
+      if (!result.ok && result.error) {
+        console.error(`[corrections] capture failed for ${params.id}: ${result.error}`);
+      }
+    } catch (err) {
+      console.error(`[corrections] capture threw for ${params.id}:`, err);
+    }
   }
 
   // 5. Apply the update.
