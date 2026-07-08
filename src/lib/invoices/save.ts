@@ -459,6 +459,11 @@ export async function saveParsedInvoice(
     );
   }
 
+  // Item 7 — coded line totals per cost code, accumulated as line rows are
+  // built; used to allocate every dollar (line codes + pro-rata tax/fee) once
+  // the invoice + line rows exist.
+  const codedByCode = new Map<string, number>();
+
   // ---- Persist per-line-item rows in invoice_line_items ----
   // Each line gets its own cost code (AI-suggested when available; otherwise
   // falls back to the invoice-level default). PM can re-assign in review.
@@ -533,27 +538,82 @@ export async function saveParsedInvoice(
         `[save] invoice_line_items insert failed for invoice ${invoiceId}: ${lineErr.message}`
       );
     }
+
+    // Item 7 — accumulate coded line totals for allocation. Uses the same
+    // resolved per-line cost code and cents amount we just persisted, so the
+    // allocation weights track exactly what the PM sees on each line.
+    for (const lr of lineRows) {
+      if (lr.cost_code_id && lr.amount_cents > 0) {
+        codedByCode.set(
+          lr.cost_code_id,
+          (codedByCode.get(lr.cost_code_id) ?? 0) + lr.amount_cents
+        );
+      }
+    }
   }
 
-  // ---- Auto-populate invoice_allocations ----
-  // When the invoice has a cost_code_id, create a single allocation at the
-  // full amount so the PM doesn't have to click "Save allocations" before
-  // the amount flows into budget views. PM can still split later via the UI.
-  if (matchedCostCode?.id && totalAmountCents > 0) {
-    try {
-      await supabase.from("invoice_allocations").insert({
-        invoice_id: invoiceId,
-        cost_code_id: matchedCostCode.id,
-        amount_cents: totalAmountCents,
-        description: parsed.description ?? null,
-        // Q10b ORG-scoped child (per migration 00096): org_id NOT NULL,
-        // direct-filter RLS. orgId sourced from caller's getCurrentMembership()
-        // — see SaveInvoiceRequest.org_id contract at top of this file.
-        org_id: orgId,
+  // ---- Auto-populate invoice_allocations (Item 7 — every dollar allocates) ----
+  // The invoice total is allocated across cost codes so budget views see 100%
+  // of the amount without the PM clicking "Save allocations". Rules:
+  //   • Coded line items are the allocation weights (multi-code invoices split
+  //     across their line codes).
+  //   • Tax + any uncoded/fee remainder is spread PRO-RATA across those coded
+  //     weights — it follows the lines' cost codes rather than being dropped.
+  //   • Single-code / no-line-item invoices fall back to the invoice-level code.
+  //   • Allocations sum EXACTLY to the invoice total — the last bucket absorbs
+  //     the rounding remainder so no cent is lost or invented.
+  //   • If there is no cost code anywhere, nothing is allocated — the amount is
+  //     logged as unallocated (flagged, never silently dropped) for the PM to
+  //     split in review.
+  // Q10b ORG-scoped child (per migration 00096): org_id NOT NULL, direct-filter
+  // RLS. orgId sourced from caller's getCurrentMembership().
+  if (totalAmountCents > 0) {
+    // Weights: coded line totals when present, else the invoice-level code.
+    let weights = new Map<string, number>(codedByCode);
+    if (weights.size === 0 && matchedCostCode?.id) {
+      weights = new Map([[matchedCostCode.id, totalAmountCents]]);
+    }
+
+    if (weights.size > 0) {
+      const entries = Array.from(weights.entries());
+      const weightSum = entries.reduce((s, [, w]) => s + w, 0);
+      // Largest-remainder apportionment: floor each pro-rata share, then hand
+      // out the leftover cents one at a time to the largest fractional
+      // remainders. Guarantees every bucket is >= 0 (satisfies the table CHECK)
+      // AND the buckets sum EXACTLY to the invoice total — no cent lost or
+      // invented, even on pathological rounding (e.g. equal weights over a
+      // 2-cent total, where "last bucket absorbs remainder" would go negative).
+      const shares = entries.map(([ccId, w]) => {
+        const exact = (w / weightSum) * totalAmountCents;
+        const floor = Math.floor(exact);
+        return { ccId, cents: floor, frac: exact - floor };
       });
-    } catch (allocErr) {
+      let leftover = totalAmountCents - shares.reduce((s, x) => s + x.cents, 0);
+      shares.sort((a, b) => b.frac - a.frac);
+      for (let i = 0; i < shares.length && leftover > 0; i++, leftover--) {
+        shares[i].cents += 1;
+      }
+      const allocRows = shares
+        .filter((x) => x.cents > 0)
+        .map((x) => ({
+          invoice_id: invoiceId,
+          cost_code_id: x.ccId,
+          amount_cents: x.cents,
+          description: parsed.description ?? null,
+          org_id: orgId,
+        }));
+      try {
+        await supabase.from("invoice_allocations").insert(allocRows);
+      } catch (allocErr) {
+        console.warn(
+          `[save] invoice_allocations auto-create failed for ${invoiceId}: ${allocErr instanceof Error ? allocErr.message : allocErr}`
+        );
+      }
+    } else {
+      // No cost code on any line or the invoice — cannot allocate. Flag the
+      // full amount as unallocated so it's visible in review, never dropped.
       console.warn(
-        `[save] invoice_allocations auto-create failed for ${invoiceId}: ${allocErr instanceof Error ? allocErr.message : allocErr}`
+        `[save] invoice ${invoiceId}: $${(totalAmountCents / 100).toFixed(2)} unallocated — no cost code on any line or the invoice; PM must allocate in review.`
       );
     }
   }
