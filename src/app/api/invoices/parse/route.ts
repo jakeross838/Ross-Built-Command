@@ -8,6 +8,7 @@ import {
 } from "@/lib/invoices/parse-file";
 import { PlanLimitError } from "@/lib/claude";
 import { matchJobForInvoice, loadJobCandidates } from "@/lib/invoices/job-matcher";
+import { matchVendor } from "@/lib/invoices/save";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // Allow up to 2 minutes for retries
@@ -107,19 +108,16 @@ export async function POST(request: NextRequest) {
  // guess and mark it source:"history" so the review card labels it
  // "from your history" (shows the code explicitly; stays overridable).
  if (parsed.vendor_name && parsed.vendor_name.trim()) {
- const { data: vendorRow } = await supabase
- .from("vendors")
- .select("default_cost_code_id")
- .eq("org_id", orgId)
- .ilike("name", parsed.vendor_name.trim())
- .is("deleted_at", null)
- .limit(1)
- .maybeSingle();
- if (vendorRow?.default_cost_code_id) {
+ // Fuzzy-match the existing vendor (SAME matcher the save uses) so name
+ // variations across uploads resolve to the same vendor + its learned default.
+ // An exact ilike missed real cases like "EloDesigns of Sarasota LLC" vs
+ // "EloDesigns" and silently lost the from-history suggestion (nwrp acceptance).
+ const matchedVendor = await matchVendor(supabase, parsed.vendor_name.trim());
+ if (matchedVendor?.default_cost_code_id) {
  const { data: cc } = await supabase
  .from("cost_codes")
  .select("code, description, is_change_order")
- .eq("id", vendorRow.default_cost_code_id as string)
+ .eq("id", matchedVendor.default_cost_code_id)
  .is("deleted_at", null)
  .maybeSingle();
  if (cc) {

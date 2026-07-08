@@ -250,12 +250,22 @@ function ParsedDataCard({
  const effJob = edits.job !== undefined ? edits.job : (parsed.job_resolution ?? null);
  const isCO = !edits.coDismissed && (!!parsed.is_change_order || !!parsed.co_reference);
 
- // ONE cost-code model. Normal invoices with real line amounts: the invoice cost
- // code is DERIVED from the line codes (read-only summary; edit on the lines).
- // No-line / scope-only lump sums have nothing to edit per-line, so they fall
- // back to a single whole-invoice picker. Never both pickers at once.
+ // ONE cost-code model. When the AI (or the user) has coded the LINES, the
+ // invoice code is DERIVED from them (read-only summary; edit on the lines).
+ // When NO line carries a code — scope-only lump sums AND real invoices where
+ // the AI only suggested an invoice-level code (e.g. 01103 on a deposit + fee) —
+ // fall back to a single whole-invoice picker so the AI suggestion is visible
+ // and correctable (and the from-history label shows). Never both pickers.
  const codeSummary = summarizeLineCodes(parsed, edits, costCodeOptions);
- const hasCodeableLines = parsed.line_items.length > 0 && !allLineItemsZero;
+ const anyLineCoded = parsed.line_items.some((li, i) => !!(edits.lineCodes?.[i]?.code ?? li.cost_code_suggestion?.code));
+
+ // Item 7 (visible) — the code(s) that uncoded fee lines + tax allocate to,
+ // pro-rata. Coded-line invoices: the distinct line codes. Single-code
+ // invoices: the invoice-level (edited-or-AI) code. Shown on every uncoded line
+ // and on tax so no dollar is left with an invisible destination.
+ const invoiceLevelCode = edits.costCode !== undefined ? (edits.costCode?.code ?? null) : (parsed.cost_code_suggestion?.code ?? null);
+ const allocTargets = anyLineCoded ? codeSummary.codes.map((c) => c.code) : (invoiceLevelCode ? [invoiceLevelCode] : []);
+ const followsLabel = allocTargets.length === 0 ? null : allocTargets.length === 1 ? `follows ${allocTargets[0]} (pro-rata)` : `pro-rata: ${allocTargets.join(", ")}`;
 
  // Math validation (client-side, tax-aware). Line items sum to the SUBTOTAL
  // (pre-tax); SUBTOTAL + TAX must equal the TOTAL. A taxed invoice is NOT a
@@ -357,10 +367,11 @@ function ParsedDataCard({
  {parsed.vendor_address && <Field label="Vendor Address" value={parsed.vendor_address} />}
  </div>
 
- {/* Cost code — ONE model (Item 1). Codeable lines → read-only summary derived
-     from the lines (edit on the lines below). No-line / scope-only → a single
-     whole-invoice picker. Never a header picker alongside line pickers. */}
- {hasCodeableLines ? (
+ {/* Cost code — ONE model (Item 1). Coded lines → read-only summary derived
+     from the lines (edit on the lines below). No line coded (incl. AI
+     invoice-level-only) → a single whole-invoice picker so the suggestion is
+     visible + correctable. Never a header picker alongside line pickers. */}
+ {anyLineCoded ? (
  <CostCodeSummary summary={codeSummary} />
  ) : (
  <CostCodeField
@@ -421,7 +432,7 @@ function ParsedDataCard({
  size="sm"
  value={lineValue}
  options={costCodeOptions}
- placeholder="Assign cost code…"
+ placeholder={!lineValue && followsLabel ? "Override, or leave to follow…" : "Assign cost code…"}
  onChange={(id) => {
  const next = { ...(edits.lineCodes ?? {}) };
  if (id) { const opt = costCodeOptions.find(o => o.id === id); if (opt) next[i] = { id: opt.id, code: opt.code }; }
@@ -429,6 +440,11 @@ function ParsedDataCard({
  onEdit({ lineCodes: next });
  }}
  />
+ {/* Item 7 visible — an uncoded line allocates pro-rata to the coded /
+     invoice-level code(s); never a silent destination. Overridable above. */}
+ {!lineValue && followsLabel && (
+ <p className="text-[11px] text-[color:var(--nw-stone-blue)]">&rarr; {followsLabel}</p>
+ )}
  </div>
  );
  })}
@@ -446,9 +462,14 @@ function ParsedDataCard({
  </div>
  )}
  {parsed.tax != null && parsed.tax > 0 && (
- <div className="flex justify-between text-sm">
- <span className="text-[color:var(--text-secondary)]">Tax</span>
- <span className="text-[color:var(--text-muted)]">{formatDollars(parsed.tax)}</span>
+ <div className="flex justify-between text-sm items-baseline gap-2">
+ <span className="text-[color:var(--text-secondary)] min-w-0">
+ Tax
+ {/* Item 7 visible — tax allocates pro-rata to the coded / invoice-level
+     code(s), same as the uncoded lines; never a silent destination. */}
+ {followsLabel && <span className="ml-2 text-[11px] text-[color:var(--nw-stone-blue)]">&rarr; {followsLabel}</span>}
+ </span>
+ <span className="text-[color:var(--text-muted)] flex-shrink-0">{formatDollars(parsed.tax)}</span>
  </div>
  )}
  <div className="flex justify-between text-base font-semibold pt-1">
@@ -947,8 +968,8 @@ export default function UploadContent() {
  // vendor→code learning. No-line / scope-only lump sums use the single whole-
  // invoice picker (edits.costCode). The server also derives the stored invoice
  // cost code from the lines, so a no-edit save still records the dominant.
- const hasCodeableLines = parsed.line_items.length > 0 && !parsed.line_items.every((li) => !li.amount || li.amount === 0);
- if (hasCodeableLines) {
+ const anyLineCoded = parsed.line_items.some((li, i) => !!(edits.lineCodes?.[i]?.code ?? li.cost_code_suggestion?.code));
+ if (anyLineCoded) {
  if (edits.lineCodes && Object.keys(edits.lineCodes).length > 0) {
  const summary = summarizeLineCodes(parsed, edits, costCodeOptions);
  if (summary.dominant?.id) fieldOverrides.cost_code_id = summary.dominant.id;

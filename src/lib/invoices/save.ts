@@ -67,7 +67,7 @@ function normalizeVendorName(name: string): string {
  * A single first-word match is NOT enough — e.g. "Florida Sunshine
  * Carpentry" should never bind to "M & J Florida Enterprises, LLC".
  */
-async function matchVendor(supabase: SupabaseClient, vendorName: string) {
+export async function matchVendor(supabase: SupabaseClient, vendorName: string) {
   const normalizedNew = normalizeVendorName(vendorName);
   if (!normalizedNew) return null;
 
@@ -81,12 +81,12 @@ async function matchVendor(supabase: SupabaseClient, vendorName: string) {
   const firstToken = Array.from(newTokens)[0];
   const { data } = await supabase
     .from("vendors")
-    .select("id, name")
+    .select("id, name, default_cost_code_id")
     .ilike("name", `%${firstToken}%`)
     .is("deleted_at", null)
     .limit(25);
 
-  const candidates = (data ?? []) as Array<{ id: string; name: string }>;
+  const candidates = (data ?? []) as Array<{ id: string; name: string; default_cost_code_id: string | null }>;
   if (candidates.length === 0) return null;
 
   for (const c of candidates) {
@@ -578,11 +578,12 @@ export async function saveParsedInvoice(
   // falls back to the invoice-level default). PM can re-assign in review.
   if (Array.isArray(parsed.line_items) && parsed.line_items.length > 0) {
     // Resolve default budget_line_id once for lines that fall back to
-    // the invoice-level cost code.
+    // the invoice-level cost code. Uses the FINAL (human-corrected) invoice
+    // code so an uncoded line follows the correction, not the AI's original.
     const defaultBudgetLineId = await findBudgetLine(
       supabase,
       match?.job.id ?? null,
-      matchedCostCode?.id ?? null
+      finalCostCodeId
     );
 
     // Pre-resolve per-line AI-suggested codes (dedupe by code string).
@@ -604,12 +605,13 @@ export async function saveParsedInvoice(
         const sugMatch = sugCode ? perLineCodes.get(sugCode) : null;
         const sugConfidence = li.cost_code_suggestion?.confidence ?? null;
 
-        // Assign the line's cost code: AI suggestion if strong, else invoice default.
+        // Assign the line's cost code: strong AI suggestion, else the FINAL
+        // (human-corrected) invoice code — so uncoded lines follow a correction.
         const autoAssignLineCode =
-          sugMatch && (sugConfidence ?? 0) >= 0.8 ? sugMatch.id : matchedCostCode?.id ?? null;
+          sugMatch && (sugConfidence ?? 0) >= 0.8 ? sugMatch.id : finalCostCodeId;
 
         const lineBudgetLineId =
-          autoAssignLineCode === matchedCostCode?.id
+          autoAssignLineCode === finalCostCodeId
             ? defaultBudgetLineId
             : autoAssignLineCode
               ? await findBudgetLine(supabase, match?.job.id ?? null, autoAssignLineCode)
@@ -677,10 +679,13 @@ export async function saveParsedInvoice(
   // Q10b ORG-scoped child (per migration 00096): org_id NOT NULL, direct-filter
   // RLS. orgId sourced from caller's getCurrentMembership().
   if (totalAmountCents > 0) {
-    // Weights: coded line totals when present, else the invoice-level code.
+    // Weights: coded line totals when present, else the invoice-level code —
+    // and that fallback must use the FINAL (human-corrected) invoice code, not
+    // the AI's original match, or a corrected single-code invoice would allocate
+    // every dollar to the wrong (pre-correction) code.
     let weights = new Map<string, number>(codedByCode);
-    if (weights.size === 0 && matchedCostCode?.id) {
-      weights = new Map([[matchedCostCode.id, totalAmountCents]]);
+    if (weights.size === 0 && finalCostCodeId) {
+      weights = new Map([[finalCostCodeId, totalAmountCents]]);
     }
 
     if (weights.size > 0) {
