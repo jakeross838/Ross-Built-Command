@@ -571,12 +571,12 @@ function JobResolver({ rawReference, signals, job, untouched, jobOptions, onChan
  } catch { /* silent — the manual picker remains */ }
  }, [untouched, job, jobOptions, signals, onChange]);
 
+ const forceReresolve = useCallback(() => { triedRef.current = ""; reresolve(); }, [reresolve]);
  useEffect(() => { reresolve(); }, [reresolve]);
  useEffect(() => {
- const h = () => { triedRef.current = ""; reresolve(); };
- window.addEventListener("nw:job-created", h);
- return () => window.removeEventListener("nw:job-created", h);
- }, [reresolve]);
+ window.addEventListener("nw:job-created", forceReresolve);
+ return () => window.removeEventListener("nw:job-created", forceReresolve);
+ }, [forceReresolve]);
 
  if (job && !picking) {
  return (
@@ -596,7 +596,7 @@ function JobResolver({ rawReference, signals, job, untouched, jobOptions, onChan
  <span className="text-[11px] font-semibold text-[color:var(--nw-warn)] uppercase tracking-wider">No Matching Job</span>
  {rawReference && <span className="text-[11px] text-[color:var(--text-muted)] truncate">reference: &ldquo;{rawReference}&rdquo;</span>}
  </div>
- <JobCombobox jobOptions={jobOptions} onOpen={() => reresolve()} onPick={(j) => { onChange(j); setPicking(false); }} />
+ <JobCombobox jobOptions={jobOptions} onOpen={forceReresolve} onPick={(j) => { onChange(j); setPicking(false); }} />
  </div>
  );
 }

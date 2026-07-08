@@ -97,25 +97,47 @@ function streetKey(addr: string): string | null {
   return words.slice(0, Math.min(words.length, 3)).join(" ");
 }
 
+/**
+ * Mine a street key ("717 north", "501 74th") from arbitrary text where the
+ * number may not be the first token — RB job names embed the address, e.g.
+ * "Gavin - 717 North Shore Dr" or "Kellner — 214 Palm Ave". Returns the house
+ * number + the following word, or null if there's no numeric token.
+ */
+function streetKeyFromText(text: string): string | null {
+  const words = cleanAddress(text).split(/[\s,\-—]+/).filter(Boolean);
+  const numIdx = words.findIndex((w) => /^\d+$/.test(w));
+  if (numIdx === -1 || numIdx + 1 >= words.length) return null;
+  return `${words[numIdx]} ${words[numIdx + 1]}`.toLowerCase();
+}
+
 interface JobKeys {
   jobKey: string; // always lowercase
   surnameKey: string | null;
   streetKey: string | null;
 }
 
+// A match key shorter than this substring-matches almost any text (e.g. a smoke
+// fixture with surname "e"), producing false ambiguity. Ignore such keys.
+const MIN_KEY_LEN = 3;
+
 function buildKeys(job: JobCandidate): JobKeys {
-  const jobKey = (primaryNameToken(job.name) ?? job.name).toLowerCase();
+  const jobToken = (primaryNameToken(job.name) ?? job.name).toLowerCase();
+  const jobKey = jobToken.length >= MIN_KEY_LEN ? jobToken : "";
   // F1-Wave-B Slice-1 B-1a-bis: surname signal preserved via clients.full_name
   // JOIN. lastWord("Drummond Family Trust") -> "Trust" (matches pre-refactor
   // lastWord("Drummond Family Trust") behavior on flat client_name string).
   const fullName = job.client?.full_name ?? null;
   const surname = fullName ? lastWord(fullName) : null;
   const surnameKey = surname ? surname.toLowerCase() : null;
-  const streetRaw = job.address ? streetKey(job.address) : null;
+  // Street key from the address, falling back to mining the job NAME (RB names
+  // embed the address, and address is frequently null).
+  const streetRaw = (job.address ? streetKey(job.address) : null) ?? streetKeyFromText(job.name);
+  const streetKc = streetRaw ? streetRaw.toLowerCase() : null;
   return {
     jobKey,
-    surnameKey: surnameKey && surnameKey !== jobKey ? surnameKey : null,
-    streetKey: streetRaw ? streetRaw.toLowerCase() : null,
+    surnameKey:
+      surnameKey && surnameKey !== jobKey && surnameKey.length >= MIN_KEY_LEN ? surnameKey : null,
+    streetKey: streetKc && streetKc.length >= MIN_KEY_LEN ? streetKc : null,
   };
 }
 
