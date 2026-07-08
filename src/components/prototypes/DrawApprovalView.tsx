@@ -137,11 +137,7 @@ export default function DrawApprovalView({
             </Link>
             <span>/</span>
             <span style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
-              Pay Apps
-            </span>
-            <span>/</span>
-            <span style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
-              Pay App #{draw.draw_number}
+              Draw #{draw.draw_number}
             </span>
             {draw.revision_number > 0 && (
               <>
@@ -501,17 +497,6 @@ export default function DrawApprovalView({
             </div>
           </summary>
           <div className="mt-3">
-            <div
-              className="mb-3 text-[10px]"
-              style={{
-                fontFamily: "var(--font-jetbrains-mono)",
-                color: "var(--text-tertiary)",
-                letterSpacing: "0.04em",
-              }}
-            >
-              Note: timeline reconstructed from terminal status. Real
-              status_history JSONB lands in F1.
-            </div>
             <ul className="space-y-2 text-[12px]">
               {timeline.map((e, i) => (
                 <li key={i} className="flex items-baseline gap-3">

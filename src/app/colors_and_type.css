@@ -163,3 +163,15 @@
   --color-white: var(--nw-slate-deeper);
   --text-body:   var(--text-primary);
 }
+
+/* Stage 2.6 — slashed zero everywhere the JetBrains-Mono face is used, so cost
+   codes like 01103 never read as 81103 (its default dotted zero). Scoped to the
+   mono usages (the .font-mono utility + inline font-family vars) so body/display
+   sans numerals are untouched. */
+.font-mono,
+[style*="--font-mono"],
+[style*="--font-jetbrains-mono"],
+code, kbd, samp, pre {
+  font-feature-settings: "zero" 1;
+  font-variant-numeric: slashed-zero;
+}
