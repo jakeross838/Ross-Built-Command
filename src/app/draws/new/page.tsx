@@ -13,6 +13,7 @@ interface Job {
   current_contract_amount: number;
   deposit_percentage: number;
   retainage_percent: number;
+  billing_method: string | null;
 }
 
 interface AvailableInvoice {
@@ -169,7 +170,7 @@ export default function NewDrawWizardPage() {
       const { data } = await supabase
         .from("jobs")
         .select(
-          "id, name, address, original_contract_amount, current_contract_amount, deposit_percentage, retainage_percent"
+          "id, name, address, original_contract_amount, current_contract_amount, deposit_percentage, retainage_percent, billing_method"
         )
         .is("deleted_at", null)
         .eq("status", "active")
@@ -437,6 +438,10 @@ export default function NewDrawWizardPage() {
 
   // ----- Derived UI helpers -----
   const job = useMemo(() => jobs.find((j) => j.id === jobId) ?? null, [jobs, jobId]);
+  // Cost-plus statements bill costs + markup; the this-period amount is
+  // strictly derived from invoice allocations, never hand-entered. Lock the
+  // G703-preview this-period inputs for statement jobs (B3).
+  const isStatementJob = job?.billing_method === "cost_plus_statement";
   // Stage 1.2 — a job with no contract amount can't produce correct G702 math.
   const needsSetup = !!(jobMeta && jobMeta.contractAmount <= 0);
   const blockingOpenDraw = priorDraws.find((d) =>
@@ -1044,6 +1049,7 @@ export default function NewDrawWizardPage() {
                         override={overrides[l.cost_code_id]}
                         reason={overrideReasons[l.cost_code_id] ?? ""}
                         onChange={(v, r) => setLineOverride(l.cost_code_id, v, r)}
+                        locked={isStatementJob}
                       />
                     ))}
                     {coLines.length > 0 && (
@@ -1069,6 +1075,7 @@ export default function NewDrawWizardPage() {
                             reason={overrideReasons[l.cost_code_id] ?? ""}
                             onChange={(v, r) => setLineOverride(l.cost_code_id, v, r)}
                             isCo
+                            locked={isStatementJob}
                           />
                         ))}
                       </>
@@ -1318,16 +1325,19 @@ function G703EditRow({
   reason,
   onChange,
   isCo,
+  locked,
 }: {
   line: PreviewLine;
   override?: number;
   reason: string;
   onChange: (dollars: string, reason: string) => void;
   isCo?: boolean;
+  /** cost_plus_statement: this-period is derived-only — render read-only. */
+  locked?: boolean;
 }) {
-  const effectiveAmount = override ?? line.this_period;
+  const effectiveAmount = locked ? line.this_period : override ?? line.this_period;
   const overrun = line.scheduled_value > 0 && line.total_completed > line.scheduled_value;
-  const hasOverride = override != null && override !== line.this_period;
+  const hasOverride = !locked && override != null && override !== line.this_period;
   const dollars = (effectiveAmount / 100).toFixed(2);
 
   return (
@@ -1345,13 +1355,22 @@ function G703EditRow({
           {line.previous_applications > 0 ? formatCents(line.previous_applications) : <span className="text-[color:var(--text-secondary)]">—</span>}
         </td>
         <td className="py-2 px-3 text-right">
-          <input
-            type="number"
-            step="0.01"
-            value={dollars}
-            onChange={(e) => onChange(e.target.value, reason)}
-            className="w-24 px-1.5 py-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] text-right font-mono tabular-nums focus:border-[var(--nw-stone-blue)] focus:outline-none"
-          />
+          {locked ? (
+            <span
+              className="font-mono tabular-nums text-sm text-[color:var(--text-primary)]"
+              title="Derived from invoice allocations — cost-plus statements don't allow manual this-period entry"
+            >
+              {formatCents(effectiveAmount)}
+            </span>
+          ) : (
+            <input
+              type="number"
+              step="0.01"
+              value={dollars}
+              onChange={(e) => onChange(e.target.value, reason)}
+              className="w-24 px-1.5 py-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] text-right font-mono tabular-nums focus:border-[var(--nw-stone-blue)] focus:outline-none"
+            />
+          )}
         </td>
         <td className={`py-2 px-3 text-right ${overrun ? "text-[color:var(--nw-danger)] font-medium" : "text-[color:var(--text-primary)]"}`}>
           {formatCents(line.total_completed)}
