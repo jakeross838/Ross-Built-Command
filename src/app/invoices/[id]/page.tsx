@@ -170,6 +170,11 @@ export default function InvoiceReviewPage() {
  const [qbNotes, setQbNotes] = useState("");
  const [showKickBackModal, setShowKickBackModal] = useState(false);
  const [kickBackNote, setKickBackNote] = useState("");
+ // Delete/void (un-approved invoices, owner/admin).
+ const [showDeleteModal, setShowDeleteModal] = useState(false);
+ const [deleting, setDeleting] = useState(false);
+ const [deleteReason, setDeleteReason] = useState("");
+ const [deleteError, setDeleteError] = useState<string | null>(null);
  const [savingVendorName, setSavingVendorName] = useState(false);
  const [partialError, setPartialError] = useState<string | null>(null);
 
@@ -647,6 +652,12 @@ export default function InvoiceReviewPage() {
  const locked = isInvoiceLocked(invoice.status);
  const canEdit = !locked || (role !== null && canEditLockedFields(role));
  const showPaymentTracking = ["qa_approved", "pushed_to_qb", "in_draw", "paid"].includes(invoice.status);
+ // Delete/void — only un-approved invoices, owner/admin (mirrors the server
+ // DELETABLE_STATUSES gate). Anything PM-approved or further must be voided
+ // through the workflow, not deleted.
+ const canDelete =
+   (role === "owner" || role === "admin") &&
+   ["received", "ai_processed", "pm_review", "pm_held", "pm_denied", "qa_kicked_back"].includes(invoice.status);
 
  // Summary: how many unique cost codes the line items span
  const uniqueLineCodeIds = Array.from(new Set(lineItems.map(l => l.cost_code_id).filter(Boolean) as string[]));
@@ -853,6 +864,30 @@ export default function InvoiceReviewPage() {
  } else {
  const data = await res.json().catch(() => ({}));
  toast.error(data.error ?? "Failed to kick back");
+ }
+ };
+
+ const handleDelete = async () => {
+ if (!invoice) return;
+ setDeleting(true);
+ setDeleteError(null);
+ try {
+ const res = await fetch(`/api/invoices/${invoice.id}`, {
+ method: "DELETE",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify({ reason: deleteReason.trim() }),
+ });
+ if (res.ok) {
+ toast.success("Invoice deleted");
+ router.push("/financials/bills");
+ return;
+ }
+ const data = await res.json().catch(() => ({}));
+ setDeleteError(data.error ?? "Failed to delete invoice");
+ } catch {
+ setDeleteError("Failed to delete invoice");
+ } finally {
+ setDeleting(false);
  }
  };
 
@@ -1305,6 +1340,16 @@ export default function InvoiceReviewPage() {
                  onClick={() => toast.info("QuickBooks integration coming soon")}
                >
                  Push to QuickBooks →
+               </NwButton>
+             ) : null}
+             {canDelete ? (
+               <NwButton
+                 variant="ghost"
+                 size="sm"
+                 onClick={() => { setDeleteReason(""); setDeleteError(null); setShowDeleteModal(true); }}
+                 title="Delete this un-approved invoice"
+               >
+                 Delete
                </NwButton>
              ) : null}
            </div>
@@ -2166,6 +2211,43 @@ export default function InvoiceReviewPage() {
  </NwButton>
  <NwButton variant="ghost" size="md" onClick={() => setShowPartialModal(false)}>
  Cancel
+ </NwButton>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {/* ── Delete / Void Confirmation Modal ── */}
+ {showDeleteModal && (
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+ <div className="bg-[var(--bg-card)] border border-[var(--border-default)] shadow-2xl max-w-md w-full p-6">
+ <div className="flex items-center gap-3 mb-4">
+ <div className="w-10 h-10 bg-[rgba(176,85,78,0.12)] flex items-center justify-center flex-shrink-0">
+ <svg className="w-5 h-5 text-[color:var(--nw-danger)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+ <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+ </svg>
+ </div>
+ <h3 className="font-display text-xl text-[color:var(--text-primary)]">Delete this invoice?</h3>
+ </div>
+ <p className="text-sm text-[color:var(--text-muted)] mb-4">
+ <span className="font-medium text-[color:var(--text-primary)]">{invoice.vendor_name_raw ?? "This invoice"}</span>
+ {invoice.invoice_number ? ` · #${invoice.invoice_number}` : ""}
+ {" · "}{formatCents(invoice.total_amount)} will be removed from the queue. It is soft-deleted and audit-logged — recoverable by an admin, not permanently erased.
+ </p>
+ <label className="block text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider mb-1.5">Reason (optional)</label>
+ <input
+ value={deleteReason}
+ onChange={(e) => setDeleteReason(e.target.value)}
+ placeholder="e.g. duplicate of #1099"
+ className="w-full px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none mb-4"
+ />
+ {deleteError && (
+ <div className="mb-4 border border-[rgba(176,85,78,0.35)] bg-[rgba(176,85,78,0.08)] px-3 py-2 text-xs text-[color:var(--nw-danger)]">{deleteError}</div>
+ )}
+ <div className="flex gap-3">
+ <NwButton variant="ghost" size="md" onClick={() => setShowDeleteModal(false)} disabled={deleting} className="flex-1">Cancel</NwButton>
+ <NwButton variant="danger" size="md" onClick={handleDelete} disabled={deleting} loading={deleting} className="flex-1">
+ {deleting ? "Deleting" : "Delete invoice"}
  </NwButton>
  </div>
  </div>

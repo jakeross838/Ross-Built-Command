@@ -186,46 +186,79 @@ async function findBudgetLine(
   return (data?.[0]?.id as string) ?? null;
 }
 
-async function checkDuplicate(
-  supabase: SupabaseClient,
-  vendorNameRaw: string,
-  totalAmountCents: number,
-  invoiceDate: string | null,
-  invoiceNumber: string | null
-) {
-  const trimmedVendor = vendorNameRaw?.trim();
-  if (!trimmedVendor) return null;
+export type DuplicateHit = {
+  id: string;
+  invoice_number: string | null;
+  vendor_name_raw: string | null;
+  total_amount: number;
+  invoice_date: string | null;
+  status: string;
+};
 
-  // Strongest signal (item 6): same vendor + same invoice number is the same
-  // invoice, regardless of amount/date. Fires even when the vendor omits a
-  // date, and catches an edited re-upload where the amount changed slightly.
-  const trimmedNumber = invoiceNumber?.trim();
+const DUP_SELECT = "id, invoice_number, vendor_name_raw, total_amount, invoice_date, status";
+
+/**
+ * Find an existing (non-deleted, non-void) invoice that duplicates the given
+ * one. Shared by the save-time BLOCK and the parse-time early WARNING so both
+ * use identical logic. Robust to vendor-name variation across uploads:
+ *   1. fuzzy-matched vendor + invoice number   (strongest; survives name drift)
+ *   2. raw-name + invoice number               (vendor didn't resolve)
+ *   3. raw-name + amount + date                (numberless invoices)
+ */
+export async function findDuplicateInvoice(
+  supabase: SupabaseClient,
+  orgId: string,
+  opts: { vendorName: string | null; invoiceNumber: string | null; amountCents: number | null; invoiceDate: string | null }
+): Promise<DuplicateHit | null> {
+  const trimmedVendor = opts.vendorName?.trim() || null;
+  const trimmedNumber = opts.invoiceNumber?.trim() || null;
+
   if (trimmedNumber) {
+    // 1) fuzzy vendor → vendor_id + invoice number.
+    if (trimmedVendor) {
+      const matched = await matchVendor(supabase, trimmedVendor);
+      if (matched?.id) {
+        const { data } = await supabase
+          .from("invoices")
+          .select(DUP_SELECT)
+          .eq("org_id", orgId)
+          .eq("vendor_id", matched.id)
+          .ilike("invoice_number", trimmedNumber)
+          .is("deleted_at", null)
+          .neq("status", "void")
+          .limit(1);
+        if (data?.[0]) return data[0] as DuplicateHit;
+      }
+      // 2) raw vendor name + invoice number.
+      const { data } = await supabase
+        .from("invoices")
+        .select(DUP_SELECT)
+        .eq("org_id", orgId)
+        .ilike("vendor_name_raw", trimmedVendor)
+        .ilike("invoice_number", trimmedNumber)
+        .is("deleted_at", null)
+        .neq("status", "void")
+        .limit(1);
+      if (data?.[0]) return data[0] as DuplicateHit;
+    }
+  }
+
+  // 3) raw vendor + amount + date (numberless invoices).
+  if (trimmedVendor && opts.invoiceDate && opts.amountCents != null) {
     const { data } = await supabase
       .from("invoices")
-      .select("id, vendor_name_raw, total_amount, status")
+      .select(DUP_SELECT)
+      .eq("org_id", orgId)
       .ilike("vendor_name_raw", trimmedVendor)
-      .ilike("invoice_number", trimmedNumber)
+      .eq("total_amount", opts.amountCents)
+      .eq("invoice_date", opts.invoiceDate)
       .is("deleted_at", null)
       .neq("status", "void")
       .limit(1);
-    if (data?.[0]) return data[0];
+    if (data?.[0]) return data[0] as DuplicateHit;
   }
 
-  // Fallback: same vendor + amount + date catches re-uploads of numberless
-  // invoices (lump-sum Word docs, handwritten photos) where item# can't match.
-  if (!invoiceDate) return null;
-  const { data } = await supabase
-    .from("invoices")
-    .select("id, vendor_name_raw, total_amount, status")
-    .ilike("vendor_name_raw", trimmedVendor)
-    .eq("total_amount", totalAmountCents)
-    .eq("invoice_date", invoiceDate)
-    .is("deleted_at", null)
-    .neq("status", "void")
-    .limit(1);
-
-  return data?.[0] ?? null;
+  return null;
 }
 
 function dollarsToCents(dollars: number): number {
@@ -288,21 +321,20 @@ export async function saveParsedInvoice(
   const finalVendorNameRaw =
     "vendor_name_raw" in overrides ? (overrides.vendor_name_raw as string | null) : parsed.vendor_name;
 
-  const existingDuplicate = await checkDuplicate(
-    supabase,
-    parsed.vendor_name,
-    totalAmountCents,
-    parsed.invoice_date,
-    parsed.invoice_number
-  );
+  const existingDuplicate = await findDuplicateInvoice(supabase, orgId, {
+    vendorName: finalVendorNameRaw,
+    invoiceNumber: finalInvoiceNumber,
+    amountCents: totalAmountCents,
+    invoiceDate: finalInvoiceDate,
+  });
 
   if (existingDuplicate && !force_save) {
     return {
       duplicate: {
-        id: existingDuplicate.id as string,
-        vendor_name_raw: existingDuplicate.vendor_name_raw as string,
-        total_amount: existingDuplicate.total_amount as number,
-        status: existingDuplicate.status as string,
+        id: existingDuplicate.id,
+        vendor_name_raw: existingDuplicate.vendor_name_raw ?? "",
+        total_amount: existingDuplicate.total_amount,
+        status: existingDuplicate.status,
       },
     };
   }

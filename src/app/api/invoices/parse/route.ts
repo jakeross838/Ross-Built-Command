@@ -8,7 +8,7 @@ import {
 } from "@/lib/invoices/parse-file";
 import { PlanLimitError } from "@/lib/claude";
 import { matchJobForInvoice, loadJobCandidates } from "@/lib/invoices/job-matcher";
-import { matchVendor } from "@/lib/invoices/save";
+import { matchVendor, findDuplicateInvoice } from "@/lib/invoices/save";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // Allow up to 2 minutes for retries
@@ -130,6 +130,21 @@ export async function POST(request: NextRequest) {
  };
  }
  }
+ }
+
+ // Parse-time EARLY duplicate warning (defect: guard was save-only). Uses the
+ // SAME logic as the save-time block (fuzzy vendor + invoice #, or vendor +
+ // amount + date). Not a block — just surfaces "possibly already in system" on
+ // the card so the PM sees it before spending time reviewing.
+ try {
+ parsed.possible_duplicate = await findDuplicateInvoice(supabase, orgId, {
+ vendorName: parsed.vendor_name,
+ invoiceNumber: parsed.invoice_number,
+ amountCents: parsed.total_amount != null ? Math.round(parsed.total_amount * 100) : null,
+ invoiceDate: parsed.invoice_date,
+ });
+ } catch {
+ parsed.possible_duplicate = null;
  }
 
  // DOCX: render HTML once here so the upload preview can display it

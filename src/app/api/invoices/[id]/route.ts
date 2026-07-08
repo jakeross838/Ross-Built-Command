@@ -13,6 +13,7 @@ import {
   canEditLockedFields,
 } from "@/lib/invoice-permissions";
 import { logFieldEdit } from "@/lib/audit/log-field-edit";
+import { logStatusChange } from "@/lib/activity-log";
 
 // ─── PATCH allowlist (segmented by rule matrix) ──────────────────────
 // Each category has different lock/privilege/integrity/audit semantics.
@@ -315,4 +316,87 @@ export const PATCH = withApiError(async (
   }
 
   return NextResponse.json(data);
+});
+
+// Un-approved invoices that can be removed (soft-deleted / voided). Anything
+// PM-approved or further into the workflow (QA, QB, draw, paid) must NOT be
+// deletable — those are corrected via void-and-re-enter through the workflow.
+const DELETABLE_STATUSES = new Set<string>([
+  "received",
+  "ai_processed",
+  "pm_review",
+  "pm_held",
+  "pm_denied",
+  "qa_kicked_back",
+]);
+
+export const DELETE = withApiError(async (
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) => {
+  const membership = getMembershipFromRequest(request) ?? (await getCurrentMembership());
+  if (!membership) throw new ApiError("Not authenticated", 401);
+  // Owner / admin only — deletion is a privileged, audited action.
+  if (!["owner", "admin"].includes(membership.role)) {
+    throw new ApiError("Only an owner or admin can delete an invoice", 403);
+  }
+
+  const body = (await request.json().catch(() => ({}))) as { reason?: string };
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+
+  const authClient = createServerClient();
+  const { data: { user } } = await authClient.auth.getUser();
+  const supabase = tryCreateServiceRoleClient() ?? authClient;
+
+  const { data: invoice, error: fetchError } = await supabase
+    .from("invoices")
+    .select("id, org_id, status, status_history, deleted_at, vendor_name_raw, invoice_number")
+    .eq("id", params.id)
+    .single();
+  if (fetchError || !invoice || invoice.org_id !== membership.org_id) {
+    throw new ApiError("Invoice not found", 404);
+  }
+  if (invoice.deleted_at) {
+    throw new ApiError("Invoice is already deleted", 409);
+  }
+  const status = invoice.status as string;
+  if (!DELETABLE_STATUSES.has(status)) {
+    throw new ApiError(
+      `Cannot delete a ${status.replace(/_/g, " ")} invoice — only un-approved invoices can be removed. Approved / drawn / paid invoices must be voided through the workflow.`,
+      422
+    );
+  }
+
+  const now = new Date().toISOString();
+  const entry = {
+    who: user?.id ?? "system",
+    when: now,
+    old_status: status,
+    new_status: "void",
+    note: reason ? `Deleted: ${reason}` : "Deleted (un-approved)",
+  };
+  const history = Array.isArray(invoice.status_history)
+    ? [...(invoice.status_history as unknown[]), entry]
+    : [entry];
+
+  const { error: updateError } = await supabase
+    .from("invoices")
+    .update({ deleted_at: now, status: "void", status_history: history })
+    .eq("id", params.id)
+    .eq("org_id", membership.org_id);
+  if (updateError) throw new ApiError(updateError.message, 500);
+
+  // Audit — append-only activity_log row for the deletion.
+  await logStatusChange({
+    org_id: membership.org_id,
+    user_id: user?.id ?? null,
+    entity_type: "invoice",
+    entity_id: params.id,
+    from: status,
+    to: "void",
+    reason: reason || "Deleted (un-approved)",
+    extra: { action: "delete" },
+  });
+
+  return NextResponse.json({ ok: true, id: params.id });
 });

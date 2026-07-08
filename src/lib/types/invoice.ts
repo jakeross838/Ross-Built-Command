@@ -77,6 +77,17 @@ export interface ParsedInvoice {
   *  job_reference text is NEVER treated as an assigned job. */
  job_resolution?: { id: string; name: string } | null;
  document_type?: "invoice" | "proposal" | "quote" | "credit_memo" | "statement" | "unknown";
+ /** Parse-time early duplicate warning — an existing (non-deleted, non-void)
+  *  invoice that matches this one (fuzzy vendor + invoice #, or vendor + amount
+  *  + date). The upload card shows a "possibly already in system" banner. Not a
+  *  block — the save-time guard is the hard stop. */
+ possible_duplicate?: {
+  id: string;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  total_amount: number;
+  status: string;
+ } | null;
 }
 
 export interface ParseResult {
