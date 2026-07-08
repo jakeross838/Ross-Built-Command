@@ -27,6 +27,10 @@ const FINANCIAL_FIELDS = new Set<string>([
   "total_amount",
   "invoice_type",
   "description",
+  // Item 2/4 — the invoice-level cost code is correctable in review/upload; the
+  // change is captured by captureCorrections (which now also writes the vendor
+  // default) so a correction teaches the vendor→code default.
+  "cost_code_id",
 ]);
 
 /** Payment-tracking metadata. No lock — these fields exist to be
