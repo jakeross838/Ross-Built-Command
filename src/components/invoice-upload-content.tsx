@@ -396,34 +396,32 @@ function ParsedDataCard({
  ))}
  </div>
  ) : (
- // Full table with amounts
- <div className="overflow-x-auto border border-[var(--border-default)]">
- <table className="w-full text-sm">
- <thead>
- <tr className="bg-[var(--bg-subtle)] text-left">
- <th className="py-2 px-3 text-[color:var(--text-secondary)] font-medium text-xs">Description</th>
- <th className="py-2 px-3 text-[color:var(--text-secondary)] font-medium text-xs">Cost Code</th>
- <th className="py-2 px-3 text-[color:var(--text-secondary)] font-medium text-xs text-right">Qty</th>
- <th className="py-2 px-3 text-[color:var(--text-secondary)] font-medium text-xs">Unit</th>
- <th className="py-2 px-3 text-[color:var(--text-secondary)] font-medium text-xs text-right">Rate</th>
- <th className="py-2 px-3 text-[color:var(--text-secondary)] font-medium text-xs text-right">Amount</th>
- </tr>
- </thead>
- <tbody>
+ // Stacked line items — one block per line so nothing scrolls off the narrow
+ // review panel (Item 6). Description + Amount on top; qty/unit/rate as a
+ // compact meta line only when present; the cost-code picker full-width below.
+ <div className="border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
  {parsed.line_items.map((item, i) => {
  const lineCode = item.cost_code_suggestion?.code ?? null;
  const editedLine = edits.lineCodes?.[i];
  const initialOpt = lineCode ? costCodeOptions.find(o => o.code === lineCode) : undefined;
  const lineValue = editedLine?.id ?? initialOpt?.id ?? null;
+ const hasMeta = item.qty != null || !!item.unit || item.rate != null;
  return (
- <tr key={i} className="border-t border-[var(--border-default)]">
- <td className="py-2 px-3 text-[color:var(--text-muted)]">{item.description}</td>
- <td className="py-2 px-3 text-xs min-w-[180px]">
+ <div key={i} className="p-3 space-y-2">
+ <div className="flex items-start justify-between gap-3">
+ <p className="text-sm text-[color:var(--text-primary)] flex-1 min-w-0">{item.description}</p>
+ <span className="text-sm font-medium text-[color:var(--text-primary)] flex-shrink-0 tabular-nums">{formatDollars(item.amount)}</span>
+ </div>
+ {hasMeta && (
+ <p className="text-[11px] text-[color:var(--text-tertiary)] tabular-nums">
+ {item.qty != null ? `${item.qty} ` : ""}{item.unit ?? ""}{item.rate != null ? ` @ ${formatDollars(item.rate)}` : ""}
+ </p>
+ )}
  <CostCodeCombobox
  size="sm"
  value={lineValue}
  options={costCodeOptions}
- placeholder="Assign…"
+ placeholder="Assign cost code…"
  onChange={(id) => {
  const next = { ...(edits.lineCodes ?? {}) };
  if (id) { const opt = costCodeOptions.find(o => o.id === id); if (opt) next[i] = { id: opt.id, code: opt.code }; }
@@ -431,16 +429,9 @@ function ParsedDataCard({
  onEdit({ lineCodes: next });
  }}
  />
- </td>
- <td className="py-2 px-3 text-[color:var(--text-muted)] text-right">{item.qty ?? "—"}</td>
- <td className="py-2 px-3 text-[color:var(--text-secondary)]">{item.unit ?? "—"}</td>
- <td className="py-2 px-3 text-[color:var(--text-muted)] text-right">{item.rate != null ? formatDollars(item.rate) : "—"}</td>
- <td className="py-2 px-3 text-[color:var(--text-primary)] text-right font-medium">{formatDollars(item.amount)}</td>
- </tr>
+ </div>
  );
  })}
- </tbody>
- </table>
  </div>
  )}
  </div>

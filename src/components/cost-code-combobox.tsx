@@ -266,7 +266,10 @@ export default function CostCodeCombobox({
                 className="w-full px-2 py-1.5 bg-[var(--bg-card)] border border-[var(--border-default)] text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-secondary)] focus:outline-none focus:border-[var(--nw-stone-blue)]"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
+                    // Close only the popover — don't let Escape bubble to a host
+                    // modal (which would discard the whole review card).
                     e.preventDefault();
+                    e.stopPropagation();
                     setOpen(false);
                   } else if (e.key === "ArrowDown") {
                     e.preventDefault();
