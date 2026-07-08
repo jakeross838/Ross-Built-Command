@@ -155,11 +155,31 @@ async function checkDuplicate(
   supabase: SupabaseClient,
   vendorNameRaw: string,
   totalAmountCents: number,
-  invoiceDate: string | null
+  invoiceDate: string | null,
+  invoiceNumber: string | null
 ) {
-  if (!vendorNameRaw || !invoiceDate) return null;
+  const trimmedVendor = vendorNameRaw?.trim();
+  if (!trimmedVendor) return null;
 
-  const trimmedVendor = vendorNameRaw.trim();
+  // Strongest signal (item 6): same vendor + same invoice number is the same
+  // invoice, regardless of amount/date. Fires even when the vendor omits a
+  // date, and catches an edited re-upload where the amount changed slightly.
+  const trimmedNumber = invoiceNumber?.trim();
+  if (trimmedNumber) {
+    const { data } = await supabase
+      .from("invoices")
+      .select("id, vendor_name_raw, total_amount, status")
+      .ilike("vendor_name_raw", trimmedVendor)
+      .ilike("invoice_number", trimmedNumber)
+      .is("deleted_at", null)
+      .neq("status", "void")
+      .limit(1);
+    if (data?.[0]) return data[0];
+  }
+
+  // Fallback: same vendor + amount + date catches re-uploads of numberless
+  // invoices (lump-sum Word docs, handwritten photos) where item# can't match.
+  if (!invoiceDate) return null;
   const { data } = await supabase
     .from("invoices")
     .select("id, vendor_name_raw, total_amount, status")
@@ -216,7 +236,8 @@ export async function saveParsedInvoice(
     supabase,
     parsed.vendor_name,
     totalAmountCents,
-    parsed.invoice_date
+    parsed.invoice_date,
+    parsed.invoice_number
   );
 
   if (existingDuplicate && !force_save) {
