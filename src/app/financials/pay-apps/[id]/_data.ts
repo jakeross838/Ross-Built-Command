@@ -92,12 +92,26 @@ export type StatementViewData = {
   periodEnd: string;
 };
 
+export type DrawInvoice = {
+  id: string;
+  vendor: string;
+  invoice_number: string | null;
+  received_date: string | null;
+  amount: number;
+  cost_code_id: string | null;
+  code: string | null;
+  stamped: boolean;
+};
+
 export type PayAppViewData = {
   draw: CaldwellDraw;
   job: CaldwellJob;
   lineItems: CaldwellDrawLineItem[];
   costCodes: CaldwellCostCode[];
   changeOrdersThroughThisDraw: CaldwellChangeOrder[];
+  // Every invoice linked to this draw (drill-down: "Invoices in this draw" +
+  // per-line expansion). Renderer-agnostic (AIA + statement both consume it).
+  drawInvoices: DrawInvoice[];
   // F6-family D3 (nwrp286 Q3): display-only signal — a DRAFT draw's stored
   // G702 summary diverges from a from-source recompute. Separate prop (the
   // CaldwellDraw fixture shape is locked). Always false for non-draft draws.
@@ -186,7 +200,7 @@ export async function loadPayAppViewData(
   // vendor/number/amount/cost-code also feed the statement "detailed" backup).
   const { data: invoices } = await supabase
     .from("invoices")
-    .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id")
+    .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id, received_date, approved_at")
     .eq("draw_id", drawId)
     .eq("org_id", membership.org_id)
     .is("deleted_at", null);
@@ -424,6 +438,34 @@ export async function loadPayAppViewData(
     draw_number: (co.draw_number as number | null) ?? null,
   }));
 
+  // ---- Invoices in this draw (drill-down; both renderers) ----
+  // Resolve cost-code labels for the invoices' cost_code_ids (may include
+  // codes outside budgetLines, e.g. unbudgeted invoice codes).
+  const invCcIds = Array.from(
+    new Set((invoices ?? []).map((i) => i.cost_code_id as string | null).filter(Boolean) as string[])
+  );
+  const invCcMap = new Map<string, string>();
+  if (invCcIds.length > 0) {
+    const { data: ccRows } = await supabase
+      .from("cost_codes")
+      .select("id, code")
+      .eq("org_id", membership.org_id)
+      .in("id", invCcIds);
+    for (const cc of ccRows ?? []) invCcMap.set(cc.id as string, (cc.code as string) ?? "—");
+  }
+  const drawInvoices = (invoices ?? [])
+    .map((i) => ({
+      id: i.id as string,
+      vendor: (i.vendor_name_raw as string | null) ?? "—",
+      invoice_number: (i.invoice_number as string | null) ?? null,
+      received_date: (i.received_date as string | null) ?? null,
+      amount: Number(i.total_amount ?? 0),
+      cost_code_id: (i.cost_code_id as string | null) ?? null,
+      code: i.cost_code_id ? invCcMap.get(i.cost_code_id as string) ?? null : null,
+      stamped: !!(i.approved_at as string | null),
+    }))
+    .sort((a, b) => (a.received_date ?? "").localeCompare(b.received_date ?? ""));
+
   // ---- Billing-method fork data (Phase 1) ----
   const billingMethod = ((jobEmbed.billing_method as string) ??
     "aia") as PayAppViewData["billingMethod"];
@@ -528,6 +570,7 @@ export async function loadPayAppViewData(
     lineItems,
     costCodes,
     changeOrdersThroughThisDraw,
+    drawInvoices,
     storedSummaryStale,
     billingMethod,
     statement,

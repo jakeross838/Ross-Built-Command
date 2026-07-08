@@ -32,6 +32,7 @@
 "use client";
 
 import Link from "next/link";
+import { Fragment, useState } from "react";
 import { ChevronRightIcon } from "@heroicons/react/24/outline";
 
 import type {
@@ -41,6 +42,7 @@ import type {
   CaldwellChangeOrder,
   CaldwellCostCode,
 } from "@/app/design-system/_fixtures/drummond/types";
+import type { DrawInvoice } from "@/app/financials/pay-apps/[id]/_data";
 
 import Card from "@/components/nw/Card";
 import Eyebrow from "@/components/nw/Eyebrow";
@@ -48,6 +50,7 @@ import Money from "@/components/nw/Money";
 import DataRow from "@/components/nw/DataRow";
 import Badge from "@/components/nw/Badge";
 import DrawActionBar from "@/components/prototypes/DrawActionBar";
+import DrawInvoicesSection from "@/components/prototypes/DrawInvoicesSection";
 
 export interface DrawApprovalViewProps {
   draw: CaldwellDraw;
@@ -70,6 +73,8 @@ export interface DrawApprovalViewProps {
   interactive?: boolean;
   /** Where to go after a draft is edited. Production passes the wizard edit URL. */
   editHref?: string;
+  /** Invoices linked to this draw (drill-down + per-line expansion). */
+  drawInvoices?: DrawInvoice[];
 }
 
 const STATUS_BADGE: Record<
@@ -121,11 +126,15 @@ export default function DrawApprovalView({
   breadcrumbRoot = { href: "/design-system/prototypes/", label: "Prototypes" },
   interactive = false,
   editHref,
+  drawInvoices = [],
 }: DrawApprovalViewProps) {
   const status = STATUS_BADGE[draw.status];
   const timeline = buildTimeline(draw);
   const resolvedPrintHref =
     printHref ?? `${breadcrumbRoot.href}draws/${draw.id}/print`;
+  // Per-line drill-down: which cost code's composing invoices are expanded.
+  const [expandedCode, setExpandedCode] = useState<string | null>(null);
+  const invoicesByCode = (cc: string) => drawInvoices.filter((i) => i.cost_code_id === cc);
 
   return (
     <div className="px-6 py-8 max-w-[1600px] mx-auto">
@@ -361,12 +370,27 @@ export default function DrawApprovalView({
                     li.previous_applications +
                     li.this_period +
                     li.balance_to_finish;
+                  const composing = invoicesByCode(li.cost_code_id);
+                  const isExpanded = expandedCode === li.cost_code_id;
                   return (
-                    <tr key={li.id}>
+                    <Fragment key={li.id}>
+                    <tr
+                      className={composing.length > 0 ? "cursor-pointer" : ""}
+                      onClick={
+                        composing.length > 0
+                          ? () => setExpandedCode(isExpanded ? null : li.cost_code_id)
+                          : undefined
+                      }
+                    >
                       <td
                         className="px-2 py-1.5 border"
                         style={{ borderColor: "var(--border-subtle)" }}
                       >
+                        {composing.length > 0 && (
+                          <span aria-hidden="true" className="inline-block mr-1" style={{ color: "var(--text-tertiary)" }}>
+                            {isExpanded ? "▾" : "▸"}
+                          </span>
+                        )}
                         {cc?.code ?? "—"}
                       </td>
                       <td
@@ -441,6 +465,27 @@ export default function DrawApprovalView({
                         )}
                       </td>
                     </tr>
+                    {isExpanded && composing.length > 0 && (
+                      <tr>
+                        <td className="border px-2 py-1" style={{ borderColor: "var(--border-subtle)" }}></td>
+                        <td className="border px-2 py-1" colSpan={7} style={{ borderColor: "var(--border-subtle)", background: "var(--bg-subtle)" }}>
+                          <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-tertiary)", marginBottom: "2px" }}>
+                            Composed of {composing.length} invoice(s)
+                          </div>
+                          {composing.map((inv) => (
+                            <div key={inv.id} className="flex items-center justify-between gap-3 py-0.5">
+                              <Link href={`/financials/bills/${inv.id}`} className="hover:underline" style={{ color: "var(--nw-stone-blue)" }}>
+                                {inv.vendor}{inv.invoice_number ? ` · #${inv.invoice_number}` : ""}
+                              </Link>
+                              <span className="tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                                ${(inv.amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -521,6 +566,8 @@ export default function DrawApprovalView({
           </div>
         </details>
       </Card>
+
+      <DrawInvoicesSection invoices={drawInvoices} />
     </div>
   );
 }

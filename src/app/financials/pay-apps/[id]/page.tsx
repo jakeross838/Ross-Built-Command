@@ -53,6 +53,7 @@ export default async function PayAppReviewPage({
           breadcrumbRoot={breadcrumbRoot}
           interactive
           editHref={editHref}
+          drawInvoices={data.drawInvoices}
         />
       ) : (
         <DrawApprovalView
@@ -66,6 +67,7 @@ export default async function PayAppReviewPage({
           breadcrumbRoot={breadcrumbRoot}
           interactive
           editHref={editHref}
+          drawInvoices={data.drawInvoices}
         />
       )}
     </div>

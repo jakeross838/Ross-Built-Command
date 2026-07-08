@@ -22,6 +22,7 @@ interface AvailableInvoice {
   invoice_number: string | null;
   total_amount: number;
   received_date: string | null;
+  approved_at: string | null; // stamped/approved indicator
   cost_code_id: string | null;
   cost_codes: { code: string; description: string } | null;
 }
@@ -330,7 +331,7 @@ export default function NewDrawWizardPage() {
       let query = supabase
         .from("invoices")
         .select(
-          "id, vendor_id, vendor_name_raw, invoice_number, total_amount, received_date, cost_code_id, draw_id, status, cost_codes:cost_code_id (code, description)"
+          "id, vendor_id, vendor_name_raw, invoice_number, total_amount, received_date, approved_at, cost_code_id, draw_id, status, cost_codes:cost_code_id (code, description)"
         )
         .eq("job_id", jobId)
         .is("deleted_at", null)
@@ -896,14 +897,17 @@ export default function NewDrawWizardPage() {
                 <p className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider mb-3">
                   {selected.size} of {periodInvoices.length} invoice(s) selected
                 </p>
-                <div className="overflow-x-auto border border-[var(--border-default)] max-h-72">
-                  <table className="w-full min-w-[520px] text-sm">
+                <p className="text-[11px] text-[color:var(--text-muted)] mb-2">
+                  Unchecked invoices stay in the Ready-for-Draw pool and drop out of the lines/totals below. Open any invoice in a new tab — your selection is kept.
+                </p>
+                <div className="overflow-x-auto border border-[var(--border-default)] max-h-80">
+                  <table className="w-full min-w-[720px] text-sm">
                     <thead>
                       <tr className="bg-[var(--bg-subtle)] text-left sticky top-0">
                         <th className="py-2 px-3 w-8">
                           <input
                             type="checkbox"
-                            checked={selected.size === periodInvoices.length}
+                            checked={selected.size === periodInvoices.length && periodInvoices.length > 0}
                             onChange={() =>
                               setSelected(
                                 selected.size === periodInvoices.length
@@ -915,38 +919,70 @@ export default function NewDrawWizardPage() {
                         </th>
                         <Th>Vendor</Th>
                         <Th>Inv #</Th>
+                        <Th>Date</Th>
                         <Th>Cost code</Th>
+                        <Th>Status</Th>
                         <Th right>Amount</Th>
+                        <th className="py-2 px-3 w-10"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {periodInvoices.map((inv) => (
-                        <tr
-                          key={inv.id}
-                          className="border-t border-[var(--border-default)] hover:bg-[var(--bg-muted)]/50 cursor-pointer"
-                          onClick={() => toggleInvoice(inv.id)}
-                        >
-                          <td className="py-2 px-3">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(inv.id)}
-                              onChange={() => toggleInvoice(inv.id)}
-                            />
-                          </td>
-                          <td className="py-2 px-3 text-[color:var(--text-primary)]">
-                            {inv.vendor_name_raw ?? "Unknown"}
-                          </td>
-                          <td className="py-2 px-3 text-[color:var(--text-muted)] font-mono text-xs">
-                            {inv.invoice_number ?? "—"}
-                          </td>
-                          <td className="py-2 px-3 text-[color:var(--text-muted)] text-xs">
-                            {inv.cost_codes ? `${inv.cost_codes.code}` : "—"}
-                          </td>
-                          <td className="py-2 px-3 text-[color:var(--text-primary)] text-right font-mono tabular-nums">
-                            {formatCents(inv.total_amount)}
-                          </td>
-                        </tr>
-                      ))}
+                      {periodInvoices.map((inv) => {
+                        const included = selected.has(inv.id);
+                        return (
+                          <tr
+                            key={inv.id}
+                            className={`border-t border-[var(--border-default)] hover:bg-[var(--bg-muted)]/50 cursor-pointer ${included ? "" : "opacity-55"}`}
+                            onClick={() => toggleInvoice(inv.id)}
+                          >
+                            <td className="py-2 px-3">
+                              <input
+                                type="checkbox"
+                                checked={included}
+                                onChange={() => toggleInvoice(inv.id)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </td>
+                            <td className="py-2 px-3 text-[color:var(--text-primary)]">
+                              {inv.vendor_name_raw ?? "Unknown"}
+                            </td>
+                            <td className="py-2 px-3 text-[color:var(--text-muted)] font-mono text-xs">
+                              {inv.invoice_number ?? "—"}
+                            </td>
+                            <td className="py-2 px-3 text-[color:var(--text-muted)] text-xs tabular-nums">
+                              {inv.received_date ?? "—"}
+                            </td>
+                            <td className="py-2 px-3 text-[color:var(--text-muted)] text-xs font-mono">
+                              {inv.cost_codes ? inv.cost_codes.code : "—"}
+                            </td>
+                            <td className="py-2 px-3">
+                              {inv.approved_at ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] uppercase font-mono tracking-[0.08em] border border-[rgba(74,138,111,0.4)] text-[color:var(--nw-success)]">
+                                  ✓ Stamped
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-[color:var(--text-tertiary)] uppercase font-mono">—</span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-[color:var(--text-primary)] text-right font-mono tabular-nums">
+                              {formatCents(inv.total_amount)}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              <a
+                                href={`/financials/bills/${inv.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center text-[color:var(--nw-stone-blue)] hover:underline text-xs"
+                                title="Open invoice in a new tab"
+                                aria-label="Open invoice in a new tab"
+                              >
+                                Open ↗
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -24,15 +24,16 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { ChevronRightIcon } from "@heroicons/react/24/outline";
 import Card from "@/components/nw/Card";
 import Eyebrow from "@/components/nw/Eyebrow";
 import Money from "@/components/nw/Money";
 import Badge from "@/components/nw/Badge";
 import DrawActionBar from "@/components/prototypes/DrawActionBar";
+import DrawInvoicesSection from "@/components/prototypes/DrawInvoicesSection";
 import { computeStatement } from "@/lib/statement-calc";
-import type { StatementViewData } from "@/app/financials/pay-apps/[id]/_data";
+import type { StatementViewData, DrawInvoice } from "@/app/financials/pay-apps/[id]/_data";
 
 const STATUS_META: Record<
   string,
@@ -58,6 +59,7 @@ export interface CostPlusStatementViewProps {
   breadcrumbRoot?: { href: string; label: string };
   interactive?: boolean;
   editHref?: string;
+  drawInvoices?: DrawInvoice[];
 }
 
 function pctLabel(fraction: number): string {
@@ -76,8 +78,11 @@ export default function CostPlusStatementView({
   breadcrumbRoot = { href: "/financials/pay-apps", label: "Draws" },
   interactive = false,
   editHref,
+  drawInvoices = [],
 }: CostPlusStatementViewProps) {
   const meta = STATUS_META[status] ?? { variant: "neutral" as const, label: status.toUpperCase() };
+  const [expandedCode, setExpandedCode] = useState<string | null>(null);
+  const invoicesByCode = (cc: string) => drawInvoices.filter((i) => i.cost_code_id === cc);
   const totals = computeStatement({
     costLines: statement.costLines.map((l) => ({
       cost_code_id: l.cost_code_id,
@@ -204,10 +209,26 @@ export default function CostPlusStatementView({
                   </td>
                 </tr>
               )}
-              {totals.lines.map((l) => (
+              {totals.lines.map((l) => {
+                const composing = invoicesByCode(l.cost_code_id);
+                // In detailed modes the invoices show inline (below). In
+                // summary mode the row is click-to-expand so every config
+                // still drills into a line's composing invoices.
+                const expandable = !showBackup && composing.length > 0;
+                const isExpanded = expandedCode === l.cost_code_id;
+                return (
                 <Fragment key={l.cost_code_id}>
-                  <tr className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
-                    <td className={td} style={{ fontFamily: "var(--font-jetbrains-mono)" }}>{l.code}</td>
+                  <tr
+                    className={`border-t ${expandable ? "cursor-pointer" : ""}`}
+                    style={{ borderColor: "var(--border-subtle)" }}
+                    onClick={expandable ? () => setExpandedCode(isExpanded ? null : l.cost_code_id) : undefined}
+                  >
+                    <td className={td} style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
+                      {expandable && (
+                        <span aria-hidden="true" className="mr-1" style={{ color: "var(--text-tertiary)" }}>{isExpanded ? "▾" : "▸"}</span>
+                      )}
+                      {l.code}
+                    </td>
                     <td className={td} style={{ color: "var(--text-primary)" }}>{l.description}</td>
                     <td className={money}><Money cents={l.amount} size="sm" /></td>
                   </tr>
@@ -224,8 +245,23 @@ export default function CostPlusStatementView({
                         </td>
                       </tr>
                     ))}
+                  {expandable && isExpanded &&
+                    composing.map((inv) => (
+                      <tr key={`${l.cost_code_id}-exp-${inv.id}`} style={{ background: "var(--bg-subtle)" }}>
+                        <td className={td}></td>
+                        <td className="px-3 py-1 text-[11px]">
+                          <Link href={`/financials/bills/${inv.id}`} className="hover:underline" style={{ color: "var(--nw-stone-blue)" }}>
+                            {inv.vendor}{inv.invoice_number ? ` · #${inv.invoice_number}` : ""}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-1 text-[11px] text-right tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                          <Money cents={inv.amount} size="sm" />
+                        </td>
+                      </tr>
+                    ))}
                 </Fragment>
-              ))}
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="border-t" style={{ borderColor: "var(--border-default)" }}>
@@ -301,6 +337,8 @@ export default function CostPlusStatementView({
           </div>
         </details>
       </Card>
+
+      <DrawInvoicesSection invoices={drawInvoices} />
     </div>
   );
 }
