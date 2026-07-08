@@ -289,14 +289,11 @@ export async function saveParsedInvoice(
     parsed.cost_code_suggestion?.is_change_order ||
     parsed.flags?.includes("change_order")
   );
-  const CO_KEYWORDS = [
-    "change order", "co #", "pcco",
-    "additional", "extra", "added",
-    "beyond scope", "beyond original scope", "not in original",
-    "revision", "revised", "modification", "modified",
-    "extension required", "extensions required",
-    "relocated", "relocation",
-  ];
+  // Item 3 — only EXPLICIT change-order language triggers a CO. Vague words
+  // ("revision", "additional", "extra", "modification", "relocated", …) used to
+  // false-flag ordinary invoices — "Revision 1" is not a change order. Narrowed
+  // to explicit CO markers only.
+  const CO_KEYWORDS = ["change order", "co #", "pcco"];
   const haystack = [
     parsed.description,
     ...parsed.line_items.map((l) => l.description ?? ""),
@@ -352,6 +349,16 @@ export async function saveParsedInvoice(
       ? ` Force-saved as possible duplicate of invoice ${existingDuplicate.id}.`
       : "";
 
+  // Item 1 — honor an explicit job resolution from the upload card (a matched
+  // real job OR a user-assigned/created one). Falls back to the auto-matcher
+  // only when the card didn't resolve a job.
+  const effectiveJobId =
+    parsed.job_resolution !== undefined
+      ? (parsed.job_resolution?.id ?? null)
+      : (match?.job.id ?? null);
+  const effectivePmId =
+    effectiveJobId && effectiveJobId === match?.job.id ? (match?.job.pm_id ?? null) : null;
+
   const statusEntry = {
     who: "system",
     when: new Date().toISOString(),
@@ -364,8 +371,8 @@ export async function saveParsedInvoice(
     .from("invoices")
     .insert({
       vendor_id: matchedVendor?.id ?? null,
-      job_id: match?.job.id ?? null,
-      assigned_pm_id: match?.job.pm_id ?? null,
+      job_id: effectiveJobId,
+      assigned_pm_id: effectivePmId,
       cost_code_id: matchedCostCode?.id ?? null,
       invoice_number: parsed.invoice_number,
       invoice_date: parsed.invoice_date,

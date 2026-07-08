@@ -7,6 +7,7 @@ import {
  parseInvoiceFile,
 } from "@/lib/invoices/parse-file";
 import { PlanLimitError } from "@/lib/claude";
+import { matchJobForInvoice, loadJobCandidates } from "@/lib/invoices/job-matcher";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // Allow up to 2 minutes for retries
@@ -75,23 +76,30 @@ export async function POST(request: NextRequest) {
  },
  });
 
- // Attempt to match job from parsed job_reference (for the UI suggestion chip)
- if (parsed.job_reference) {
- const jobRef = parsed.job_reference;
- const jobConfidence = parsed.confidence_details?.job_reference ?? 0;
- const { data: matchedJobs } = await supabase
- .from("jobs")
- .select("name, address")
- .is("deleted_at", null)
- .or(`name.ilike.%${jobRef}%,address.ilike.%${jobRef}%`)
- .limit(1);
- if (matchedJobs && matchedJobs.length > 0) {
+ // Item 1 — RESOLVE the job reference against REAL org jobs via the fuzzy
+ // matcher (job name / client surname / street key). Sets job_resolution to a
+ // real job or null (NO MATCH). Raw job_reference text is NEVER presented as an
+ // assigned job — the upload card shows the matched job or a NO-MATCH picker.
+ try {
+ const jobs = await loadJobCandidates(supabase);
+ const jobMatch = matchJobForInvoice(jobs, {
+ job_reference_raw: parsed.job_reference,
+ vendor_name_raw: parsed.vendor_name,
+ description: parsed.description,
+ filename: file.name,
+ });
+ if (jobMatch && jobMatch.score >= 3 && !jobMatch.ambiguous) {
+ parsed.job_resolution = { id: jobMatch.job.id, name: jobMatch.job.name };
  parsed.job_suggestion = {
- name: matchedJobs[0].name,
- address: matchedJobs[0].address,
- confidence: jobConfidence,
+ name: jobMatch.job.name,
+ address: jobMatch.job.address,
+ confidence: parsed.confidence_details?.job_reference ?? 0,
  };
+ } else {
+ parsed.job_resolution = null;
  }
+ } catch {
+ parsed.job_resolution = null;
  }
 
  // Item 2 — vendor→code learning (read path): if this vendor has a learned

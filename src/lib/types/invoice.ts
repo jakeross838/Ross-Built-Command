@@ -70,6 +70,12 @@ export interface ParsedInvoice {
  flags: string[];
  cost_code_suggestion?: CostCodeSuggestion;
  job_suggestion?: JobSuggestion;
+ /** Item 1 — job resolution. Set by the parse route (via the fuzzy job
+  *  matcher) to a REAL org job, or null for NO MATCH. The upload card resolves
+  *  the raw job_reference to this; when the user assigns/creates a job it's
+  *  updated in place and sent to save as the explicit job_id. Raw
+  *  job_reference text is NEVER treated as an assigned job. */
+ job_resolution?: { id: string; name: string } | null;
  document_type?: "invoice" | "proposal" | "quote" | "credit_memo" | "statement" | "unknown";
 }
 
