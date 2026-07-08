@@ -71,6 +71,66 @@ const APPROVED_INVOICE_STATUSES = [
 const PRIOR_DRAW_STATUSES = ["submitted", "approved", "locked", "paid"];
 
 /**
+ * Sum this-period dollars per cost_code_id for a set of invoices. Source of
+ * truth is `invoice_allocations` (every dollar allocated, tax/fee folded in
+ * pro-rata — so the full invoice total lands on the G703, not just the pre-tax
+ * subtotal). Falls back per-invoice to invoice_line_items, then the invoice-
+ * level cost_code_id, so legacy invoices without allocations still contribute.
+ *
+ * Cent-exact and keyed by cost code — the draw does NOT depend on a budget line
+ * existing (allocations are the source; budget lines only enrich columns).
+ */
+async function sumThisPeriodByCostCode(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  invoiceIds: string[]
+): Promise<Map<string, number>> {
+  const m = new Map<string, number>();
+  const add = (cc: string, cents: number) => m.set(cc, (m.get(cc) ?? 0) + (cents ?? 0));
+  if (invoiceIds.length === 0) return m;
+
+  // 1) invoice_allocations — the canonical every-dollar split.
+  const { data: allocs } = await supabase
+    .from("invoice_allocations")
+    .select("invoice_id, cost_code_id, amount_cents")
+    .in("invoice_id", invoiceIds)
+    .is("deleted_at", null);
+  const covered = new Set<string>();
+  for (const a of allocs ?? []) {
+    const cc = (a as { cost_code_id: string | null }).cost_code_id;
+    if (cc) { covered.add((a as { invoice_id: string }).invoice_id); add(cc, (a as { amount_cents: number }).amount_cents); }
+  }
+
+  // 2) line items for invoices with no allocations.
+  const noAlloc = invoiceIds.filter((id) => !covered.has(id));
+  if (noAlloc.length > 0) {
+    const { data: lines } = await supabase
+      .from("invoice_line_items")
+      .select("invoice_id, cost_code_id, amount_cents")
+      .in("invoice_id", noAlloc)
+      .is("deleted_at", null);
+    for (const li of lines ?? []) {
+      const cc = (li as { cost_code_id: string | null }).cost_code_id;
+      if (cc) { covered.add((li as { invoice_id: string }).invoice_id); add(cc, (li as { amount_cents: number }).amount_cents); }
+    }
+  }
+
+  // 3) invoice-level cost code for anything still uncovered.
+  const stillUncovered = invoiceIds.filter((id) => !covered.has(id));
+  if (stillUncovered.length > 0) {
+    const { data: invs } = await supabase
+      .from("invoices")
+      .select("id, cost_code_id, total_amount")
+      .in("id", stillUncovered)
+      .is("deleted_at", null);
+    for (const inv of invs ?? []) {
+      const cc = (inv as { cost_code_id: string | null }).cost_code_id;
+      if (cc) add(cc, (inv as { total_amount: number }).total_amount);
+    }
+  }
+  return m;
+}
+
+/**
  * Compute per-cost-code totals for a draw, including the Phase 8
  * previous-applications math that pulls forward prior draws' this_period
  * values.
@@ -124,45 +184,9 @@ export async function computeDrawLines(args: {
   const bCodeMap = new Map<string, (typeof bls)[number]>();
   for (const bl of bls) bCodeMap.set(bl.cost_code_id as string, bl);
 
-  // 2. This period per cost_code_id — from the invoices on this draw.
-  const thisPeriod = new Map<string, number>();
-  if (drawInvoiceIds.length > 0) {
-    // Prefer the per-line splits; fall back to invoice-level cost_code_id.
-    const { data: lines } = await supabase
-      .from("invoice_line_items")
-      .select("invoice_id, cost_code_id, amount_cents")
-      .in("invoice_id", drawInvoiceIds)
-      .is("deleted_at", null);
-    const covered = new Set<string>();
-    for (const li of lines ?? []) {
-      if (li.cost_code_id) {
-        covered.add(li.invoice_id as string);
-        thisPeriod.set(
-          li.cost_code_id as string,
-          (thisPeriod.get(li.cost_code_id as string) ?? 0) +
-            ((li as { amount_cents: number }).amount_cents ?? 0)
-        );
-      }
-    }
-    // Fall back to invoice-level cost code for any invoice without line splits.
-    const { data: invs } = await supabase
-      .from("invoices")
-      .select("id, cost_code_id, total_amount")
-      .in("id", drawInvoiceIds)
-      .is("deleted_at", null);
-    for (const inv of invs ?? []) {
-      if (
-        inv.cost_code_id &&
-        !covered.has(inv.id as string)
-      ) {
-        thisPeriod.set(
-          inv.cost_code_id as string,
-          (thisPeriod.get(inv.cost_code_id as string) ?? 0) +
-            ((inv as { total_amount: number }).total_amount ?? 0)
-        );
-      }
-    }
-  }
+  // 2. This period per cost_code_id — from the invoices on this draw
+  //    (allocations first; see sumThisPeriodByCostCode).
+  const thisPeriod = await sumThisPeriodByCostCode(supabase, drawInvoiceIds);
 
   // 3. Previous applications per cost_code_id: sum of this_period on every
   //    LOCKED draw with a lower draw_number. Take the latest revision per
@@ -189,53 +213,34 @@ export async function computeDrawLines(args: {
   const priorDrawIds = Array.from(priorByNumber.values()).map((v) => v.id);
 
   // Previous = baseline per line + sum of this_period for that cost_code
-  // across prior (locked) draws.
-  const priorThisPeriod = new Map<string, number>();
+  // across prior (locked) draws (same allocation-first source).
+  let priorThisPeriod = new Map<string, number>();
   if (priorDrawIds.length > 0) {
     const { data: priorInvoices } = await supabase
       .from("invoices")
-      .select("id, cost_code_id, total_amount, draw_id")
+      .select("id, draw_id")
       .in("draw_id", priorDrawIds)
       .is("deleted_at", null);
     const priorInvIds = (priorInvoices ?? []).map((i) => i.id as string);
-    const { data: priorLines } =
-      priorInvIds.length > 0
-        ? await supabase
-            .from("invoice_line_items")
-            .select("invoice_id, cost_code_id, amount_cents")
-            .in("invoice_id", priorInvIds)
-            .is("deleted_at", null)
-        : { data: [] as Array<{ invoice_id: string; cost_code_id: string | null; amount_cents: number }> };
-
-    const covered = new Set<string>();
-    for (const li of priorLines ?? []) {
-      if (li.cost_code_id) {
-        covered.add(li.invoice_id as string);
-        priorThisPeriod.set(
-          li.cost_code_id as string,
-          (priorThisPeriod.get(li.cost_code_id as string) ?? 0) +
-            ((li as { amount_cents: number }).amount_cents ?? 0)
-        );
-      }
-    }
-    for (const inv of priorInvoices ?? []) {
-      if (inv.cost_code_id && !covered.has(inv.id as string)) {
-        priorThisPeriod.set(
-          inv.cost_code_id as string,
-          (priorThisPeriod.get(inv.cost_code_id as string) ?? 0) +
-            ((inv as { total_amount: number }).total_amount ?? 0)
-        );
-      }
-    }
+    priorThisPeriod = await sumThisPeriodByCostCode(supabase, priorInvIds);
   }
 
-  // 4. Compose the snapshot.
+  // 4. Compose the snapshot — one line per cost code that has a budget line OR
+  //    an invoice amount (this or prior period). Allocations are the source of
+  //    truth; a budget line only ENRICHES (scheduled value / baseline). This is
+  //    what lets a quick-created job with no budget lines still produce a real
+  //    G703 from its approved invoices.
   const lines: DrawLineSnapshot[] = [];
   const pct = Math.max(0, Math.min(100, retainagePercent)) / 100;
-  for (const bl of bls) {
-    const ccId = bl.cost_code_id as string;
-    const scheduled = (bl as { revised_estimate?: number }).revised_estimate ?? 0;
-    const baseline = (bl as { previous_applications_baseline?: number }).previous_applications_baseline ?? 0;
+  const codeIds = new Set<string>([
+    ...bls.map((b) => b.cost_code_id as string),
+    ...thisPeriod.keys(),
+    ...priorThisPeriod.keys(),
+  ]);
+  for (const ccId of codeIds) {
+    const bl = bCodeMap.get(ccId);
+    const budgetScheduled = bl ? ((bl as { revised_estimate?: number }).revised_estimate ?? 0) : 0;
+    const baseline = bl ? ((bl as { previous_applications_baseline?: number }).previous_applications_baseline ?? 0) : 0;
     const prior = priorThisPeriod.get(ccId) ?? 0;
     const previous_applications = baseline + prior;
     const this_period = thisPeriod.get(ccId) ?? 0;
@@ -244,6 +249,10 @@ export async function computeDrawLines(args: {
     // we withhold pct of total_completed so far. The line's retainage
     // column shows *currently withheld*, not incremental.
     const retainage = isFinalDraw ? 0 : Math.round(total_completed * pct);
+    // Unbudgeted (or $0-budget) line: the billed-to-date IS the scheduled value,
+    // so a cost-plus line with no formal budget reads 100% / $0-to-finish
+    // instead of a negative balance.
+    const scheduled = budgetScheduled > 0 ? budgetScheduled : total_completed;
     const balance_to_finish = scheduled - total_completed;
     const percent_complete =
       scheduled > 0 ? Math.round((total_completed / scheduled) * 10000) / 100 : total_completed > 0 ? 100 : 0;
