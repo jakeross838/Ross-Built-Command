@@ -350,8 +350,12 @@ export default function NewDrawWizardPage() {
       const { data } = await query;
       const invs = (data ?? []) as unknown as AvailableInvoice[];
       setPeriodInvoices(invs);
-      // Default-select all on first load if nothing selected yet.
-      if (selected.size === 0) {
+      // Default-select all on first load if nothing selected yet — but NEVER
+      // in edit mode. In edit mode the attached-invoice seed is authoritative
+      // (the draft may intentionally carry a subset of eligible invoices);
+      // letting select-all win the race would silently ADD unattached period
+      // invoices to the draft on save. Deterministic guard, not timing luck.
+      if (selected.size === 0 && !editMode) {
         setSelected(new Set(invs.map((i) => i.id)));
       }
     })();
