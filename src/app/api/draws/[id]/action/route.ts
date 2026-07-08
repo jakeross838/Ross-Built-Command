@@ -42,6 +42,7 @@ import {
   dispatchEmailToUser,
 } from "@/lib/notifications";
 import { updateWithLock, isLockConflict } from "@/lib/api/optimistic-lock";
+import { captureAndStoreSnapshot } from "@/app/financials/pay-apps/[id]/_data";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -303,6 +304,16 @@ export async function POST(
         to: "approved",
         reason,
       });
+
+      // TD-NW-DRAW-SNAPSHOT: freeze the fully-computed render data now that the
+      // draw is approved. From here the detail/print render from this verbatim
+      // and never recompute — source changes can't alter an issued draw.
+      try {
+        await captureAndStoreSnapshot(params.id);
+      } catch (err) {
+        console.warn(`[draw approve snapshot] ${err instanceof Error ? err.message : err}`);
+      }
+
       if ((result.scheduled_payment_count ?? 0) > 0) {
         await logActivity({
           org_id: orgId,

@@ -44,6 +44,7 @@
 // CaldwellDrawStatus — rendered as "submitted" so STATUS_META resolves.
 
 import { createServerClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { getCurrentMembership } from "@/lib/org/session";
 import {
   applicationNumberForDraw,
@@ -181,6 +182,36 @@ export async function loadPayAppViewData(
     return null;
   }
   if (!draw) return null;
+
+  // ── FROZEN SNAPSHOT (TD-NW-DRAW-SNAPSHOT) ─────────────────────────────
+  // Approved/locked/paid draws render from the snapshot captured at approval
+  // — never recompute — so later source changes can't alter an issued draw.
+  // The current status/dates are overlaid so approved→paid still shows the
+  // right status while the financials stay byte-frozen.
+  const rawStatusForSnap = draw.status as string;
+  if (
+    ["approved", "locked", "paid"].includes(rawStatusForSnap) &&
+    draw.snapshot
+  ) {
+    const snap = draw.snapshot as PayAppViewData;
+    const mappedStatus = (KNOWN_DRAW_STATUSES as readonly string[]).includes(
+      rawStatusForSnap
+    )
+      ? (rawStatusForSnap as CaldwellDraw["status"])
+      : "submitted";
+    return {
+      ...snap,
+      draw: {
+        ...snap.draw,
+        status: mappedStatus,
+        submitted_at: (draw.submitted_at as string | null) ?? snap.draw.submitted_at,
+        paid_at: (draw.paid_at as string | null) ?? snap.draw.paid_at,
+        revision_number:
+          (draw.revision_number as number | null) ?? snap.draw.revision_number,
+      },
+      storedSummaryStale: false,
+    };
+  }
 
   const jobEmbed = (
     Array.isArray(draw.jobs) ? draw.jobs[0] ?? null : draw.jobs
@@ -578,4 +609,28 @@ export async function loadPayAppViewData(
     billingMethod,
     statement,
   };
+}
+
+/**
+ * Freeze a draw's fully-computed render data into draws.snapshot. Called at
+ * approval (post-RPC). loadPayAppViewData recomputes here because the draw's
+ * snapshot is still NULL at capture time (the frozen-status early-return only
+ * engages once a snapshot exists), so this captures fresh, correct data. From
+ * the next read on, approved/locked/paid draws render from this verbatim.
+ * Stored via service role (trusted drawId, post-approval). Non-fatal on error
+ * — a failed freeze just means the draw keeps recomputing until re-approved.
+ */
+export async function captureAndStoreSnapshot(drawId: string): Promise<boolean> {
+  const data = await loadPayAppViewData(drawId);
+  if (!data) return false;
+  const svc = createServiceRoleClient();
+  const { error } = await svc
+    .from("draws")
+    .update({ snapshot: data })
+    .eq("id", drawId);
+  if (error) {
+    console.warn(`[draw snapshot] capture failed for ${drawId}: ${error.message}`);
+    return false;
+  }
+  return true;
 }
