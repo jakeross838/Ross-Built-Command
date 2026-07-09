@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { formatCents } from "@/lib/utils/format";
 import NwButton from "@/components/nw/Button";
 import NwEyebrow from "@/components/nw/Eyebrow";
@@ -15,19 +15,27 @@ type Allocation = {
   description: string | null;
 };
 
-export default function InvoiceAllocationsEditor({
-  invoiceId,
-  invoiceTotalCents,
-  costCodes,
-  readOnly,
-  onChange,
-}: {
-  invoiceId: string;
-  invoiceTotalCents: number;
-  costCodes: CostCode[];
-  readOnly?: boolean;
-  onChange?: () => void;
-}) {
+export type InvoiceAllocationsEditorHandle = {
+  isDirty: () => boolean;
+  /** Persist pending edits. Resolves true on success; false if unbalanced,
+   *  missing a cost code, locked, or the request failed. Lets a parent flush
+   *  pending allocation edits before it commits an Approve (audit #4). */
+  save: () => Promise<boolean>;
+};
+
+const InvoiceAllocationsEditor = forwardRef<
+  InvoiceAllocationsEditorHandle,
+  {
+    invoiceId: string;
+    invoiceTotalCents: number;
+    costCodes: CostCode[];
+    readOnly?: boolean;
+    onChange?: () => void;
+  }
+>(function InvoiceAllocationsEditor(
+  { invoiceId, invoiceTotalCents, costCodes, readOnly, onChange },
+  ref
+) {
   const [rows, setRows] = useState<Allocation[]>([]);
   const [initialSnapshot, setInitialSnapshot] = useState<string>("[]");
   const [loading, setLoading] = useState(true);
@@ -78,14 +86,14 @@ export default function InvoiceAllocationsEditor({
     setRows((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  async function save() {
+  async function save(): Promise<boolean> {
     if (!balanced) {
       setError(`Rows sum to ${formatCents(sum)} but invoice total is ${formatCents(invoiceTotalCents)}.`);
-      return;
+      return false;
     }
     if (anyCostCodeMissing) {
       setError("Every allocation must have a cost code.");
-      return;
+      return false;
     }
     setSaving(true);
     setError(null);
@@ -106,17 +114,32 @@ export default function InvoiceAllocationsEditor({
       if (res.status === 409) {
         setLocked(true);
         setError(data.error ?? "Cannot edit: this invoice is on a submitted draw.");
-        return;
+        return false;
       }
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       await load();
       onChange?.();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  // Expose an imperative handle so the invoice page can flush pending
+  // allocation edits before committing an Approve (audit #4). Refs keep the
+  // handle pointing at the latest closure without recreating it each render.
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+  const saveRef = useRef<() => Promise<boolean>>(save);
+  saveRef.current = save;
+  useImperativeHandle(
+    ref,
+    () => ({ isDirty: () => isDirtyRef.current, save: () => saveRef.current() }),
+    []
+  );
 
   if (loading) {
     return <div className="text-xs text-[color:var(--text-secondary)] py-2">Loading allocations...</div>;
@@ -309,4 +332,6 @@ export default function InvoiceAllocationsEditor({
       `}</style>
     </div>
   );
-}
+});
+
+export default InvoiceAllocationsEditor;

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { formatCents, formatDollars, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
 import AppShell from "@/components/app-shell";
 import InvoiceFilePreview from "@/components/invoice-file-preview";
-import InvoiceAllocationsEditor from "@/components/invoice-allocations-editor";
+import InvoiceAllocationsEditor, { type InvoiceAllocationsEditorHandle } from "@/components/invoice-allocations-editor";
 import NwButton from "@/components/nw/Button";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import { invoiceDisplayName } from "@/lib/invoices/display";
@@ -116,6 +116,10 @@ export default function InvoiceReviewPage() {
  const params = useParams();
  const router = useRouter();
  const invoiceId = params.id as string;
+ // Ref to the allocations editor so Approve flushes pending cost-code edits
+ // before committing — otherwise a changed allocation is silently discarded
+ // on approve (audit #4).
+ const allocEditorRef = useRef<InvoiceAllocationsEditorHandle>(null);
 
  // Current user's org role (null while loading). Drives lock + edit
  // gating via canEditInvoice(). A loading (null) role is treated as
@@ -687,12 +691,12 @@ export default function InvoiceReviewPage() {
  thisInvoicePortion: number,
  isAllowance: boolean
  ): { severity: OverBudgetSeverity; overageCents: number; pct: number } => {
+ // No budget line for this code = "not budgeted", not "over budget". This
+ // kills the "100% over $0" wolf that fired on every approval for a job whose
+ // budget hasn't been entered yet (audit #13). The over-budget gate fires
+ // only when a real budget exists and is exceeded.
  if (revised === 0) {
- return {
- severity: thisInvoicePortion > 0 ? "red" : "none",
- overageCents: thisInvoicePortion,
- pct: 100,
- };
+ return { severity: "none", overageCents: 0, pct: 0 };
  }
  const projectedTotal = alreadySpent + thisInvoicePortion;
  if (projectedTotal <= revised) return { severity: "none", overageCents: 0, pct: 0 };
@@ -723,7 +727,17 @@ export default function InvoiceReviewPage() {
 
  // Approve-flow gatekeeper. Order matters: job/cost-code → CO refs →
  // over-budget severity → amount guard → confirmation modal.
- const openApproveFlow = () => {
+ const openApproveFlow = async () => {
+ // Flush pending allocation-editor edits before committing the approve, so a
+ // changed cost code isn't silently discarded (audit #4). If the editor can't
+ // save (unbalanced / missing code), block approve with its reason.
+ if (allocEditorRef.current?.isDirty()) {
+ const ok = await allocEditorRef.current.save();
+ if (!ok) {
+ toast.error("Resolve the allocation edits (they must balance and every row needs a cost code) before approving.");
+ return;
+ }
+ }
  if (!jobId || !costCodeId) { setShowMissingFieldsBlock(true); return; }
  if (missingCoReference) { setShowMissingCoBlock(true); return; }
  // Phase 8e: org-configured invoice-date gate.
@@ -1492,6 +1506,7 @@ export default function InvoiceReviewPage() {
              style={{ borderTop: "1px solid var(--border-default)" }}
            >
              <InvoiceAllocationsEditor
+               ref={allocEditorRef}
                invoiceId={invoice.id}
                invoiceTotalCents={invoice.total_amount}
                costCodes={costCodes}
