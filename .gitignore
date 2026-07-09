@@ -201,6 +201,10 @@ skills-lock.json
 # nightwork-ui-template). Must sync across PCs. Per D-018 + SPEC §2.
 !/.planning/design/
 !/.planning/design/**
+!/.planning/coherence/
+!/.planning/coherence/**
+# screenshots are regenerable + heavy — keep them out of git (re-ignored after the coherence whitelist)
+/.planning/coherence/**/screenshots/
 # research/ — outputs of gsd-research-standards (this phase + future phases).
 # Industry-canonical rules + cache files. Must sync across PCs so cache reuse
 # works cross-phase. Per stage-1.5c-verification-harness D-10/D-11.
