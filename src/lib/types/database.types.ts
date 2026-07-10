@@ -1397,6 +1397,7 @@ export type Database = {
           retainage_on_completed: number
           retainage_on_stored: number
           revision_number: number
+          snapshot: Json | null
           status: string
           status_history: Json
           submitted_at: string | null
@@ -1441,6 +1442,7 @@ export type Database = {
           retainage_on_completed?: number
           retainage_on_stored?: number
           revision_number?: number
+          snapshot?: Json | null
           status?: string
           status_history?: Json
           submitted_at?: string | null
@@ -1485,6 +1487,7 @@ export type Database = {
           retainage_on_completed?: number
           retainage_on_stored?: number
           revision_number?: number
+          snapshot?: Json | null
           status?: string
           status_history?: Json
           submitted_at?: string | null
@@ -5213,6 +5216,7 @@ export type Database = {
         Returns: undefined
       }
       next_po_number: { Args: { p_org_id: string }; Returns: string }
+      nw_normalize_cost_code: { Args: { c: string }; Returns: string }
       recompute_budget_line_co_adjustments: {
         Args: { p_budget_line_id: string }
         Returns: undefined
