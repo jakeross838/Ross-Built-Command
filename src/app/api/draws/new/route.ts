@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/impersonation-client";
 import {
   computeDrawLines,
+  depositAppliedToDateForJob,
   lessPreviousCertificatesForJob,
   netChangeOrdersForJob,
   rollupDrawTotals,
@@ -23,6 +24,7 @@ interface CreateDrawRequest {
   period_end: string;
   invoice_ids: string[];
   is_final?: boolean;
+  deposit_applied_cents?: number;
   wizard_draft?: Record<string, unknown> | null;
 }
 
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
       period_end,
       invoice_ids,
       is_final,
+      deposit_applied_cents,
       wizard_draft,
     } = body;
 
@@ -130,6 +133,16 @@ export async function POST(request: NextRequest) {
     // into the stored current_payment_due at creation so a linked credit memo
     // isn't dropped until the first recompute.
     const { total: uncapturedLinked } = await uncapturedLinkedInvoices(invoice_ids);
+    // BLOCK B pt2b — clamp the requested deposit application to the remaining
+    // pool (new draw → no exclude; Σ deposit_applied_cents across non-void draws).
+    const depositPool = Math.round(
+      originalContractSum * ((job as { deposit_percentage?: number }).deposit_percentage ?? 0.1)
+    );
+    const depositAppliedOnOthers = await depositAppliedToDateForJob(job_id);
+    const depositApplied = Math.max(
+      0,
+      Math.min(deposit_applied_cents ?? 0, Math.max(0, depositPool - depositAppliedOnOthers))
+    );
     const totals = rollupDrawTotals({
       originalContractSum,
       netChangeOrders,
@@ -141,8 +154,7 @@ export async function POST(request: NextRequest) {
       nonBudgetLineThisPeriod: 0,
       previousCoCompletedAmount:
         (job as { previous_co_completed_amount?: number }).previous_co_completed_amount ?? 0,
-      // New draw: no deposit applied and no adjustments exist yet (BLOCK B).
-      depositAppliedCents: 0,
+      depositAppliedCents: depositApplied,
       appliedAdjustmentsCents: 0,
       uncapturedLinkedCents: uncapturedLinked,
     });
@@ -171,6 +183,7 @@ export async function POST(request: NextRequest) {
         current_payment_due: totals.current_payment_due,
         balance_to_finish: totals.balance_to_finish,
         deposit_amount: totals.deposit_amount,
+        deposit_applied_cents: depositApplied,
         status_history: [
           {
             who: "system",

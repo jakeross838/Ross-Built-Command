@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentMembership } from "@/lib/org/session";
 import {
   computeDrawLines,
+  depositAppliedToDateForJob,
   lessPreviousCertificatesForJob,
   rollupDrawTotals,
   uncapturedLinkedInvoices,
@@ -33,6 +34,10 @@ export async function POST(request: NextRequest) {
       period_end: string;
       invoice_ids: string[];
       is_final?: boolean;
+      // BLOCK B pt2b — deposit-apply preview: how much of the pool to apply on
+      // this draw, and the draft's own id (excluded from applied-to-date).
+      deposit_applied_cents?: number;
+      draw_id?: string;
     };
     const { job_id, period_start, period_end, invoice_ids, is_final } = body;
     if (!job_id) {
@@ -98,6 +103,22 @@ export async function POST(request: NextRequest) {
     // HANDOFF #2 — preview the uncaptured (uncoded) dollars among the selected
     // invoices so a credit memo visibly moves the previewed total.
     const { total: uncapturedLinked } = await uncapturedLinkedInvoices(invoice_ids ?? []);
+    // Deposit ledger (BLOCK B pt2b): pool = contract × deposit%; applied-to-date
+    // = Σ deposit_applied_cents across all NON-VOID draws (excluding the draft
+    // being edited); remaining = pool − applied-to-date. The requested
+    // application is CLAMPED to remaining (server-side cap, mirrored in the UI).
+    const depositPool = Math.round(
+      (job.original_contract_amount ?? 0) * (job.deposit_percentage ?? 0.1)
+    );
+    const depositAppliedOnOthers = await depositAppliedToDateForJob(
+      job_id,
+      body.draw_id
+    );
+    const depositRemaining = Math.max(0, depositPool - depositAppliedOnOthers);
+    const depositApplied = Math.max(
+      0,
+      Math.min(body.deposit_applied_cents ?? 0, depositRemaining)
+    );
     const totals = rollupDrawTotals({
       originalContractSum: job.original_contract_amount ?? 0,
       netChangeOrders,
@@ -109,8 +130,7 @@ export async function POST(request: NextRequest) {
       nonBudgetLineThisPeriod: 0,
       previousCoCompletedAmount:
         (job as { previous_co_completed_amount?: number }).previous_co_completed_amount ?? 0,
-      // Preview of a not-yet-created draw: no deposit applied / adjustments yet.
-      depositAppliedCents: 0,
+      depositAppliedCents: depositApplied,
       appliedAdjustmentsCents: 0,
       uncapturedLinkedCents: uncapturedLinked,
     });
@@ -228,6 +248,13 @@ export async function POST(request: NextRequest) {
       lines: enrichedLines,
       change_orders: coLines,
       totals,
+      // BLOCK B pt2b — deposit ledger for the wizard money control.
+      deposit: {
+        pool: depositPool,
+        applied_to_date: depositAppliedOnOthers,
+        applied_this_draw: depositApplied,
+        remaining: depositRemaining,
+      },
     });
   } catch (err) {
     return NextResponse.json(

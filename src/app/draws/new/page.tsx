@@ -87,6 +87,14 @@ interface PreviewResponse {
     current_payment_due: number;
     balance_to_finish: number;
     deposit_amount: number;
+    deposit_applied: number;
+  };
+  // BLOCK B pt2b — deposit ledger for the wizard money control.
+  deposit?: {
+    pool: number;
+    applied_to_date: number;
+    applied_this_draw: number;
+    remaining: number;
   };
 }
 
@@ -164,6 +172,14 @@ export default function NewDrawWizardPage() {
   const [setupRetainage, setSetupRetainage] = useState("");
   const [savingSetup, setSavingSetup] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+
+  // BLOCK B pt2b — deposit-apply input (dollars); cents derived on read. The
+  // server clamps to the remaining pool; the UI mirrors the cap.
+  const [depositApplyDollars, setDepositApplyDollars] = useState("");
+  const depositApplyCents = Math.max(
+    0,
+    Math.round(Number(depositApplyDollars || "0") * 100)
+  );
 
   const orgId = useOrgId();
 
@@ -409,13 +425,15 @@ export default function NewDrawWizardPage() {
           period_end: periodEnd,
           invoice_ids: Array.from(selected),
           is_final: isFinal,
+          deposit_applied_cents: depositApplyCents,
+          draw_id: draftId ?? undefined,
         }),
       });
       if (res.ok) setPreview(await res.json());
     } finally {
       setPreviewLoading(false);
     }
-  }, [jobId, periodStart, periodEnd, selected, isFinal]);
+  }, [jobId, periodStart, periodEnd, selected, isFinal, depositApplyCents, draftId]);
 
   useEffect(() => {
     if (step === 3 || step === 4) fetchPreview();
@@ -460,6 +478,10 @@ export default function NewDrawWizardPage() {
   const isStatementJob = job?.billing_method === "cost_plus_statement";
   // Stage 1.2 — a job with no contract amount can't produce correct G702 math.
   const needsSetup = !!(jobMeta && jobMeta.contractAmount <= 0);
+  // BLOCK B pt2b — deposit-apply cap: block save when the entered amount exceeds
+  // the remaining pool (the server clamps too; this is the UI mirror).
+  const depositRemaining = preview?.deposit?.remaining ?? 0;
+  const depositOverCap = !!preview?.deposit && depositApplyCents > depositRemaining;
   const blockingOpenDraw = priorDraws.find((d) =>
     ["draft", "pm_review", "submitted"].includes(d.status)
   );
@@ -606,6 +628,7 @@ export default function NewDrawWizardPage() {
             period_end: periodEnd,
             invoice_ids: Array.from(selected),
             is_final: isFinal,
+            deposit_applied_cents: depositApplyCents,
             wizard_draft: {
               step,
               selected: Array.from(selected),
@@ -637,6 +660,7 @@ export default function NewDrawWizardPage() {
           period_end: periodEnd,
           invoice_ids: Array.from(selected),
           is_final: isFinal,
+          deposit_applied_cents: depositApplyCents,
           wizard_draft: {
             step,
             selected: Array.from(selected),
@@ -1155,11 +1179,57 @@ export default function NewDrawWizardPage() {
                 <G702Line num="5c" label="Total Retainage" value={preview.totals.total_retainage} />
                 <G702Line num="6" label="Total Earned Less Retainage" value={preview.totals.total_earned_less_retainage} />
                 <G702Line num="7" label="Less Previous Certificates" value={preview.totals.less_previous_certificates} />
+                {preview.totals.deposit_applied > 0 && (
+                  <G702Line num="7a" label="Less Deposit Credit Applied" value={-preview.totals.deposit_applied} sub />
+                )}
                 <G702Line num="8" label="Current Payment Due" value={preview.totals.current_payment_due} highlight />
                 <div className="border-t border-[var(--border-default)] my-2" />
                 <G702Line num="9" label="Balance to Finish + Retainage" value={preview.totals.balance_to_finish} />
               </div>
             </div>
+
+            {preview.deposit && preview.deposit.pool > 0 && (
+              <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6">
+                <p className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider mb-4">
+                  Deposit Application
+                </p>
+                <div className="grid grid-cols-3 gap-4 text-sm mb-4">
+                  <div>
+                    <div className="text-[color:var(--text-secondary)]">Deposit on file</div>
+                    <div className="text-[color:var(--text-primary)] tabular-nums">{formatCents(preview.deposit.pool)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[color:var(--text-secondary)]">Applied to date</div>
+                    <div className="text-[color:var(--text-primary)] tabular-nums">{formatCents(preview.deposit.applied_to_date)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[color:var(--text-secondary)]">Remaining</div>
+                    <div className="text-[color:var(--text-primary)] tabular-nums">{formatCents(preview.deposit.remaining)}</div>
+                  </div>
+                </div>
+                <label className="block text-sm text-[color:var(--text-secondary)] mb-1">
+                  Apply to this draw ($)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={depositApplyDollars}
+                  onChange={(e) => setDepositApplyDollars(e.target.value)}
+                  placeholder="0.00"
+                  className="w-40 px-3 py-2 border border-[var(--border-default)] bg-[var(--bg-card)] text-[color:var(--text-primary)] tabular-nums"
+                />
+                {depositOverCap ? (
+                  <p className="mt-2 text-sm text-[color:var(--nw-warn)]">
+                    ⚠ Exceeds remaining deposit ({formatCents(preview.deposit.remaining)}). Reduce to continue.
+                  </p>
+                ) : depositApplyCents > 0 ? (
+                  <p className="mt-2 text-sm text-[color:var(--text-muted)]">
+                    Applying {formatCents(preview.deposit.applied_this_draw)} — reflected in Current Payment Due (line 7a) above.
+                  </p>
+                ) : null}
+              </div>
+            )}
 
             {warnings.length > 0 && (
               <div className="bg-[rgba(201,138,59,0.12)] border border-[rgba(201,138,59,0.35)] p-4">
@@ -1213,14 +1283,14 @@ export default function NewDrawWizardPage() {
               <div className="flex flex-col-reverse sm:flex-row gap-3">
                 <button
                   onClick={handleSaveDraft}
-                  disabled={submitting}
-                  className="w-full sm:w-auto px-4 py-2.5 border border-[var(--border-default)] text-[color:var(--text-primary)] hover:bg-[var(--bg-muted)] text-sm"
+                  disabled={submitting || depositOverCap}
+                  className="w-full sm:w-auto px-4 py-2.5 border border-[var(--border-default)] text-[color:var(--text-primary)] hover:bg-[var(--bg-muted)] text-sm disabled:opacity-50"
                 >
                   Save Draft
                 </button>
                 <button
                   onClick={handleSaveDraft}
-                  disabled={submitting}
+                  disabled={submitting || depositOverCap}
                   className="w-full sm:w-auto px-8 py-2.5 disabled:opacity-50 transition-colors nw-primary-btn"
                 >
                   {submitting

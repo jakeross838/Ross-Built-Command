@@ -8,6 +8,7 @@ import {
 import {
   appliedAdjustmentsForDraw,
   computeDrawLines,
+  depositAppliedToDateForJob,
   lessPreviousCertificatesForJob,
   nonBudgetLineThisPeriodForDraw,
   netChangeOrdersForJob,
@@ -24,6 +25,7 @@ interface UpdateDraftRequest {
   period_end?: string;
   invoice_ids?: string[];
   is_final?: boolean;
+  deposit_applied_cents?: number;
   wizard_draft?: Record<string, unknown> | null;
 }
 
@@ -218,6 +220,17 @@ export async function PUT(
     const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(drawId);
     const appliedAdjustments = await appliedAdjustmentsForDraw(drawId);
     const { total: uncapturedLinked } = await uncapturedLinkedInvoicesForDraw(drawId);
+    // BLOCK B pt2b — clamp the requested deposit application to the remaining
+    // pool (exclude THIS draft from applied-to-date). If the body omits it,
+    // preserve the draft's existing value.
+    const depositPool = Math.round(originalContractSum * depositPct);
+    const depositAppliedOnOthers = await depositAppliedToDateForJob(jobId, drawId);
+    const requestedDeposit =
+      body.deposit_applied_cents ?? ((draw.deposit_applied_cents as number | null) ?? 0);
+    const depositApplied = Math.max(
+      0,
+      Math.min(requestedDeposit, Math.max(0, depositPool - depositAppliedOnOthers))
+    );
 
     const totals = rollupDrawTotals({
       originalContractSum,
@@ -229,9 +242,7 @@ export async function PUT(
       isFinalDraw: isFinal,
       nonBudgetLineThisPeriod,
       previousCoCompletedAmount: previousCoCompleted,
-      // Preserve any deposit already applied to this draft (the wizard sets it
-      // via a dedicated write); a plain draft-edit must not zero it out.
-      depositAppliedCents: (draw.deposit_applied_cents as number | null) ?? 0,
+      depositAppliedCents: depositApplied,
       appliedAdjustmentsCents: appliedAdjustments,
       uncapturedLinkedCents: uncapturedLinked,
     });
@@ -267,6 +278,7 @@ export async function PUT(
         current_payment_due: totals.current_payment_due,
         balance_to_finish: totals.balance_to_finish,
         deposit_amount: totals.deposit_amount,
+        deposit_applied_cents: depositApplied,
         wizard_draft: body.wizard_draft ?? undefined,
         status_history: history,
         updated_at: new Date().toISOString(),
