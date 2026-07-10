@@ -53,6 +53,7 @@ import Eyebrow from "@/components/nw/Eyebrow";
 import Money from "@/components/nw/Money";
 import DataRow from "@/components/nw/DataRow";
 import NwButton from "@/components/nw/Button";
+import type { DepositState } from "@/app/financials/pay-apps/[id]/_data";
 
 export interface OwnerDrawViewProps {
   draw: CaldwellDraw;
@@ -63,6 +64,10 @@ export interface OwnerDrawViewProps {
   costCodes: CaldwellCostCode[];
   /** Optional breadcrumb root link. Defaults to /design-system/prototypes/. */
   breadcrumbRoot?: { href: string; label: string };
+  /** BLOCK B pt2 — deposit application; owner sees the credit applied this pay
+   *  app. Adjustments detail follows the owner-portal detail wiring
+   *  (Wave 1.1-Lite per nwrp200). */
+  deposit?: DepositState;
 }
 
 export default function OwnerDrawView({
@@ -76,6 +81,7 @@ export default function OwnerDrawView({
     href: "/design-system/prototypes/owner-portal",
     label: "Owner portal",
   },
+  deposit,
 }: OwnerDrawViewProps) {
   const drawId = draw.id;
 
@@ -191,6 +197,12 @@ export default function OwnerDrawView({
             label="Paid before this pay app"
             value={<Money cents={draw.less_previous_payments} size="md" />}
           />
+          {deposit && deposit.applied > 0 && (
+            <DataRow
+              label="Deposit credit applied"
+              value={<Money cents={-deposit.applied} size="md" signColor />}
+            />
+          )}
           <DataRow
             label="Work completed this period"
             value={

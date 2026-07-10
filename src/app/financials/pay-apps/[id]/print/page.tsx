@@ -41,6 +41,7 @@ export default async function PayAppPrintPage({
           jobName={data.job.name}
           statement={data.statement}
           backHref={backHref}
+          adjustments={data.adjustments}
         />
       ) : (
         <DrawPrintView
@@ -50,6 +51,8 @@ export default async function PayAppPrintPage({
           costCodes={data.costCodes}
           changeOrdersThroughThisDraw={data.changeOrdersThroughThisDraw}
           backHref={backHref}
+          deposit={data.deposit}
+          adjustments={data.adjustments}
         />
       )}
     </div>

@@ -12,7 +12,11 @@ import { Fragment } from "react";
 import { ArrowLeftIcon, PrinterIcon } from "@heroicons/react/24/outline";
 import NwButton from "@/components/nw/Button";
 import { computeStatement } from "@/lib/statement-calc";
-import type { StatementViewData } from "@/app/financials/pay-apps/[id]/_data";
+import { adjustmentTypeLabel } from "@/components/prototypes/AdjustmentsCreditsCard";
+import type {
+  StatementViewData,
+  DrawAdjustment,
+} from "@/app/financials/pay-apps/[id]/_data";
 
 function fmt(cents: number): string {
   return (cents / 100).toLocaleString("en-US", {
@@ -31,13 +35,20 @@ export interface CostPlusStatementPrintViewProps {
   jobName: string;
   statement: StatementViewData;
   backHref: string;
+  /** BLOCK B pt2 — applied adjustments (signed rows folded into total due). */
+  adjustments?: DrawAdjustment[];
 }
 
 export default function CostPlusStatementPrintView({
   jobName,
   statement,
   backHref,
+  adjustments = [],
 }: CostPlusStatementPrintViewProps) {
+  const appliedAdjustments = adjustments.filter(
+    (a) => a.adjustment_status === "applied_to_draw",
+  );
+  const netAdjustments = appliedAdjustments.reduce((s, a) => s + a.amount_cents, 0);
   const totals = computeStatement({
     costLines: statement.costLines.map((l) => ({
       cost_code_id: l.cost_code_id,
@@ -180,10 +191,17 @@ export default function CostPlusStatementPrintView({
                 <td style={{ padding: "3pt 4pt", textAlign: "right" }}>({fmt(c.amount)})</td>
               </tr>
             ))}
+            {appliedAdjustments.map((a) => (
+              <tr key={a.id}>
+                <td></td>
+                <td style={{ padding: "3pt 4pt" }}>{adjustmentTypeLabel(a.adjustment_type)}</td>
+                <td style={{ padding: "3pt 4pt", textAlign: "right" }}>{fmt(a.amount_cents)}</td>
+              </tr>
+            ))}
             <tr className="stmt-total">
               <td></td>
               <td style={{ padding: "4pt", textTransform: "uppercase" }}>Total due</td>
-              <td style={{ padding: "4pt", textAlign: "right" }}>{fmt(totals.total_due)}</td>
+              <td style={{ padding: "4pt", textAlign: "right" }}>{fmt(totals.total_due + netAdjustments)}</td>
             </tr>
           </tfoot>
         </table>

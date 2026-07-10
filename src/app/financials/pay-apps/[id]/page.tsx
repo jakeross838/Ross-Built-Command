@@ -54,6 +54,7 @@ export default async function PayAppReviewPage({
           interactive
           editHref={editHref}
           drawInvoices={data.drawInvoices}
+          adjustments={data.adjustments}
         />
       ) : (
         <DrawApprovalView
@@ -68,6 +69,8 @@ export default async function PayAppReviewPage({
           interactive
           editHref={editHref}
           drawInvoices={data.drawInvoices}
+          deposit={data.deposit}
+          adjustments={data.adjustments}
         />
       )}
     </div>

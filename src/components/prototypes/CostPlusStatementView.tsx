@@ -33,7 +33,12 @@ import Badge from "@/components/nw/Badge";
 import DrawActionBar from "@/components/prototypes/DrawActionBar";
 import DrawInvoicesSection from "@/components/prototypes/DrawInvoicesSection";
 import { computeStatement } from "@/lib/statement-calc";
-import type { StatementViewData, DrawInvoice } from "@/app/financials/pay-apps/[id]/_data";
+import { adjustmentTypeLabel } from "@/components/prototypes/AdjustmentsCreditsCard";
+import type {
+  StatementViewData,
+  DrawInvoice,
+  DrawAdjustment,
+} from "@/app/financials/pay-apps/[id]/_data";
 
 const STATUS_META: Record<
   string,
@@ -60,6 +65,9 @@ export interface CostPlusStatementViewProps {
   interactive?: boolean;
   editHref?: string;
   drawInvoices?: DrawInvoice[];
+  /** BLOCK B pt2 — draw adjustments; the applied ones render as signed credit
+   *  rows and fold into total due (deposit is already a credit row). */
+  adjustments?: DrawAdjustment[];
 }
 
 function pctLabel(fraction: number): string {
@@ -79,8 +87,16 @@ export default function CostPlusStatementView({
   interactive = false,
   editHref,
   drawInvoices = [],
+  adjustments = [],
 }: CostPlusStatementViewProps) {
   const meta = STATUS_META[status] ?? { variant: "neutral" as const, label: status.toUpperCase() };
+  // BLOCK B pt2 — applied adjustments (signed; negative = credit) fold into
+  // total due so the statement stays internally consistent. Deposit is already
+  // a credit row via statement.credits.deposit_application.
+  const appliedAdjustments = adjustments.filter(
+    (a) => a.adjustment_status === "applied_to_draw"
+  );
+  const netAdjustments = appliedAdjustments.reduce((s, a) => s + a.amount_cents, 0);
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
   const invoicesByCode = (cc: string) => drawInvoices.filter((i) => i.cost_code_id === cc);
   const totals = computeStatement({
@@ -289,12 +305,26 @@ export default function CostPlusStatementView({
                   </td>
                 </tr>
               ))}
+              {appliedAdjustments.map((a) => (
+                <tr key={a.id}>
+                  <td className={td}></td>
+                  <td className={td} style={{ color: "var(--text-primary)" }}>
+                    {adjustmentTypeLabel(a.adjustment_type)}
+                    {a.reason
+                      ? ` — ${a.reason.length > 60 ? a.reason.slice(0, 60).trimEnd() + "…" : a.reason}`
+                      : ""}
+                  </td>
+                  <td className={money}>
+                    <Money cents={a.amount_cents} size="sm" signColor />
+                  </td>
+                </tr>
+              ))}
               <tr className="border-t-2" style={{ borderColor: "var(--border-strong)" }}>
                 <td className={td}></td>
                 <td className={`${td} uppercase`} style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: "11px", letterSpacing: "0.1em", color: "var(--text-primary)", fontWeight: 600 }}>
                   Total due
                 </td>
-                <td className={money}><Money cents={totals.total_due} size="md" variant="emphasized" /></td>
+                <td className={money}><Money cents={totals.total_due + netAdjustments} size="md" variant="emphasized" /></td>
               </tr>
             </tfoot>
           </table>

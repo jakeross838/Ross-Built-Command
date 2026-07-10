@@ -37,6 +37,11 @@ import type {
   CaldwellCostCode,
   CaldwellJob,
 } from "@/app/design-system/_fixtures/drummond/types";
+import type {
+  DepositState,
+  DrawAdjustment,
+} from "@/app/financials/pay-apps/[id]/_data";
+import { adjustmentTypeLabel } from "@/components/prototypes/AdjustmentsCreditsCard";
 
 import NwButton from "@/components/nw/Button";
 
@@ -47,6 +52,10 @@ export interface DrawPrintViewProps {
   costCodes: CaldwellCostCode[];
   /** Approved change orders rolled into the contract sum through this draw. */
   changeOrdersThroughThisDraw: CaldwellChangeOrder[];
+  /** BLOCK B pt2 — deposit application (1a line + deduction before payment due). */
+  deposit?: DepositState;
+  /** BLOCK B pt2 — applied adjustments (deduction rows before payment due). */
+  adjustments?: DrawAdjustment[];
   /** Optional href for back-to-draw link. Defaults to portfolio path. */
   backHref?: string;
 }
@@ -69,10 +78,15 @@ export default function DrawPrintView({
   lineItems,
   costCodes,
   changeOrdersThroughThisDraw,
+  deposit,
+  adjustments = [],
   backHref,
 }: DrawPrintViewProps) {
   const cosThroughThisDraw = [...changeOrdersThroughThisDraw].sort(
     (a, b) => a.pcco_number - b.pcco_number,
+  );
+  const appliedAdjustments = adjustments.filter(
+    (a) => a.adjustment_status === "applied_to_draw",
   );
 
   // CO summary totals (additions, deductions, net) — shown on G702 change
@@ -384,6 +398,14 @@ export default function DrawPrintView({
                     {fmt(draw.original_contract_sum)}
                   </td>
                 </tr>
+                {deposit && deposit.pool > 0 && (
+                  <tr className="aia-row-separator">
+                    <td className="py-1 pl-3">1a. DEPOSIT ON FILE</td>
+                    <td className="aia-mono text-right py-1 pr-3">
+                      {fmt(deposit.pool)}
+                    </td>
+                  </tr>
+                )}
                 <tr className="aia-row-separator">
                   <td className="py-1 pl-3">
                     2. NET CHANGE BY CHANGE ORDERS
@@ -422,6 +444,24 @@ export default function DrawPrintView({
                     {fmt(draw.less_previous_payments)}
                   </td>
                 </tr>
+                {deposit && deposit.applied > 0 && (
+                  <tr className="aia-row-separator">
+                    <td className="py-1 pl-3">LESS DEPOSIT CREDIT APPLIED</td>
+                    <td className="aia-mono text-right py-1 pr-3">
+                      ({fmt(deposit.applied)})
+                    </td>
+                  </tr>
+                )}
+                {appliedAdjustments.map((a) => (
+                  <tr key={a.id} className="aia-row-separator">
+                    <td className="py-1 pl-3">
+                      {adjustmentTypeLabel(a.adjustment_type).toUpperCase()}
+                    </td>
+                    <td className="aia-mono text-right py-1 pr-3">
+                      {fmt(a.amount_cents)}
+                    </td>
+                  </tr>
+                ))}
                 <tr className="aia-line-bold-top aia-line-emphasis">
                   <td className="py-2 pl-3 font-bold text-[12pt]">
                     7. CURRENT PAYMENT DUE

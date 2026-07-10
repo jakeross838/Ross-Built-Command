@@ -56,6 +56,7 @@ interface DbDrawRow {
   current_payment_due: number;
   balance_to_finish: number;
   deposit_amount: number;
+  deposit_applied_cents: number;
   submitted_at: string | null;
   paid_at: string | null;
 }
@@ -124,8 +125,21 @@ export default async function OwnerPayAppPage({
     .is("deleted_at", null)
     .maybeSingle();
 
-  const draw = mapDbDrawToCaldwell(drawRow as unknown as DbDrawRow);
+  const typedDrawRow = drawRow as unknown as DbDrawRow;
+  const draw = mapDbDrawToCaldwell(typedDrawRow);
   const jobMeta = (jobRow as unknown as { id: string; name: string } | null) ?? null;
+  // BLOCK B pt2 — owner sees the deposit credit applied to this pay app.
+  // pool = deposit on file; applied = this pay app's credit. appliedToDate /
+  // remaining are not shown on the owner summary (single-draw scope here).
+  const deposit = {
+    pool: typedDrawRow.deposit_amount ?? 0,
+    applied: typedDrawRow.deposit_applied_cents ?? 0,
+    appliedToDate: typedDrawRow.deposit_applied_cents ?? 0,
+    remaining: Math.max(
+      0,
+      (typedDrawRow.deposit_amount ?? 0) - (typedDrawRow.deposit_applied_cents ?? 0),
+    ),
+  };
 
   const isAcknowledgedStatusTerminal =
     draw.status === "paid" || draw.status === "void";
@@ -152,6 +166,7 @@ export default async function OwnerPayAppPage({
         invoices={[]}
         vendors={[]}
         costCodes={[]}
+        deposit={deposit}
         breadcrumbRoot={{
           href: `/owner/${params.token}`,
           label: "Project",

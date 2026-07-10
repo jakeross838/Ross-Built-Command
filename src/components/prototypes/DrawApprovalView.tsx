@@ -42,7 +42,11 @@ import type {
   CaldwellChangeOrder,
   CaldwellCostCode,
 } from "@/app/design-system/_fixtures/drummond/types";
-import type { DrawInvoice } from "@/app/financials/pay-apps/[id]/_data";
+import type {
+  DrawInvoice,
+  DepositState,
+  DrawAdjustment,
+} from "@/app/financials/pay-apps/[id]/_data";
 
 import Card from "@/components/nw/Card";
 import Eyebrow from "@/components/nw/Eyebrow";
@@ -51,6 +55,7 @@ import DataRow from "@/components/nw/DataRow";
 import Badge from "@/components/nw/Badge";
 import DrawActionBar from "@/components/prototypes/DrawActionBar";
 import DrawInvoicesSection from "@/components/prototypes/DrawInvoicesSection";
+import AdjustmentsCreditsCard from "@/components/prototypes/AdjustmentsCreditsCard";
 
 export interface DrawApprovalViewProps {
   draw: CaldwellDraw;
@@ -75,6 +80,12 @@ export interface DrawApprovalViewProps {
   editHref?: string;
   /** Invoices linked to this draw (drill-down + per-line expansion). */
   drawInvoices?: DrawInvoice[];
+  /** BLOCK B pt2 — deposit application: line 1a (pool) + the "Less deposit
+   *  credit applied" deduction between AIA line 7 and line 8. */
+  deposit?: DepositState;
+  /** BLOCK B pt2 — draw adjustments; the applied ones render in the
+   *  "Adjustments & Credits" section (already folded into current payment due). */
+  adjustments?: DrawAdjustment[];
 }
 
 const STATUS_BADGE: Record<
@@ -127,6 +138,8 @@ export default function DrawApprovalView({
   interactive = false,
   editHref,
   drawInvoices = [],
+  deposit,
+  adjustments = [],
 }: DrawApprovalViewProps) {
   const status = STATUS_BADGE[draw.status];
   const timeline = buildTimeline(draw);
@@ -220,6 +233,12 @@ export default function DrawApprovalView({
                 label="Original contract sum"
                 value={<Money cents={draw.original_contract_sum} size="md" />}
               />
+              {deposit && deposit.pool > 0 && (
+                <DataRow
+                  label="Deposit on file (1a)"
+                  value={<Money cents={deposit.pool} size="md" />}
+                />
+              )}
               <DataRow
                 label="Net change orders"
                 value={
@@ -244,6 +263,12 @@ export default function DrawApprovalView({
                 label="Less previous payments"
                 value={<Money cents={draw.less_previous_payments} size="md" />}
               />
+              {deposit && deposit.applied > 0 && (
+                <DataRow
+                  label="Less deposit credit applied"
+                  value={<Money cents={-deposit.applied} size="md" signColor />}
+                />
+              )}
               <DataRow
                 label="Current payment due"
                 value={
@@ -317,6 +342,8 @@ export default function DrawApprovalView({
               </ul>
             </Card>
           )}
+
+          <AdjustmentsCreditsCard adjustments={adjustments} />
         </div>
 
         {/* RIGHT — G703 line items table */}
