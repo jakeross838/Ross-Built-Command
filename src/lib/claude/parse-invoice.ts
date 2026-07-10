@@ -19,13 +19,19 @@ export type ParseMeta = {
   metadata?: Record<string, unknown>;
 };
 
-async function getCostCodeList(supabase: Client): Promise<string> {
+async function getCostCodeList(supabase: Client, orgId: string): Promise<string> {
  // `any` here because this function supports both SSR and plain supabase-js
  // clients; the call shape is identical but the generic parameters differ.
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  const { data } = await (supabase as any)
  .from("cost_codes")
  .select("code, description, category, is_change_order")
+ // Org-scope the AI's cost-code list. The parse client is service-role
+ // (RLS-bypassing), so without this filter the model was handed EVERY org's
+ // codes at once — the cross-org "duplicate 05101" (RB's Demolition vs another
+ // org's Concrete) that drove miscoding (audit #1). Codes MUST be the invoice
+ // org's only.
+ .eq("org_id", orgId)
  .is("deleted_at", null)
  .order("sort_order");
 
@@ -142,7 +148,7 @@ export async function parseInvoiceWithVision(
  meta: ParseMeta
 ): Promise<ParsedInvoice> {
  const base64 = fileBuffer.toString("base64");
- const costCodeList = await getCostCodeList(supabase);
+ const costCodeList = await getCostCodeList(supabase, meta.org_id);
  const prompt = buildPrompt(costCodeList);
 
  const contentBlocks: Anthropic.Messages.ContentBlockParam[] = [];
@@ -213,7 +219,7 @@ export async function parseInvoiceFromText(
  supabase: Client,
  meta: ParseMeta
 ): Promise<ParsedInvoice> {
- const costCodeList = await getCostCodeList(supabase);
+ const costCodeList = await getCostCodeList(supabase, meta.org_id);
  const prompt = buildPrompt(costCodeList);
 
  const response = await callClaude({
