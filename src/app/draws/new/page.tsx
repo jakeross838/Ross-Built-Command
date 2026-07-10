@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { useOrgId } from "@/hooks/use-org-id";
 import { formatCents, formatDate } from "@/lib/utils/format";
 
 interface Job {
@@ -164,29 +165,39 @@ export default function NewDrawWizardPage() {
   const [savingSetup, setSavingSetup] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
-  // Load active jobs on mount.
+  const orgId = useOrgId();
+
+  // Load active jobs on mount — org-scoped (Stage 2.1: platform_admins bypass
+  // RLS, so the wizard job dropdown MUST filter by org_id or it lists every
+  // org's jobs).
   useEffect(() => {
+    if (!orgId) return;
+    const oid = orgId;
     (async () => {
       const { data } = await supabase
         .from("jobs")
         .select(
           "id, name, address, original_contract_amount, current_contract_amount, deposit_percentage, retainage_percent, billing_method"
         )
+        .eq("org_id", oid)
         .is("deleted_at", null)
         .eq("status", "active")
         .order("name");
       if (data) setJobs(data as Job[]);
     })();
-  }, []);
+  }, [orgId]);
 
-  // If resuming a draft, load it.
+  // If resuming a draft, load it. Org-scoped (Stage 2.1) so a cross-org draft
+  // id can't be resumed by a platform_admin.
   useEffect(() => {
-    if (!draftId) return;
+    if (!draftId || !orgId) return;
+    const oid = orgId;
     (async () => {
       const { data } = await supabase
         .from("draws")
         .select("id, job_id, status, wizard_draft, application_date, period_start, period_end, is_final")
         .eq("id", draftId)
+        .eq("org_id", oid)
         .single();
       if (!data) return;
       // Only DRAFT draws are editable. A void/submitted/approved/locked/paid
@@ -222,18 +233,20 @@ export default function NewDrawWizardPage() {
           .from("invoices")
           .select("id")
           .eq("draw_id", draftId)
+          .eq("org_id", oid)
           .is("deleted_at", null);
         setSelected(new Set((attached ?? []).map((r) => (r as { id: string }).id)));
       }
     })();
-  }, [draftId, editMode]);
+  }, [draftId, editMode, orgId]);
 
   // Job context: contract, billed-to-date, last draw, invoices since.
   useEffect(() => {
-    if (!jobId) {
+    if (!jobId || !orgId) {
       setJobMeta(null);
       return;
     }
+    const oid = orgId;
     (async () => {
       const job = jobs.find((j) => j.id === jobId);
       if (!job) return;
@@ -248,12 +261,14 @@ export default function NewDrawWizardPage() {
           .from("invoices")
           .select("total_amount, status")
           .eq("job_id", jobId)
+          .eq("org_id", oid)
           .is("deleted_at", null)
           .in("status", ["qa_approved", "pushed_to_qb", "in_draw", "paid"]),
         supabase
           .from("draws")
           .select("id, draw_number, status, period_end, current_payment_due, revision_number")
           .eq("job_id", jobId)
+          .eq("org_id", oid)
           .is("deleted_at", null)
           .order("draw_number", { ascending: false }),
       ]);
@@ -305,6 +320,7 @@ export default function NewDrawWizardPage() {
         .from("invoices")
         .select("id")
         .eq("job_id", jobId)
+        .eq("org_id", oid)
         .is("deleted_at", null)
         .in("status", ["qa_approved"])
         .gt("received_date", sinceCutoff);
@@ -319,7 +335,7 @@ export default function NewDrawWizardPage() {
         lastDrawPeriodEnd: lockedPrior?.period_end ?? null,
       });
     })();
-  }, [jobId, jobs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [jobId, jobs, orgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load workflow settings (for lien release warning gate).
   useEffect(() => {

@@ -18,7 +18,13 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!membership || !user) {
-    return NextResponse.json({ authenticated: false, id: null, full_name: "", role: null });
+    return NextResponse.json({
+      authenticated: false,
+      id: null,
+      full_name: "",
+      role: null,
+      org_id: null,
+    });
   }
 
   const { data: profile } = await supabase
@@ -32,5 +38,9 @@ export async function GET(request: NextRequest) {
     id: user.id,
     full_name: (profile?.full_name as string) ?? "",
     role: membership.role,
+    // Caller's OWN org id — safe to expose to the caller. Lets client-side
+    // picker/dropdown queries scope by org_id explicitly instead of relying on
+    // RLS (which platform_admins bypass → cross-org leak). Stage 2.1 sweep.
+    org_id: membership.org_id,
   });
 }

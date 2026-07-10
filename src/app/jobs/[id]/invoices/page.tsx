@@ -47,9 +47,19 @@ export default function JobInvoicesPage({ params }: { params: { id: string } }) 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace(`/login?redirect=/jobs/${params.id}/invoices`); return; }
 
+      // Org scope (Stage 2.1): platform_admins bypass RLS, so scope this job +
+      // its invoices by the acting user's own org — never rely on RLS. A
+      // cross-org job id then resolves to nothing instead of leaking.
+      const { data: m } = await supabase
+        .from("org_members").select("org_id")
+        .eq("user_id", user.id).eq("is_active", true)
+        .order("created_at", { ascending: true }).limit(1).maybeSingle();
+      const oid = (m?.org_id as string | null) ?? null;
+      if (!oid) { setLoading(false); return; }
+
       const { data: j } = await supabase
         .from("jobs").select("id, name, address")
-        .eq("id", params.id).is("deleted_at", null).single();
+        .eq("id", params.id).eq("org_id", oid).is("deleted_at", null).single();
       if (j) setJob(j as Job);
 
       // Try with parent_invoice_id first; fall back without it if the column
@@ -63,6 +73,7 @@ export default function JobInvoicesPage({ params }: { params: { id: string } }) 
           cost_codes:cost_code_id(code, description)
         `)
         .eq("job_id", params.id)
+        .eq("org_id", oid)
         .is("deleted_at", null)
         .order("invoice_date", { ascending: false });
       let invQuery: { data: unknown; error: { message: string } | null } = withParent;

@@ -201,12 +201,24 @@ export default function QueuePage() {
  }
  }
 
+ if (!orgId) {
+ // No org (unauthenticated / membership missing) — never render cross-org
+ // rows. Empty out + stop (Stage 2.1 cross-org sweep: platform_admins bypass
+ // RLS, so this client-side queue MUST filter by org_id explicitly).
+ setInvoices([]);
+ setPmUsers([]);
+ setLoading(false);
+ return;
+ }
+ const oid = orgId;
+
  const [invoiceResult, pmResult, settingsResult] = await Promise.all([
  supabase
  .from("invoices")
  .select(
  "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, status, job_id, cost_code_id, document_category, document_type, po_id, is_potential_duplicate, duplicate_dismissed_at, jobs:job_id (name), assigned_pm:assigned_pm_id (id, full_name)"
  )
+ .eq("org_id", oid)
  .in("status", ["pm_review", "ai_processed", "pm_held", "pm_denied", "info_requested"])
  .is("deleted_at", null)
  .order("received_date", { ascending: true }),

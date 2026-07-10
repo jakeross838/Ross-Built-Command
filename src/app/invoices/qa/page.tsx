@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { useOrgId } from "@/hooks/use-org-id";
 import { daysAgo, formatDateTime } from "@/lib/utils/format";
 import FinancialViewTabs from "@/components/financial-view-tabs";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
@@ -24,8 +25,13 @@ interface QaInvoice {
 export default function QaQueuePage() {
  const [invoices, setInvoices] = useState<QaInvoice[]>([]);
  const [loading, setLoading] = useState(true);
+ const orgId = useOrgId();
 
+ // Org-scoped (Stage 2.1): platform_admins bypass RLS, so this client-side QA
+ // queue MUST filter by org_id or it shows every org's invoices.
  useEffect(() => {
+ if (!orgId) return;
+ const oid = orgId;
  async function fetchQueue() {
  const { data, error } = await supabase
  .from("invoices")
@@ -34,6 +40,7 @@ export default function QaQueuePage() {
  jobs:job_id (name),
  cost_codes:cost_code_id (code, description)
  `)
+ .eq("org_id", oid)
  .in("status", ["qa_review", "pm_approved"])
  .is("deleted_at", null)
  .order("received_date", { ascending: true });
@@ -41,7 +48,7 @@ export default function QaQueuePage() {
  setLoading(false);
  }
  fetchQueue();
- }, []);
+ }, [orgId]);
 
  function getApprovalInfo(history: Array<Record<string, unknown>>): { who: string; when: string } | null {
  const approval = [...history].reverse().find(e => String(e.new_status) === "qa_review" || String(e.new_status) === "pm_approved");

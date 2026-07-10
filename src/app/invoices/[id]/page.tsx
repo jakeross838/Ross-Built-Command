@@ -18,6 +18,7 @@ import InvoiceHeader from "@/components/invoices/InvoiceHeader";
 import InvoiceDetailsPanel from "@/components/invoices/InvoiceDetailsPanel";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentRole } from "@/hooks/use-current-role";
+import { useOrgId } from "@/hooks/use-org-id";
 import { isInvoiceLocked, canEditLockedFields } from "@/lib/invoice-permissions";
 
 interface Job { id: string; name: string; address: string | null; }
@@ -126,6 +127,7 @@ export default function InvoiceReviewPage() {
  // non-privileged — see use-current-role.ts for the fail-closed
  // contract.
  const role = useCurrentRole();
+ const orgId = useOrgId();
 
  const [invoice, setInvoice] = useState<InvoiceData | null>(null);
  // Item 5 — which copy of the document to show: the approval-stamped PDF (when
@@ -352,13 +354,17 @@ export default function InvoiceReviewPage() {
  return () => { cancelled = true; };
  }, [invoice?.draw_id]);
 
- // Fetch lookups (cost codes with category + is_change_order)
+ // Fetch lookups (cost codes with category + is_change_order). Org-scoped
+ // (Stage 2.1): platform_admins bypass RLS, so these client-side picker
+ // queries MUST filter by org_id or they leak every org's jobs/codes.
  useEffect(() => {
+ if (!orgId) return;
+ const oid = orgId;
  let cancelled = false;
  async function fetchLookups() {
  const [jobsRes, codesRes] = await Promise.all([
- supabase.from("jobs").select("id, name, address").is("deleted_at", null).eq("status", "active").order("name"),
- supabase.from("cost_codes").select("id, code, description, category, is_change_order").is("deleted_at", null).order("sort_order"),
+ supabase.from("jobs").select("id, name, address").eq("org_id", oid).is("deleted_at", null).eq("status", "active").order("name"),
+ supabase.from("cost_codes").select("id, code, description, category, is_change_order").eq("org_id", oid).is("deleted_at", null).order("sort_order"),
  ]);
  if (cancelled) return;
  if (jobsRes.data) setJobs(jobsRes.data);
@@ -366,7 +372,7 @@ export default function InvoiceReviewPage() {
  }
  fetchLookups();
  return () => { cancelled = true; };
- }, []);
+ }, [orgId]);
 
  // Fetch workflow settings (Phase 8e) — drives badge color / approval gates.
  useEffect(() => {
