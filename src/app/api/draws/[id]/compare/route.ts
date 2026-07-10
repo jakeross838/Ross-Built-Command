@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentMembership } from "@/lib/org/session";
 import {
+  appliedAdjustmentsForDraw,
   computeDrawLines,
   lessPreviousCertificatesForJob,
   nonBudgetLineThisPeriodForDraw,
@@ -115,6 +116,14 @@ export async function GET(
           );
 
       const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(draw.id);
+      const appliedAdjustments = await appliedAdjustmentsForDraw(draw.id);
+      const { data: depRow } = await supabase
+        .from("draws")
+        .select("deposit_applied_cents")
+        .eq("id", draw.id)
+        .single();
+      const depositApplied =
+        (depRow as { deposit_applied_cents?: number } | null)?.deposit_applied_cents ?? 0;
       const totals = rollupDrawTotals({
         originalContractSum:
           (jobRow as { original_contract_amount?: number } | null)?.original_contract_amount ?? 0,
@@ -128,6 +137,8 @@ export async function GET(
         nonBudgetLineThisPeriod,
         previousCoCompletedAmount:
           (jobRow as { previous_co_completed_amount?: number } | null)?.previous_co_completed_amount ?? 0,
+        depositAppliedCents: depositApplied,
+        appliedAdjustmentsCents: appliedAdjustments,
       });
       return { lines, totals, invoiceCount: (invs ?? []).length };
     };

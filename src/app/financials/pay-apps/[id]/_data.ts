@@ -47,8 +47,10 @@ import { createServerClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { getCurrentMembership } from "@/lib/org/session";
 import {
+  appliedAdjustmentsForDraw,
   applicationNumberForDraw,
   computeDrawLines,
+  depositAppliedToDateForJob,
   lessPreviousCertificatesForJob,
   netChangeOrdersForJob,
   nonBudgetLineThisPeriodForDraw,
@@ -104,6 +106,24 @@ export type DrawInvoice = {
   stamped: boolean;
 };
 
+// BLOCK B / 1.2 — draw adjustments surfaced on the doc + wizard.
+export type DrawAdjustment = {
+  id: string;
+  adjustment_type: string;
+  adjustment_status: string; // 'applied_to_draw' (counted) | 'approved' (pending)
+  amount_cents: number; // signed; negative = credit
+  reason: string;
+  affected_pcco_number: string | null;
+};
+
+// BLOCK B / 1.6 — deposit application state for the doc + wizard cap.
+export type DepositState = {
+  pool: number; // full contract deposit (AIA line 1a, informational)
+  applied: number; // applied on THIS draw (the deduction line)
+  appliedToDate: number; // Σ across all non-void draws (this included)
+  remaining: number; // pool − appliedToDate
+};
+
 export type PayAppViewData = {
   draw: CaldwellDraw;
   job: CaldwellJob;
@@ -121,6 +141,12 @@ export type PayAppViewData = {
   // page mounts. `statement` is populated ONLY for cost_plus_statement jobs.
   billingMethod: "aia" | "cost_plus_statement" | "fixed_fee_schedule";
   statement: StatementViewData | null;
+  // BLOCK B — deposit application (1.6) + adjustments (1.2). Both renderers
+  // show the "Less Deposit Credit Applied" line + "Adjustments & Credits"
+  // section from these; current_payment_due already reflects them.
+  deposit: DepositState;
+  adjustments: DrawAdjustment[]; // applied_to_draw + approved (pending pool)
+  appliedAdjustmentsTotal: number; // signed sum of applied_to_draw only
 };
 
 const KNOWN_DRAW_STATUSES: ReadonlyArray<CaldwellDraw["status"]> = [
@@ -210,6 +236,17 @@ export async function loadPayAppViewData(
           (draw.revision_number as number | null) ?? snap.draw.revision_number,
       },
       storedSummaryStale: false,
+      // BLOCK B — backfill deposit/adjustments for snapshots captured before
+      // 1.2/1.6 (a frozen draw stays byte-frozen; missing = none applied).
+      deposit:
+        snap.deposit ?? {
+          pool: snap.draw?.deposit_amount ?? 0,
+          applied: 0,
+          appliedToDate: 0,
+          remaining: snap.draw?.deposit_amount ?? 0,
+        },
+      adjustments: snap.adjustments ?? [],
+      appliedAdjustmentsTotal: snap.appliedAdjustmentsTotal ?? 0,
     };
   }
 
@@ -282,6 +319,34 @@ export async function loadPayAppViewData(
   const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(
     draw.id as string
   );
+  // BLOCK B — deposit + adjustments for this draw (both feed current_payment_due).
+  const appliedAdjustmentsTotal = await appliedAdjustmentsForDraw(draw.id as string);
+  const depositApplied = (draw.deposit_applied_cents as number | null) ?? 0;
+  const depositAppliedOnOthers = await depositAppliedToDateForJob(
+    draw.job_id as string,
+    draw.id as string
+  );
+  // Adjustment rows for the Adjustments & Credits section (applied) + the
+  // wizard's pending pool (approved). Display only — the math sum above comes
+  // from the canonical appliedAdjustmentsForDraw helper (single source).
+  const { data: adjRows } = await supabase
+    .from("draw_adjustments")
+    .select(
+      "id, adjustment_type, adjustment_status, amount_cents, reason, affected_pcco_number"
+    )
+    .eq("draw_id", draw.id as string)
+    .eq("org_id", membership.org_id)
+    .in("adjustment_status", ["approved", "applied_to_draw"])
+    .is("deleted_at", null)
+    .order("created_at");
+  const drawAdjustments: DrawAdjustment[] = (adjRows ?? []).map((a) => ({
+    id: a.id as string,
+    adjustment_type: (a.adjustment_type as string) ?? "",
+    adjustment_status: (a.adjustment_status as string) ?? "",
+    amount_cents: Number(a.amount_cents ?? 0),
+    reason: (a.reason as string) ?? "",
+    affected_pcco_number: (a.affected_pcco_number as string | null) ?? null,
+  }));
 
   const totals = rollupDrawTotals({
     originalContractSum: (draw.original_contract_sum as number | null) ?? 0,
@@ -295,6 +360,8 @@ export async function loadPayAppViewData(
     previousCoCompletedAmount: Number(
       jobEmbed.previous_co_completed_amount ?? 0
     ),
+    depositAppliedCents: depositApplied,
+    appliedAdjustmentsCents: appliedAdjustmentsTotal,
   });
 
   // Approved/executed change orders on the job (contract-sum running total).
@@ -405,51 +472,88 @@ export async function loadPayAppViewData(
     gc_fee_percentage: Number(jobEmbed.gc_fee_percentage ?? 0.2),
   };
 
-  // G703 rows: merge the recomputed snapshot into budget lines by
-  // cost_code_id (same merge as route.ts:158-188), sorted by cost-code
-  // sort_order. percent_complete scaled 0..100 → 0..1 for the Views.
-  const snapByCc = new Map(snapshot.map((l) => [l.cost_code_id, l]));
-  const lineItems: CaldwellDrawLineItem[] = budgetLines
-    .map((bl) => {
-      const s = snapByCc.get(bl.cost_code_id as string);
-      const previous_applications =
-        s?.previous_applications ??
-        ((bl.previous_applications_baseline as number | null) ?? 0);
-      const this_period = s?.this_period ?? 0;
-      const total_to_date = s?.total_completed ?? previous_applications;
-      const revised = (bl.revised_estimate as number | null) ?? 0;
-      const percent01 =
-        s != null
-          ? s.percent_complete / 100
-          : revised > 0
-            ? total_to_date / revised
-            : 0;
+  // BLOCK B / 1.3 — G703 UNION. The recomputed snapshot spans the union of
+  // budget-line codes AND unbudgeted this/prior-period invoice codes (see
+  // draw-calc computeDrawLines). Previously the G703 rows were built from
+  // budget_lines ONLY, so unbudgeted invoice codes landed in the G702 total
+  // (via the snapshot) but were absent from the continuation sheet — the sheet
+  // didn't tie out. Build rows from the FULL snapshot so Σ(G703 rows) captures
+  // every this-period dollar. Scheduled Value ("Original") is reconstructed by
+  // the View as previous + this_period + balance_to_finish; draw-calc sets an
+  // unbudgeted line's balance to 0 (scheduled = billed-to-date, 100%) — the
+  // same convention the /api/draws/[id] route + PDF already render.
+  const blByCc = new Map(
+    budgetLines.map((bl) => [bl.cost_code_id as string, bl])
+  );
+
+  // Labels for every snapshot cost code. Budget-line codes carry their embed;
+  // unbudgeted codes (no budget line here — this loader never auto-creates)
+  // need a direct lookup.
+  const ccLabel = new Map<
+    string,
+    { code: string; description: string; category: string; sort_order: number }
+  >();
+  for (const bl of budgetLines) {
+    if (bl.cost_codes) {
+      ccLabel.set(bl.cost_code_id as string, {
+        code: bl.cost_codes.code,
+        description: bl.cost_codes.description,
+        category: bl.cost_codes.category ?? "",
+        sort_order: bl.cost_codes.sort_order ?? 0,
+      });
+    }
+  }
+  const unlabeledCc = Array.from(
+    new Set(snapshot.map((l) => l.cost_code_id).filter((id) => !ccLabel.has(id)))
+  );
+  if (unlabeledCc.length > 0) {
+    const { data: ccRows } = await supabase
+      .from("cost_codes")
+      .select("id, code, description, category, sort_order")
+      .eq("org_id", membership.org_id)
+      .in("id", unlabeledCc);
+    for (const cc of ccRows ?? []) {
+      ccLabel.set(cc.id as string, {
+        code: (cc.code as string) ?? "—",
+        description: (cc.description as string) ?? "",
+        category: (cc.category as string) ?? "",
+        sort_order: (cc.sort_order as number | null) ?? 0,
+      });
+    }
+  }
+
+  const lineItems: CaldwellDrawLineItem[] = snapshot
+    .map((s) => {
+      const bl = blByCc.get(s.cost_code_id);
+      const label = ccLabel.get(s.cost_code_id);
       return {
-        id: `computed-${bl.id}`,
+        id: bl ? `computed-${bl.id}` : `computed-cc-${s.cost_code_id}`,
         draw_id: draw.id as string,
-        budget_line_id: bl.id as string,
-        cost_code_id: bl.cost_code_id as string,
-        previous_applications,
-        this_period,
-        total_to_date,
-        percent_complete: percent01,
-        balance_to_finish:
-          s?.balance_to_finish ?? Math.max(0, revised - total_to_date),
-        sort: bl.cost_codes?.sort_order ?? 0,
+        budget_line_id: bl ? (bl.id as string) : `unbudgeted-${s.cost_code_id}`,
+        cost_code_id: s.cost_code_id,
+        previous_applications: s.previous_applications,
+        this_period: s.this_period,
+        total_to_date: s.total_completed,
+        percent_complete: s.percent_complete / 100,
+        balance_to_finish: s.balance_to_finish,
+        sort: label?.sort_order ?? 0,
       };
     })
     .sort((a, b) => a.sort - b.sort)
     .map(({ sort: _sort, ...li }) => li);
 
-  const costCodes: CaldwellCostCode[] = budgetLines
-    .filter((bl) => bl.cost_codes != null)
-    .map((bl) => ({
-      id: bl.cost_code_id as string,
-      code: bl.cost_codes!.code,
-      description: bl.cost_codes!.description,
-      category: bl.cost_codes!.category ?? "",
-      sort_order: bl.cost_codes!.sort_order ?? 0,
-    }));
+  const costCodes: CaldwellCostCode[] = snapshot
+    .map((s) => {
+      const label = ccLabel.get(s.cost_code_id);
+      return {
+        id: s.cost_code_id,
+        code: label?.code ?? "—",
+        description: label?.description ?? "",
+        category: label?.category ?? "",
+        sort_order: label?.sort_order ?? 0,
+      };
+    })
+    .sort((a, b) => a.sort_order - b.sort_order);
 
   const changeOrdersThroughThisDraw: CaldwellChangeOrder[] = (
     coRows ?? []
@@ -580,9 +684,12 @@ export async function loadPayAppViewData(
         (orgRow?.default_backup_detail as string | null) ?? null
       ),
       // Credits render only when nonzero (statement-calc drops zeros). Sourced
-      // from the same recomputed totals the AIA cover sheet uses.
+      // from the same recomputed totals the AIA cover sheet uses. BLOCK B:
+      // deposit_application is the amount APPLIED this draw (deposit_applied) —
+      // NOT the full pool (totals.deposit_amount) which was credited on every
+      // draw before 1.6.
       credits: {
-        deposit_application: totals.deposit_amount,
+        deposit_application: totals.deposit_applied,
         retainage: totals.total_retainage,
         prior_payments: totals.less_previous_payments,
       },
@@ -608,6 +715,17 @@ export async function loadPayAppViewData(
     storedSummaryStale,
     billingMethod,
     statement,
+    deposit: {
+      pool: totals.deposit_amount,
+      applied: depositApplied,
+      appliedToDate: depositAppliedOnOthers + depositApplied,
+      remaining: Math.max(
+        0,
+        totals.deposit_amount - depositAppliedOnOthers - depositApplied
+      ),
+    },
+    adjustments: drawAdjustments,
+    appliedAdjustmentsTotal,
   };
 }
 

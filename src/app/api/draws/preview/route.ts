@@ -105,6 +105,9 @@ export async function POST(request: NextRequest) {
       nonBudgetLineThisPeriod: 0,
       previousCoCompletedAmount:
         (job as { previous_co_completed_amount?: number }).previous_co_completed_amount ?? 0,
+      // Preview of a not-yet-created draw: no deposit applied / adjustments yet.
+      depositAppliedCents: 0,
+      appliedAdjustmentsCents: 0,
     });
 
     // Resolve cost-code metadata for each snapshot line so the wizard's G703

@@ -1378,6 +1378,7 @@ export type Database = {
           current_payment_due: number
           deleted_at: string | null
           deposit_amount: number
+          deposit_applied_cents: number
           draw_mode: string
           draw_number: number
           id: string
@@ -1423,6 +1424,7 @@ export type Database = {
           current_payment_due?: number
           deleted_at?: string | null
           deposit_amount?: number
+          deposit_applied_cents?: number
           draw_mode?: string
           draw_number: number
           id?: string
@@ -1468,6 +1470,7 @@ export type Database = {
           current_payment_due?: number
           deleted_at?: string | null
           deposit_amount?: number
+          deposit_applied_cents?: number
           draw_mode?: string
           draw_number?: number
           id?: string

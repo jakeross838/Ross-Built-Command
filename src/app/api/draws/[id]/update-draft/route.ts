@@ -6,6 +6,7 @@ import {
   logImpersonatedWrite,
 } from "@/lib/auth/impersonation-client";
 import {
+  appliedAdjustmentsForDraw,
   computeDrawLines,
   lessPreviousCertificatesForJob,
   nonBudgetLineThisPeriodForDraw,
@@ -66,7 +67,7 @@ export async function PUT(
     const { data: draw } = await supabase
       .from("draws")
       .select(
-        "id, job_id, draw_number, status, application_date, period_start, period_end, is_final, status_history"
+        "id, job_id, draw_number, status, application_date, period_start, period_end, is_final, status_history, deposit_applied_cents"
       )
       .eq("id", drawId)
       .eq("org_id", orgId)
@@ -214,6 +215,7 @@ export async function PUT(
       drawId
     );
     const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(drawId);
+    const appliedAdjustments = await appliedAdjustmentsForDraw(drawId);
 
     const totals = rollupDrawTotals({
       originalContractSum,
@@ -225,6 +227,10 @@ export async function PUT(
       isFinalDraw: isFinal,
       nonBudgetLineThisPeriod,
       previousCoCompletedAmount: previousCoCompleted,
+      // Preserve any deposit already applied to this draft (the wizard sets it
+      // via a dedicated write); a plain draft-edit must not zero it out.
+      depositAppliedCents: (draw.deposit_applied_cents as number | null) ?? 0,
+      appliedAdjustmentsCents: appliedAdjustments,
     });
 
     const history = Array.isArray(draw.status_history)

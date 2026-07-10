@@ -38,6 +38,13 @@ export interface DrawTotals {
   current_payment_due: number;
   balance_to_finish: number;
   deposit_amount: number;
+  // BLOCK B / 1.6 — deposit credit APPLIED on this draw (not the full pool).
+  // Reduces line 8 (current payment due) only; never completion/retainage.
+  deposit_applied: number;
+  // BLOCK B / 1.2 — net signed sum of adjustment_status='applied_to_draw'
+  // adjustments on this draw. Negative = credits reducing the amount owed.
+  // Reduces line 8 only; line items stay traceable (migration 00069 D2).
+  applied_adjustments: number;
   // Phase 7b legacy column — kept because the G702 detail API and PDF
   // exporter still read it. We populate it to match total_completed_to_date
   // minus less_previous_certificates so back-compat reports still balance.
@@ -286,6 +293,11 @@ export function rollupDrawTotals(args: {
   isFinalDraw: boolean;
   nonBudgetLineThisPeriod: number;
   previousCoCompletedAmount?: number;
+  // BLOCK B — required so every call site threads the money explicitly (no
+  // silent 0 that would corrupt a later draw's less-previous-certificates via
+  // a deposit-ignoring stored current_payment_due). New/preview draws pass 0.
+  depositAppliedCents: number;
+  appliedAdjustmentsCents: number;
 }): DrawTotals {
   const {
     originalContractSum,
@@ -297,6 +309,8 @@ export function rollupDrawTotals(args: {
     isFinalDraw,
     nonBudgetLineThisPeriod,
     previousCoCompletedAmount = 0,
+    depositAppliedCents,
+    appliedAdjustmentsCents,
   } = args;
 
   const contract_sum_to_date = originalContractSum + netChangeOrders;
@@ -309,8 +323,18 @@ export function rollupDrawTotals(args: {
   const total_retainage = retainage_on_completed + retainage_on_stored;
   // Line 6 — total earned less retainage.
   const total_earned_less_retainage = total_completed_to_date - total_retainage;
-  // Line 8 — current payment due = (line 6) - (line 7 previous certificates).
-  const current_payment_due = total_earned_less_retainage - lessPreviousCertificates;
+  // Line 8 — current payment due = (line 6) - (line 7 previous certificates)
+  //   - deposit credit applied this draw  (explicit deduction line between 7
+  //     and 8; NEVER folded into line 7 — that would conflate deposit with
+  //     prior certificates)
+  //   + net applied adjustments (signed; negative credits reduce the amount).
+  // Deposit + adjustments touch line 8 ONLY — completion, retainage, and
+  // balance-to-finish are unaffected (migration 00069 D2 auditability rule).
+  const current_payment_due =
+    total_earned_less_retainage -
+    lessPreviousCertificates -
+    depositAppliedCents +
+    appliedAdjustmentsCents;
   // Line 9 — balance to finish + retainage.
   const balance_to_finish = contract_sum_to_date - total_completed_to_date + total_retainage;
   const deposit_amount = Math.round(originalContractSum * depositPercentage);
@@ -328,6 +352,8 @@ export function rollupDrawTotals(args: {
     current_payment_due,
     balance_to_finish,
     deposit_amount,
+    deposit_applied: depositAppliedCents,
+    applied_adjustments: appliedAdjustmentsCents,
     // Back-compat: legacy "less_previous_payments" tracks what Line 7 used to
     // mean before we split retainage out. Keep it aligned with line 7 so the
     // existing export path continues to read a sensible number.
@@ -399,6 +425,59 @@ export async function nonBudgetLineThisPeriodForDraw(drawId: string): Promise<nu
     .is("deleted_at", null);
   return (data ?? []).reduce(
     (s, r) => s + ((r as { this_period: number }).this_period ?? 0),
+    0
+  );
+}
+
+/**
+ * BLOCK B / 1.6 — deposit pool consumed by OTHER non-void draws on a job.
+ *
+ * Sum of deposit_applied_cents across every non-void, non-deleted draw on the
+ * job, EXCLUDING the given draw. A draft's application reserves the pool (so
+ * two open drafts can't oversubscribe); voiding a draw returns its slice.
+ * Remaining pool for a draw = draws.deposit_amount − this sum.
+ */
+export async function depositAppliedToDateForJob(
+  jobId: string,
+  excludeDrawId?: string
+): Promise<number> {
+  if (!jobId) return 0;
+  const supabase = createServiceRoleClient();
+  let q = supabase
+    .from("draws")
+    .select("id, deposit_applied_cents")
+    .eq("job_id", jobId)
+    .neq("status", "void")
+    .is("deleted_at", null);
+  if (excludeDrawId) q = q.neq("id", excludeDrawId);
+  const { data } = await q;
+  return (data ?? []).reduce(
+    (s, r) =>
+      s + ((r as { deposit_applied_cents: number }).deposit_applied_cents ?? 0),
+    0
+  );
+}
+
+/**
+ * BLOCK B / 1.2 — net signed sum of adjustments APPLIED to a draw.
+ *
+ * Only adjustment_status='applied_to_draw' counts toward the draw's math (per
+ * the status ruling). 'approved' adjustments are a pending pool surfaced in the
+ * wizard but NOT counted here; 'resolved'/'voided' never re-enter. amount_cents
+ * is signed — negative = credit reducing the amount owed — so the raw sum flows
+ * straight into current_payment_due.
+ */
+export async function appliedAdjustmentsForDraw(drawId: string): Promise<number> {
+  if (!drawId) return 0;
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase
+    .from("draw_adjustments")
+    .select("amount_cents")
+    .eq("draw_id", drawId)
+    .eq("adjustment_status", "applied_to_draw")
+    .is("deleted_at", null);
+  return (data ?? []).reduce(
+    (s, r) => s + ((r as { amount_cents: number }).amount_cents ?? 0),
     0
   );
 }
@@ -513,7 +592,7 @@ export async function recalcDraftDrawsForJob(jobId: string): Promise<number> {
       .maybeSingle(),
     supabase
       .from("draws")
-      .select("id, draw_number, period_start, period_end, is_final")
+      .select("id, draw_number, period_start, period_end, is_final, deposit_applied_cents")
       .eq("job_id", jobId)
       .eq("status", "draft")
       .is("deleted_at", null),
@@ -540,6 +619,7 @@ export async function recalcDraftDrawsForJob(jobId: string): Promise<number> {
       period_start: string | null;
       period_end: string | null;
       is_final: boolean;
+      deposit_applied_cents: number | null;
     };
 
     const { data: invRows } = await supabase
@@ -566,6 +646,7 @@ export async function recalcDraftDrawsForJob(jobId: string): Promise<number> {
       draw.id
     );
     const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(draw.id);
+    const appliedAdjustments = await appliedAdjustmentsForDraw(draw.id);
 
     const totals = rollupDrawTotals({
       originalContractSum,
@@ -577,6 +658,8 @@ export async function recalcDraftDrawsForJob(jobId: string): Promise<number> {
       isFinalDraw: !!draw.is_final,
       nonBudgetLineThisPeriod,
       previousCoCompletedAmount: previousCoCompleted,
+      depositAppliedCents: draw.deposit_applied_cents ?? 0,
+      appliedAdjustmentsCents: appliedAdjustments,
     });
 
     await supabase

@@ -136,6 +136,9 @@ export async function POST(request: NextRequest) {
       nonBudgetLineThisPeriod: 0,
       previousCoCompletedAmount:
         (job as { previous_co_completed_amount?: number }).previous_co_completed_amount ?? 0,
+      // New draw: no deposit applied and no adjustments exist yet (BLOCK B).
+      depositAppliedCents: 0,
+      appliedAdjustmentsCents: 0,
     });
 
     const { data: draw, error: drawError } = await supabase

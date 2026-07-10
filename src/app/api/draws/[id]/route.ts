@@ -3,8 +3,10 @@ import { createServerClient } from "@/lib/supabase/server";
 import { tryCreateServiceRoleClient } from "@/lib/supabase/service";
 import { getCurrentMembership } from "@/lib/org/session";
 import {
+  appliedAdjustmentsForDraw,
   applicationNumberForDraw,
   computeDrawLines,
+  depositAppliedToDateForJob,
   lessPreviousCertificatesForJob,
   nonBudgetLineThisPeriodForDraw,
   rollupDrawTotals,
@@ -140,6 +142,14 @@ export async function GET(
       draw.id as string
     );
     const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(draw.id as string);
+    // BLOCK B — deposit + adjustments for this draw. depositAppliedOnOthers is
+    // the pool consumed by every OTHER non-void draw (remaining = pool - this).
+    const appliedAdjustments = await appliedAdjustmentsForDraw(draw.id as string);
+    const depositApplied = (draw as { deposit_applied_cents?: number }).deposit_applied_cents ?? 0;
+    const depositAppliedOnOthers = await depositAppliedToDateForJob(
+      draw.job_id as string,
+      draw.id as string
+    );
 
     const totals = rollupDrawTotals({
       originalContractSum: (draw as { original_contract_sum?: number }).original_contract_sum ?? 0,
@@ -153,6 +163,8 @@ export async function GET(
       nonBudgetLineThisPeriod,
       previousCoCompletedAmount:
         (draw as { jobs?: { previous_co_completed_amount?: number } }).jobs?.previous_co_completed_amount ?? 0,
+      depositAppliedCents: depositApplied,
+      appliedAdjustmentsCents: appliedAdjustments,
     });
 
     // Build G703 rows: merge snapshot by cost_code_id into budget_lines.
@@ -199,6 +211,21 @@ export async function GET(
       .is("deleted_at", null)
       .order("created_at");
 
+    // BLOCK B — draw adjustments. 'applied_to_draw' already flows into
+    // current_payment_due; 'approved' (not yet applied) is a pending pool the
+    // wizard surfaces ("apply?"). Both returned so the doc can render the
+    // Adjustments & Credits section and the wizard can list the pending pool.
+    const { data: adjustments } = await supabase
+      .from("draw_adjustments")
+      .select(
+        "id, adjustment_type, adjustment_status, amount_cents, reason, affected_pcco_number, affected_invoice_id, created_at"
+      )
+      .eq("draw_id", params.id)
+      .eq("org_id", orgId)
+      .in("adjustment_status", ["approved", "applied_to_draw"])
+      .is("deleted_at", null)
+      .order("created_at");
+
     return NextResponse.json({
       ...draw,
       // Override the stored G702 totals with freshly-computed Phase 8 math so
@@ -217,6 +244,18 @@ export async function GET(
       current_payment_due: totals.current_payment_due,
       balance_to_finish: totals.balance_to_finish,
       deposit_amount: totals.deposit_amount,
+      // BLOCK B — deposit application (pool = deposit_amount, informational
+      // AIA line 1a; deposit_applied = the "Less Deposit Credit Applied"
+      // deduction line between 7 and 8) + adjustments (Adjustments & Credits).
+      deposit_applied: totals.deposit_applied,
+      deposit_pool: totals.deposit_amount,
+      deposit_applied_to_date: depositAppliedOnOthers + depositApplied,
+      deposit_remaining: Math.max(
+        0,
+        totals.deposit_amount - depositAppliedOnOthers - depositApplied
+      ),
+      applied_adjustments: totals.applied_adjustments,
+      adjustments: adjustments ?? [],
       application_number: applicationNumberForDraw(
         { draw_number: (draw as { draw_number: number }).draw_number },
         { starting_application_number: (draw as { jobs?: { starting_application_number?: number | null } }).jobs?.starting_application_number ?? null }
