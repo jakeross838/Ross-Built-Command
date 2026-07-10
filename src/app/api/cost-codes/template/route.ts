@@ -2,69 +2,46 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { ApiError, withApiError } from "@/lib/api/errors";
 import { ADMIN_OR_OWNER, requireRole } from "@/lib/org/require";
+import { STANDARD_RESIDENTIAL_TEMPLATE } from "@/lib/cost-codes/standard-residential-template";
+import { assertOrgHasNoCostCodes } from "@/lib/cost-codes/seed-guard";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
-// The "standard residential" template today is Ross Built's own 217-code
-// cost structure — a good baseline for custom-home builders. We clone
-// those codes into the caller's org (skipping any already present).
-const TEMPLATE_ORG_ID = "00000000-0000-0000-0000-000000000001";
+// The "Standard Residential" starter is a FROZEN, in-repo snapshot
+// (src/lib/cost-codes/standard-residential-template.ts) — never a live org.
+// See that file's header for provenance + the frozen-starter rule. Divorced
+// in 1.1d from the old live-org template coupling (the route used to clone
+// Ross Built's own cost codes cross-org), so no live customer's codes can
+// ever seed another tenant.
 
 export const GET = withApiError(async () => {
-  const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("cost_codes")
-    .select("code, description, category, sort_order, is_change_order, has_co_variant")
-    .eq("org_id", TEMPLATE_ORG_ID)
-    .is("deleted_at", null)
-    .order("sort_order", { ascending: true });
-  if (error) throw new ApiError(error.message, 500);
-  return NextResponse.json({ codes: data ?? [] });
+  // Preview the starter template. No DB read — the template ships in-repo.
+  return NextResponse.json({ codes: STANDARD_RESIDENTIAL_TEMPLATE });
 });
 
 export const POST = withApiError(async () => {
   const membership = await requireRole(ADMIN_OR_OWNER);
-  if (membership.org_id === TEMPLATE_ORG_ID) {
-    // Sanity: don't re-clone codes into the template org itself.
-    return NextResponse.json({ imported: 0, skipped: "template-org" });
-  }
-
   const supabase = createServerClient();
+
+  // ONE guard, all seed doors (1.1d): never seed a starter template into an
+  // org that already has cost codes. Throws 422 if the list is non-empty.
+  await assertOrgHasNoCostCodes(supabase, membership.org_id);
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: template, error: tplErr } = await supabase
-    .from("cost_codes")
-    .select("code, description, category, sort_order, is_change_order, has_co_variant")
-    .eq("org_id", TEMPLATE_ORG_ID)
-    .is("deleted_at", null);
-  if (tplErr) throw new ApiError(tplErr.message, 500);
-
-  const { data: existing } = await supabase
-    .from("cost_codes")
-    .select("code")
-    .eq("org_id", membership.org_id)
-    .is("deleted_at", null);
-  const existingCodes = new Set((existing ?? []).map((c) => c.code as string));
-
-  const rows = (template ?? [])
-    .filter((c) => !existingCodes.has(c.code as string))
-    .map((c) => ({
-      org_id: membership.org_id,
-      code: c.code,
-      description: c.description,
-      category: c.category,
-      sort_order: c.sort_order,
-      is_change_order: c.is_change_order,
-      has_co_variant: c.has_co_variant,
-      created_by: user?.id ?? null,
-    }));
-
-  if (rows.length === 0) {
-    return NextResponse.json({ imported: 0 });
-  }
+  const rows = STANDARD_RESIDENTIAL_TEMPLATE.map((c) => ({
+    org_id: membership.org_id,
+    code: c.code,
+    description: c.description,
+    category: c.category,
+    sort_order: c.sort_order,
+    is_change_order: c.is_change_order,
+    has_co_variant: c.has_co_variant,
+    created_by: user?.id ?? null,
+  }));
 
   const { error: insErr } = await supabase.from("cost_codes").insert(rows);
   if (insErr) throw new ApiError(insErr.message, 500);

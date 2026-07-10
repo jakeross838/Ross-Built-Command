@@ -406,15 +406,28 @@ test("down migration drops template-table policies + RLS + trigger + table, then
   }
 });
 
-// ── TEMPLATE_ORG_ID regression guard (Amendment C — Phase 2.4 doesn't cut over) ──
+// ── Template-source divorce guard (1.1d — cutover done; GH #11 closed) ──
+//
+// Phase 2.4 held a regression guard asserting TEMPLATE_ORG_ID still pointed the
+// template route at Ross Built's live org (the deferred cutover). Step 1.1d
+// performed that cutover: the "Standard Residential" starter is now a frozen
+// in-repo snapshot (src/lib/cost-codes/standard-residential-template.ts), and
+// no code path references a live org as a template source. This guard is
+// inverted to lock that invariant in.
 
-test(`${TEMPLATE_ROUTE} still points TEMPLATE_ORG_ID at the Ross Built org (Phase 7.5 cutover; GH #11)`, () => {
+test(`${TEMPLATE_ROUTE} no longer references any live org as a template source (1.1d cutover; GH #11)`, () => {
   const src = readFileSync(TEMPLATE_ROUTE, "utf8");
   assert.ok(
-    /TEMPLATE_ORG_ID\s*=\s*["']00000000-0000-0000-0000-000000000001["']/.test(
-      src
-    ),
-    `${TEMPLATE_ROUTE} must still define TEMPLATE_ORG_ID = "00000000-0000-0000-0000-000000000001" — Phase 7.5 owns the cutover (GH #11). This is a regression guard.`
+    !/TEMPLATE_ORG_ID/.test(src),
+    `${TEMPLATE_ROUTE} must not reference TEMPLATE_ORG_ID — 1.1d divorced the template source from any live org.`
+  );
+  assert.ok(
+    !/00000000-0000-0000-0000-000000000001/.test(src),
+    `${TEMPLATE_ROUTE} must not hardcode Ross Built's org id — the starter template is an in-repo snapshot, not a live-org clone.`
+  );
+  assert.ok(
+    /standard-residential-template/.test(src),
+    `${TEMPLATE_ROUTE} must seed from the frozen in-repo starter (src/lib/cost-codes/standard-residential-template.ts).`
   );
 });
 
