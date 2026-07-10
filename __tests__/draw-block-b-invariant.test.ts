@@ -54,6 +54,7 @@ const base = {
   isFinalDraw: false,
   nonBudgetLineThisPeriod: NON_BUDGET,
   previousCoCompletedAmount: PREV_CO,
+  uncapturedLinkedCents: 0,
 };
 
 // Expected intermediate math (recomputed here so a formula change is caught).
@@ -124,6 +125,44 @@ test("INVARIANT: current_payment_due = earned-less-retainage − prev certs − 
   assert.equal(t.current_payment_due, EXPECTED_EARNED_LESS_RET - LESS_PREV_CERTS - 25000 - 3000); // 125500
   assert.equal(t.deposit_applied, deposit);
   assert.equal(t.applied_adjustments, adjustments);
+});
+
+// ── HANDOFF #2 — uncaptured linked-invoice (credit memo) fix ────────────────
+
+test("uncaptured linked invoice (uncoded −$640 credit) reduces current_payment_due, line 8 only", () => {
+  const t0 = rollupDrawTotals({ ...base, depositAppliedCents: 0, appliedAdjustmentsCents: 0 });
+  const t = rollupDrawTotals({
+    ...base,
+    depositAppliedCents: 0,
+    appliedAdjustmentsCents: 0,
+    uncapturedLinkedCents: -64_000, // −$640.00
+  });
+  assert.equal(t.current_payment_due, t0.current_payment_due - 64_000);
+  assert.equal(t.uncaptured_linked, -64_000);
+  // Payment-level only — completion / retainage / balance unchanged.
+  assert.equal(t.total_completed_to_date, t0.total_completed_to_date);
+  assert.equal(t.balance_to_finish, t0.balance_to_finish);
+});
+
+test("HANDOFF #2 linkage: captured(G703) + uncaptured ≡ Σ(linked totals); a −$640 credit is never dropped", () => {
+  // draw-#1 fixture shape (cents): two coded invoices land on the G703
+  // (drywall $11,498 split 19101+15102, framing $14,750) = 2,624,800 captured;
+  // one fully-uncoded −$640 credit memo = −64,000 uncaptured.
+  const captured = 2_624_800; // Σ(G703 this-period)
+  const uncaptured = -64_000; // −$640, no cost code
+  const linkedTotal = 2_560_800; // Σ(every linked invoice total) = 11,498 − 640 + 14,750
+  // Every linked dollar accounted — nothing contributes $0.
+  assert.equal(captured + uncaptured, linkedTotal);
+  assert.notEqual(uncaptured, 0);
+  // And the engine routes uncaptured into line 8 (not the floor).
+  const t0 = rollupDrawTotals({ ...base, depositAppliedCents: 0, appliedAdjustmentsCents: 0 });
+  const t = rollupDrawTotals({
+    ...base,
+    depositAppliedCents: 0,
+    appliedAdjustmentsCents: 0,
+    uncapturedLinkedCents: uncaptured,
+  });
+  assert.equal(t.current_payment_due, t0.current_payment_due + uncaptured);
 });
 
 // ── runner ────────────────────────────────────────────────────────────────

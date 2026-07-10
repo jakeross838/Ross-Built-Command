@@ -45,6 +45,13 @@ export interface DrawTotals {
   // adjustments on this draw. Negative = credits reducing the amount owed.
   // Reduces line 8 only; line items stay traceable (migration 00069 D2).
   applied_adjustments: number;
+  // HANDOFF #2 credit fix — signed sum of linked-invoice dollars NOT captured by
+  // any G703 cost-code line (fully-uncoded invoices like a −$640 credit memo, +
+  // partial-allocation gaps): uncaptured = Σ(linked totals) − Σ(captured). Flows
+  // into line 8 and surfaces in Adjustments & Credits, so a linked invoice can
+  // NEVER contribute $0. The linkage invariant: Σ(G703 this-period) + uncaptured
+  // ≡ Σ(linked invoice totals).
+  uncaptured_linked: number;
   // Phase 7b legacy column — kept because the G702 detail API and PDF
   // exporter still read it. We populate it to match total_completed_to_date
   // minus less_previous_certificates so back-compat reports still balance.
@@ -298,6 +305,9 @@ export function rollupDrawTotals(args: {
   // a deposit-ignoring stored current_payment_due). New/preview draws pass 0.
   depositAppliedCents: number;
   appliedAdjustmentsCents: number;
+  // HANDOFF #2 credit fix — signed sum of linked-invoice dollars not captured by
+  // any G703 line (see DrawTotals.uncaptured_linked). Required; new/preview = 0.
+  uncapturedLinkedCents: number;
 }): DrawTotals {
   const {
     originalContractSum,
@@ -311,6 +321,7 @@ export function rollupDrawTotals(args: {
     previousCoCompletedAmount = 0,
     depositAppliedCents,
     appliedAdjustmentsCents,
+    uncapturedLinkedCents,
   } = args;
 
   const contract_sum_to_date = originalContractSum + netChangeOrders;
@@ -328,13 +339,16 @@ export function rollupDrawTotals(args: {
   //     and 8; NEVER folded into line 7 — that would conflate deposit with
   //     prior certificates)
   //   + net applied adjustments (signed; negative credits reduce the amount).
-  // Deposit + adjustments touch line 8 ONLY — completion, retainage, and
-  // balance-to-finish are unaffected (migration 00069 D2 auditability rule).
+  //   + uncaptured linked-invoice dollars (HANDOFF #2 — signed; a −$640 credit
+  //     memo with no cost code reduces the amount instead of silently vanishing).
+  // Deposit + adjustments + uncaptured touch line 8 ONLY — completion,
+  // retainage, and balance-to-finish are unaffected (migration 00069 D2).
   const current_payment_due =
     total_earned_less_retainage -
     lessPreviousCertificates -
     depositAppliedCents +
-    appliedAdjustmentsCents;
+    appliedAdjustmentsCents +
+    uncapturedLinkedCents;
   // Line 9 — balance to finish + retainage.
   const balance_to_finish = contract_sum_to_date - total_completed_to_date + total_retainage;
   const deposit_amount = Math.round(originalContractSum * depositPercentage);
@@ -354,6 +368,7 @@ export function rollupDrawTotals(args: {
     deposit_amount,
     deposit_applied: depositAppliedCents,
     applied_adjustments: appliedAdjustmentsCents,
+    uncaptured_linked: uncapturedLinkedCents,
     // Back-compat: legacy "less_previous_payments" tracks what Line 7 used to
     // mean before we split retainage out. Keep it aligned with line 7 so the
     // existing export path continues to read a sensible number.
@@ -480,6 +495,118 @@ export async function appliedAdjustmentsForDraw(drawId: string): Promise<number>
     (s, r) => s + ((r as { amount_cents: number }).amount_cents ?? 0),
     0
   );
+}
+
+/**
+ * HANDOFF #2 credit fix — linked-invoice dollars NOT captured by any G703 line.
+ *
+ * `total = Σ(linked invoice totals) − Σ(captured by cost code)`, where
+ * "captured" uses the SAME allocation → line-item → invoice-level resolution as
+ * the G703 (sumThisPeriodByCostCode). This is the signed amount that must flow
+ * into current_payment_due + Adjustments & Credits so a linked invoice can never
+ * contribute $0 — e.g. a −$640 credit memo with no cost code.
+ *
+ * `items` lists the FULLY-uncoded linked invoices (no cost code anywhere) for
+ * display; any residual from partial-allocation gaps folds into a synthetic
+ * "Unallocated remainder" so `Σ(items) === total` (nothing hidden).
+ */
+export type UncapturedLinked = {
+  total: number;
+  items: {
+    id: string;
+    vendor: string;
+    invoice_number: string | null;
+    amount: number;
+  }[];
+};
+
+export async function uncapturedLinkedInvoices(
+  invoiceIds: string[]
+): Promise<UncapturedLinked> {
+  if (invoiceIds.length === 0) return { total: 0, items: [] };
+  const supabase = createServiceRoleClient();
+
+  const { data: invRows } = await supabase
+    .from("invoices")
+    .select("id, total_amount, vendor_name_raw, invoice_number, cost_code_id")
+    .in("id", invoiceIds)
+    .is("deleted_at", null);
+  const invoices = invRows ?? [];
+  if (invoices.length === 0) return { total: 0, items: [] };
+
+  const ids = invoices.map((i) => i.id as string);
+  const linkedTotal = invoices.reduce(
+    (s, i) => s + ((i as { total_amount: number }).total_amount ?? 0),
+    0
+  );
+  const captured = await sumThisPeriodByCostCode(supabase, ids);
+  const capturedTotal = Array.from(captured.values()).reduce((s, v) => s + v, 0);
+  const total = linkedTotal - capturedTotal;
+
+  // Which invoices are FULLY uncoded (no cost code via allocation, line item, or
+  // invoice level)? Those are the clean, itemized display entries.
+  const codedInvoiceIds = new Set<string>();
+  const { data: allocs } = await supabase
+    .from("invoice_allocations")
+    .select("invoice_id, cost_code_id")
+    .in("invoice_id", ids)
+    .is("deleted_at", null);
+  for (const a of allocs ?? []) {
+    if ((a as { cost_code_id: string | null }).cost_code_id) {
+      codedInvoiceIds.add((a as { invoice_id: string }).invoice_id);
+    }
+  }
+  const { data: liRows } = await supabase
+    .from("invoice_line_items")
+    .select("invoice_id, cost_code_id")
+    .in("invoice_id", ids)
+    .is("deleted_at", null);
+  for (const li of liRows ?? []) {
+    if ((li as { cost_code_id: string | null }).cost_code_id) {
+      codedInvoiceIds.add((li as { invoice_id: string }).invoice_id);
+    }
+  }
+  for (const inv of invoices) {
+    if ((inv as { cost_code_id: string | null }).cost_code_id) {
+      codedInvoiceIds.add(inv.id as string);
+    }
+  }
+
+  const items = invoices
+    .filter((i) => !codedInvoiceIds.has(i.id as string))
+    .map((i) => ({
+      id: i.id as string,
+      vendor: (i as { vendor_name_raw: string | null }).vendor_name_raw ?? "—",
+      invoice_number: (i as { invoice_number: string | null }).invoice_number ?? null,
+      amount: (i as { total_amount: number }).total_amount ?? 0,
+    }));
+  const itemsTotal = items.reduce((s, it) => s + it.amount, 0);
+  const residual = total - itemsTotal;
+  if (residual !== 0) {
+    items.push({
+      id: "unallocated-remainder",
+      vendor: "Unallocated remainder",
+      invoice_number: null,
+      amount: residual,
+    });
+  }
+
+  return { total, items };
+}
+
+/** HANDOFF #2 — uncaptured linked-invoice dollars for a persisted draw (fetches
+ *  the draw's linked invoices, then delegates to uncapturedLinkedInvoices). */
+export async function uncapturedLinkedInvoicesForDraw(
+  drawId: string
+): Promise<UncapturedLinked> {
+  if (!drawId) return { total: 0, items: [] };
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase
+    .from("invoices")
+    .select("id")
+    .eq("draw_id", drawId)
+    .is("deleted_at", null);
+  return uncapturedLinkedInvoices((data ?? []).map((i) => i.id as string));
 }
 
 /**
@@ -647,6 +774,7 @@ export async function recalcDraftDrawsForJob(jobId: string): Promise<number> {
     );
     const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(draw.id);
     const appliedAdjustments = await appliedAdjustmentsForDraw(draw.id);
+    const { total: uncapturedLinked } = await uncapturedLinkedInvoicesForDraw(draw.id);
 
     const totals = rollupDrawTotals({
       originalContractSum,
@@ -660,6 +788,7 @@ export async function recalcDraftDrawsForJob(jobId: string): Promise<number> {
       previousCoCompletedAmount: previousCoCompleted,
       depositAppliedCents: draw.deposit_applied_cents ?? 0,
       appliedAdjustmentsCents: appliedAdjustments,
+      uncapturedLinkedCents: uncapturedLinked,
     });
 
     await supabase

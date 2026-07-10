@@ -21,6 +21,9 @@ const TYPE_LABEL: Record<string, string> = {
   withhold: "Withhold",
   customer_direct_pay: "Customer direct pay",
   conditional: "Conditional hold",
+  // HANDOFF #2 — synthetic entry for a linked invoice with no cost-code
+  // destination (e.g. a credit memo), auto-surfaced so it moves the total.
+  uncoded_invoice: "Uncoded invoice",
 };
 
 export function adjustmentTypeLabel(t: string): string {

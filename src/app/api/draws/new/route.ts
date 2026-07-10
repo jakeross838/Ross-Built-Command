@@ -10,6 +10,7 @@ import {
   lessPreviousCertificatesForJob,
   netChangeOrdersForJob,
   rollupDrawTotals,
+  uncapturedLinkedInvoices,
 } from "@/lib/draw-calc";
 
 export const dynamic = "force-dynamic";
@@ -125,6 +126,10 @@ export async function POST(request: NextRequest) {
       isFinalDraw: !!is_final,
     });
     const lessPrevCerts = await lessPreviousCertificatesForJob(job_id, drawNumber);
+    // HANDOFF #2 — uncaptured (uncoded) dollars among the selected invoices flow
+    // into the stored current_payment_due at creation so a linked credit memo
+    // isn't dropped until the first recompute.
+    const { total: uncapturedLinked } = await uncapturedLinkedInvoices(invoice_ids);
     const totals = rollupDrawTotals({
       originalContractSum,
       netChangeOrders,
@@ -139,6 +144,7 @@ export async function POST(request: NextRequest) {
       // New draw: no deposit applied and no adjustments exist yet (BLOCK B).
       depositAppliedCents: 0,
       appliedAdjustmentsCents: 0,
+      uncapturedLinkedCents: uncapturedLinked,
     });
 
     const { data: draw, error: drawError } = await supabase

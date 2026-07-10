@@ -12,6 +12,7 @@ import {
   nonBudgetLineThisPeriodForDraw,
   netChangeOrdersForJob,
   rollupDrawTotals,
+  uncapturedLinkedInvoicesForDraw,
 } from "@/lib/draw-calc";
 
 export const dynamic = "force-dynamic";
@@ -216,6 +217,7 @@ export async function PUT(
     );
     const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(drawId);
     const appliedAdjustments = await appliedAdjustmentsForDraw(drawId);
+    const { total: uncapturedLinked } = await uncapturedLinkedInvoicesForDraw(drawId);
 
     const totals = rollupDrawTotals({
       originalContractSum,
@@ -231,6 +233,7 @@ export async function PUT(
       // via a dedicated write); a plain draft-edit must not zero it out.
       depositAppliedCents: (draw.deposit_applied_cents as number | null) ?? 0,
       appliedAdjustmentsCents: appliedAdjustments,
+      uncapturedLinkedCents: uncapturedLinked,
     });
 
     const history = Array.isArray(draw.status_history)

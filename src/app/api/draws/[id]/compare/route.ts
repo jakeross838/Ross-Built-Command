@@ -7,6 +7,7 @@ import {
   lessPreviousCertificatesForJob,
   nonBudgetLineThisPeriodForDraw,
   rollupDrawTotals,
+  uncapturedLinkedInvoicesForDraw,
 } from "@/lib/draw-calc";
 
 export const dynamic = "force-dynamic";
@@ -124,6 +125,7 @@ export async function GET(
         .single();
       const depositApplied =
         (depRow as { deposit_applied_cents?: number } | null)?.deposit_applied_cents ?? 0;
+      const { total: uncapturedLinked } = await uncapturedLinkedInvoicesForDraw(draw.id);
       const totals = rollupDrawTotals({
         originalContractSum:
           (jobRow as { original_contract_amount?: number } | null)?.original_contract_amount ?? 0,
@@ -139,6 +141,7 @@ export async function GET(
           (jobRow as { previous_co_completed_amount?: number } | null)?.previous_co_completed_amount ?? 0,
         depositAppliedCents: depositApplied,
         appliedAdjustmentsCents: appliedAdjustments,
+        uncapturedLinkedCents: uncapturedLinked,
       });
       return { lines, totals, invoiceCount: (invs ?? []).length };
     };

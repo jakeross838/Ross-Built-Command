@@ -55,6 +55,7 @@ import {
   netChangeOrdersForJob,
   nonBudgetLineThisPeriodForDraw,
   rollupDrawTotals,
+  uncapturedLinkedInvoicesForDraw,
 } from "@/lib/draw-calc";
 import { computeDrawStaleness } from "@/lib/draw-staleness";
 import {
@@ -348,6 +349,24 @@ export async function loadPayAppViewData(
     affected_pcco_number: (a.affected_pcco_number as string | null) ?? null,
   }));
 
+  // HANDOFF #2 — uncoded linked-invoice dollars (a credit memo with no cost
+  // code) fold into current_payment_due AND surface as Adjustments & Credits
+  // entries, so a linked invoice can never contribute $0. Pushed as synthetic
+  // 'applied_to_draw' rows so the shared section renders them alongside real
+  // draw_adjustments; the math term is uncaptured.total, SEPARATE from
+  // appliedAdjustmentsTotal (no double count).
+  const uncaptured = await uncapturedLinkedInvoicesForDraw(draw.id as string);
+  for (const it of uncaptured.items) {
+    drawAdjustments.push({
+      id: `uncaptured-${it.id}`,
+      adjustment_type: "uncoded_invoice",
+      adjustment_status: "applied_to_draw",
+      amount_cents: it.amount,
+      reason: `Uncoded linked invoice — ${it.vendor}${it.invoice_number ? ` #${it.invoice_number}` : ""}`,
+      affected_pcco_number: null,
+    });
+  }
+
   const totals = rollupDrawTotals({
     originalContractSum: (draw.original_contract_sum as number | null) ?? 0,
     netChangeOrders: (draw.net_change_orders as number | null) ?? 0,
@@ -362,6 +381,7 @@ export async function loadPayAppViewData(
     ),
     depositAppliedCents: depositApplied,
     appliedAdjustmentsCents: appliedAdjustmentsTotal,
+    uncapturedLinkedCents: uncaptured.total,
   });
 
   // Approved/executed change orders on the job (contract-sum running total).

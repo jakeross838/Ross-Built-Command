@@ -10,6 +10,7 @@ import {
   lessPreviousCertificatesForJob,
   nonBudgetLineThisPeriodForDraw,
   rollupDrawTotals,
+  uncapturedLinkedInvoicesForDraw,
 } from "@/lib/draw-calc";
 
 export const dynamic = "force-dynamic";
@@ -145,6 +146,7 @@ export async function GET(
     // BLOCK B — deposit + adjustments for this draw. depositAppliedOnOthers is
     // the pool consumed by every OTHER non-void draw (remaining = pool - this).
     const appliedAdjustments = await appliedAdjustmentsForDraw(draw.id as string);
+    const uncaptured = await uncapturedLinkedInvoicesForDraw(draw.id as string);
     const depositApplied = (draw as { deposit_applied_cents?: number }).deposit_applied_cents ?? 0;
     const depositAppliedOnOthers = await depositAppliedToDateForJob(
       draw.job_id as string,
@@ -165,6 +167,7 @@ export async function GET(
         (draw as { jobs?: { previous_co_completed_amount?: number } }).jobs?.previous_co_completed_amount ?? 0,
       depositAppliedCents: depositApplied,
       appliedAdjustmentsCents: appliedAdjustments,
+      uncapturedLinkedCents: uncaptured.total,
     });
 
     // Build G703 rows: merge snapshot by cost_code_id into budget_lines.
@@ -256,6 +259,10 @@ export async function GET(
       ),
       applied_adjustments: totals.applied_adjustments,
       adjustments: adjustments ?? [],
+      // HANDOFF #2 — uncoded linked-invoice dollars (e.g. a credit memo) that
+      // would otherwise vanish; folded into current_payment_due + itemized here.
+      uncaptured_linked: totals.uncaptured_linked,
+      uncaptured_items: uncaptured.items,
       application_number: applicationNumberForDraw(
         { draw_number: (draw as { draw_number: number }).draw_number },
         { starting_application_number: (draw as { jobs?: { starting_application_number?: number | null } }).jobs?.starting_application_number ?? null }

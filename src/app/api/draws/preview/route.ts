@@ -5,6 +5,7 @@ import {
   computeDrawLines,
   lessPreviousCertificatesForJob,
   rollupDrawTotals,
+  uncapturedLinkedInvoices,
 } from "@/lib/draw-calc";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +95,9 @@ export async function POST(request: NextRequest) {
     });
 
     const lessPrevCerts = await lessPreviousCertificatesForJob(job_id, drawNumber);
+    // HANDOFF #2 — preview the uncaptured (uncoded) dollars among the selected
+    // invoices so a credit memo visibly moves the previewed total.
+    const { total: uncapturedLinked } = await uncapturedLinkedInvoices(invoice_ids ?? []);
     const totals = rollupDrawTotals({
       originalContractSum: job.original_contract_amount ?? 0,
       netChangeOrders,
@@ -108,6 +112,7 @@ export async function POST(request: NextRequest) {
       // Preview of a not-yet-created draw: no deposit applied / adjustments yet.
       depositAppliedCents: 0,
       appliedAdjustmentsCents: 0,
+      uncapturedLinkedCents: uncapturedLinked,
     });
 
     // Resolve cost-code metadata for each snapshot line so the wizard's G703
