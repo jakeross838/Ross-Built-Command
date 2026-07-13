@@ -11,6 +11,7 @@ import { SkeletonList } from "@/components/loading-skeleton";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
 import NwButton from "@/components/nw/Button";
+import { rowClickIntent } from "@/lib/utils/row-nav";
 
 function invoiceBadgeVariant(status: string): BadgeVariant {
  if (["pm_approved", "qa_approved", "pushed_to_qb", "in_draw", "paid", "approved", "complete"].includes(status)) return "success";
@@ -653,16 +654,15 @@ export default function AllInvoicesPage() {
  <tbody>
  {filtered.map((inv) => (
  <tr key={inv.id}
- className="group border-t border-[var(--border-default)] hover:bg-[var(--bg-muted)] transition-colors">
+ onClick={(e) => { if (rowClickIntent(e, `/invoices/${inv.id}`) === "nav") router.push(`/invoices/${inv.id}`); }}
+ className="group border-t border-[var(--border-default)] hover:bg-[var(--bg-muted)] transition-colors cursor-pointer">
+ {/* Row semantics (audit 3.5): the whole row opens the invoice
+ (mouse). Vendor is plain text — no longer the overloaded open
+ target. Keyboard / screen-reader / Cmd-click open semantics live
+ on the real <Link> in the Inv # cell below; the <tr> keeps its
+ implicit `row` role rather than masquerading as a link. */}
  <td className="py-3 px-4 text-[var(--text-primary)] font-medium sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-muted)] z-[1]">
- {/* Vendor name is the row's link target. Replaces a tr onClick
- that called window.location.href, restoring Cmd/Ctrl+click
- (open in new tab), keyboard Tab+Enter, and screen-reader
- link semantics. (audit ux U-2). */}
- <Link
- href={`/invoices/${inv.id}`}
- className="inline-flex items-center gap-2 hover:underline focus-visible:underline focus-visible:outline-none"
- >
+ <span className="inline-flex items-center gap-2">
  {inv.vendor_name_raw ?? "Unknown"}
  {inv.document_type === "receipt" && (
  <NwBadge variant="info" size="sm">Receipt</NwBadge>
@@ -673,12 +673,19 @@ export default function AllInvoicesPage() {
  {(inv.parent_invoice_id || inv.partial_approval_note) && (
  <NwBadge variant="warning" size="sm">Partial</NwBadge>
  )}
- </Link>
+ </span>
  </td>
  <td className="py-3 px-4 text-[var(--text-secondary)] font-mono text-xs">
+ <Link
+ href={`/invoices/${inv.id}`}
+ onClick={(e) => e.stopPropagation()}
+ aria-label={inv.invoice_number ? `Open invoice ${inv.invoice_number}` : "Open invoice"}
+ className="hover:underline focus-visible:underline focus-visible:outline-none"
+ >
  {inv.invoice_number ?? (
  <NwBadge variant="warning" size="sm">No Invoice #</NwBadge>
  )}
+ </Link>
  </td>
  <td className="py-3 px-4 text-[var(--text-secondary)]">
  {inv.invoice_date ? (
@@ -689,7 +696,7 @@ export default function AllInvoicesPage() {
  </td>
  <td className="py-3 px-4">
  {inv.jobs?.name ? (
- <Link href={`/jobs/${inv.jobs.id}`} className="hover:opacity-80 transition-opacity"><NwBadge variant="info" size="sm">{inv.jobs.name}</NwBadge></Link>
+ <Link href={`/jobs/${inv.jobs.id}`} onClick={(e) => e.stopPropagation()} className="hover:opacity-80 transition-opacity"><NwBadge variant="info" size="sm">{inv.jobs.name}</NwBadge></Link>
  ) : inv.document_category === "overhead" ? (
  <NwBadge variant="warning" size="sm">Overhead</NwBadge>
  ) : (
@@ -804,7 +811,7 @@ export default function AllInvoicesPage() {
  {group.map((inv) => (
  <tr key={inv.id} className="border-t border-[var(--border-default)] hover:bg-[var(--bg-muted)] transition-colors">
  <td className="py-3 px-4 text-[var(--text-primary)] font-medium cursor-pointer hover:text-[var(--text-accent)] transition-colors"
- onClick={() => window.location.href = `/invoices/${inv.id}`}>
+ onClick={(e) => { if (rowClickIntent(e, `/invoices/${inv.id}`) === "nav") router.push(`/invoices/${inv.id}`); }}>
  <span className="inline-flex items-center gap-2">
  {inv.vendor_name_raw ?? "Unknown"}
  {inv.document_type === "receipt" && (

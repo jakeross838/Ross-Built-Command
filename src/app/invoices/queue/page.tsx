@@ -10,6 +10,7 @@ import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
 import NwButton from "@/components/nw/Button";
 import { Textarea } from "@/components/ui/textarea";
+import { rowClickIntent } from "@/lib/utils/row-nav";
 
 function confidenceVariant(score: number): BadgeVariant {
  if (score >= 0.85) return "success";
@@ -993,9 +994,10 @@ export default function QueuePage() {
  key={inv.id}
  className={`bg-[var(--bg-card)] border p-4 cursor-pointer active:opacity-80 transition-all duration-300 animate-fade-up ${selectedIds.has(inv.id) ? "border-[rgba(91,134,153,0.5)] bg-[rgba(91,134,153,0.08)]" : "border-[var(--border-default)]"} ${animatingOutIds.has(inv.id) ? "opacity-0 scale-95" : ""}`}
  style={{ animationDelay: `${0.05 + i * 0.03}s` }}
- onClick={() =>
- (window.location.href = `/invoices/${inv.id}`)
- }
+ onClick={(e) => {
+ if (rowClickIntent(e, `/invoices/${inv.id}`) === "nav")
+ window.location.href = `/invoices/${inv.id}`;
+ }}
  >
  <div className="flex items-start justify-between">
  <span className="text-[color:var(--text-primary)] font-medium text-base inline-flex items-center gap-2">
@@ -1236,9 +1238,10 @@ export default function QueuePage() {
  <tr
  key={inv.id}
  className={`border-t border-[var(--border-default)] hover:bg-[var(--bg-muted)] cursor-pointer transition-all duration-300 ${selectedIds.has(inv.id) ? "bg-[rgba(91,134,153,0.08)]" : ""} ${animatingOutIds.has(inv.id) ? "opacity-0" : ""}`}
- onClick={() =>
- (window.location.href = `/invoices/${inv.id}`)
- }
+ onClick={(e) => {
+ if (rowClickIntent(e, `/invoices/${inv.id}`) === "nav")
+ window.location.href = `/invoices/${inv.id}`;
+ }}
  >
  {batchEnabled && (
  <td className="py-4 px-3 w-10">
