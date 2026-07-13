@@ -9,6 +9,7 @@ import {
 import { PlanLimitError } from "@/lib/claude";
 import { matchJobForInvoice, loadJobCandidates } from "@/lib/invoices/job-matcher";
 import { matchVendor, findDuplicateInvoice } from "@/lib/invoices/save";
+import { friendlyIngestError } from "@/lib/invoices/friendly-error";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // Allow up to 2 minutes for retries
@@ -183,8 +184,9 @@ export async function POST(request: NextRequest) {
  }
  console.error("Invoice parse error:", err);
  const message = err instanceof Error ? err.message : "Unknown error";
+ // 2.5: never surface raw provider/parse text to the user.
  return NextResponse.json(
- { error: `Parse failed: ${message}` },
+ { error: friendlyIngestError(message) },
  { status: 500 }
  );
  }

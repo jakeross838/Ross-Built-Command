@@ -6,6 +6,7 @@ import { parseInvoiceFile, ACCEPTED_MIME_TYPES } from "@/lib/invoices/parse-file
 import { PlanLimitError } from "@/lib/claude";
 import { applyParsedToInvoice, recalcBatchCounts } from "@/lib/invoices/bulk-import";
 import { logActivity } from "@/lib/activity-log";
+import { friendlyIngestError } from "@/lib/invoices/friendly-error";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -177,7 +178,7 @@ export const POST = withApiError(async (
       done: false,
       invoice_id: invoiceId,
       status: "import_error",
-      error: msg,
+      error: friendlyIngestError(msg), // 2.5: never surface raw parse text
     });
   }
 
@@ -214,7 +215,7 @@ export const POST = withApiError(async (
       done: false,
       invoice_id: invoiceId,
       status: "import_error",
-      error: msg,
+      error: friendlyIngestError(msg), // 2.5: never surface raw apply text
     });
   }
 

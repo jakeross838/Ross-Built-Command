@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "@/lib/utils/toast";
 import { formatCents, confidenceLabel, confidenceColor } from "@/lib/utils/format";
 import { supabase } from "@/lib/supabase/client";
+import { friendlyIngestError } from "@/lib/invoices/friendly-error";
 
 /**
  * Bulk invoice import page — Phase 9.
@@ -197,7 +198,7 @@ export default function ImportPageContent() {
         });
         if (!res.ok) {
           const json = await res.json().catch(() => ({}));
-          if (json?.error) toast.error(`Parse issue: ${json.error}`);
+          if (json?.error) toast.error(friendlyIngestError(json.error));
           break;
         }
         const json = await res.json();
@@ -642,8 +643,8 @@ function RowView({
           {row.original_filename ?? "—"}
         </div>
         {row.import_error && (
-          <div className="text-[11px] text-[color:var(--nw-danger)] mt-0.5 truncate max-w-[320px]" title={row.import_error}>
-            {row.import_error}
+          <div className="text-[11px] text-[color:var(--nw-danger)] mt-0.5 truncate max-w-[320px]" title={friendlyIngestError(row.import_error)}>
+            {friendlyIngestError(row.import_error)}
           </div>
         )}
       </td>

@@ -11,6 +11,7 @@ import {
 import NwButton from "@/components/nw/Button";
 import CostCodeCombobox, { type CostCodeOption } from "@/components/cost-code-combobox";
 import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
+import { friendlyIngestError } from "@/lib/invoices/friendly-error";
 
 
 type ParseStep = "uploading" | "analyzing" | "extracting" | "matching" | "complete";
@@ -1198,7 +1199,7 @@ export default function UploadContent({ onSaved }: { onSaved?: (count: number) =
  <div className="px-6 py-4 flex items-start gap-3 bg-[rgba(176,85,78,0.08)] border-t border-[rgba(176,85,78,0.25)]">
  <div className="flex-1">
  <p className="text-sm font-medium text-[color:var(--nw-danger)]">AI parsing failed — try again or upload manually</p>
- <p className="text-xs text-[color:var(--nw-danger)]/80 mt-1">{fileStatus.error}</p>
+ <p className="text-xs text-[color:var(--nw-danger)]/80 mt-1">{friendlyIngestError(fileStatus.error)}</p>
  <p className="text-[11px] text-[color:var(--text-secondary)] mt-2">
  The file is still attached. Click Retry to parse again, or remove it from the batch.
  </p>

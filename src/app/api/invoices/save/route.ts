@@ -8,6 +8,7 @@ import {
   getClientForRequest,
   logImpersonatedWrite,
 } from "@/lib/auth/impersonation-client";
+import { friendlyIngestError } from "@/lib/invoices/friendly-error";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,7 @@ export async function POST(request: NextRequest) {
  } catch (err) {
  console.error("Save error:", err);
  const message = err instanceof Error ? err.message : "Unknown error";
- return NextResponse.json({ error: message }, { status: 500 });
+ // 2.5: never surface raw error text to the user.
+ return NextResponse.json({ error: friendlyIngestError(message) }, { status: 500 });
  }
 }
