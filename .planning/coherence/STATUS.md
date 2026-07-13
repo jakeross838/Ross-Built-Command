@@ -1,31 +1,28 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-13 · **HEAD (origin/main):** `32821a9` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
+**Updated:** 2026-07-13 · **HEAD (origin/main):** `13829cd` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
 
 Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings) and `invoices-draws-deep-dive/HANDOFF.md` (TOP-20).
 
 ## Shipped (recent → older)
+- **2.2 ATTRIBUTION** (`13829cd`) — real acting user recorded on every approval/action (draws action/adjustments/update-draft/revise + invoices action/batch/partial resolve actorId; literal "system"/"user" gone; AI-parse honestly labeled "AI extraction"); draw activity_log rows now carry user_id; QA queue `getApprovalInfo` keys on the pm_approved entry + resolves UUID→profile name. Verified: QA queue shows "Jake Ross", not "system". Fixes HANDOFF #17.
+- **R1 edit-mode guard** (`d8a0301`) — blockingOpenDraw excludes the edited draw; honest "Edit Draw #N — Draft" header. Verified both halves.
+- **R2 signatory** (`3f16aaf`) — org pay_app_signatory_name/_title (migration 00121) via /admin/financial "Pay App Signatory"; print blank-when-unset, renders when set. Killed the Jake Ross hardcode. Verified full chain.
+- **2.6 gate /people/vendors** — already 404'd by middleware (nwrp232); verified authed 404, vendor API intact. No code change.
 - **PRINT FIDELITY** (`32821a9`) — DrawPrintView no longer hardcodes "RETAINAGE (0% …) $0.00": AIA line 5 renders actual `RETAINAGE (N%)` = (amount) + new line 6 `TOTAL EARNED LESS RETAINAGE` + renumber 7/8/9. Contractor letterhead (name+address) + signature org name de-hardcoded from the org row; CONTRACT FOR from job.contract_type. Verified live (Sample Client B draw #1, 10% retainage): line 5 ($2,624.80), line 8 current due $22,983.20 — cent-exact ≡ detail screen. `_data.ts` gains `retainage{percent,amount}` + `contractor{name,address}` on PayAppViewData (snapshot backfills). **Remaining hardcode flagged below.**
 - **BLOCK B pt2b TAIL** (`41a5d2f`) — approve-time deposit cap; approved-adjustments **pending pool** (apply endpoint `/api/draws/[id]/adjustments/apply` + preview surfaces pending & counts applied + wizard card); **ledger display fix** (Applied/Remaining include this draft); **edit-mode deposit pre-fill** (editing a draft can't zero its applied deposit). Verified live+DB (Sample Client A): draft #1 persisted $5k; ledger Applied $5,000/Remaining $145,000; applied −$500 adj → statement TOTAL DUE $19,154.56 cent-exact.
 - **pt2b core** (`c706bb1`) — deposit input + ledger + line 7a + save cap.
 - **HANDOFF #2 credit fix** (`036b53a`) · **pt2a display** (`58921dd`) · **Stage 2.1 sweep** (`ee1765d`) · earlier 1.1d/pt1/1.1/1.1c/1.4/1.5/1.7.
 
-## ⚠ DECISION NEEDED (Jake) — edit-mode / blocking-open-draw flow
-Opening a draft via the wizard `?edit=<id>` shows **new-draw-#2 mode + a "approve or void Draw #1 before creating Draw #2" warning** — the wizard treats the draft-being-edited as a blocking prior draw (PRE-EXISTING guard, not from pt2b). This blocks: (a) Jake's **multi-draft walk** (can't create draft #2 while #1 open), (b) the **pending-pool DISPLAY** UI verification, (c) the **approve-cap race** (needs 2 open drafts). Options: relax the guard when editing the *same* draft / require submitting draft #1 first / fix edit-mode to load the draft for editing. **The money logic is verified** (persist, ledger, cap-clamp, applied-adjustment integration all cent-exact); only these UI walks are blocked.
-
-## NEXT (in order) — this is the fresh-session entry point
-1. **STAGE 2 SWEEP (order 3)** — the next clean unit; a multi-item sweep deserving a focused pass:
-   - **2.2 attribution** (#17) — real acting user on status changes / audit rows; names resolved (no "system", no bare UUIDs).
-   - **2.3 determinism** (#20) — card count = persisted rows = badge count; no divergent counters.
-   - **2.4 new-job honesty** (#18) — preview ≡ save; Contract-Type vs Billing-Method labeled distinctly; retainage captured at creation for AIA; generic placeholders (no Drummond/RB bleed).
-   - **2.5 parse errors + manual-entry** (#16) — friendly copy, raw JSON never surfaced; minimal manual-entry fallback when parse fails.
-   - **2.6 gate `/people/vendors`** — gate behind existing flag machinery → 404 per strip posture. Vendor data/API STAY; the management page stays shadowed. **Do NOT build a vendors page.**
-2. **Deferred (needs Jake):** resolve the edit-mode/blocking-guard flow (above) → then finish pt2b-tail UI walks (pending-pool DISPLAY + Apply-button, approve-cap race, multi-draft void-returns-pool). Fixtures in place: draft `da4ca554` ($5k deposit) + approved adjustment `67d0df76` (−$500) on Sample Client A.
+## NEXT (in order) — fresh-session entry point (3 sweep items remain)
+1. **2.3 DETERMINISM** (#20) — **root cause already found:** the intake review card's cost-code count ("Mixed · 4 codes" then "3 codes" on identical uploads) ≠ persisted allocations (DB=2) ≠ queue "MULTIPLE (2)". Investigate the intake review card's code-count derivation (the one-model dominant-line-code resolution in `src/lib/invoices/save.ts` `resolveDominantLineCode` + the card's client-side count in the intake/review component). Show the count that WILL persist; make coding deterministic per document. Surfaces: intake review card + `/invoices/queue` "MULTIPLE (N)" cell.
+2. **2.4 NEW-JOB HONESTY** (#18) — preview values ≡ what saves; label **Contract-Type vs Billing-Method distinctly** (they're conflated in job create); **retainage field at job creation for AIA** jobs; **generic placeholder text** (no Drummond/RB bleed). Surface: the New Job flow (`+ NEW JOB` → job create form) + the draw wizard's job-setup inline form (`src/app/draws/new/page.tsx` needsSetup block already captures contract + retainage — mirror that honesty at job creation).
+3. **2.5 PARSE ERRORS + MANUAL-ENTRY** (#16) — friendly copy (raw provider JSON **never** user-visible) on parse failure + a **minimal manual-entry fallback form** (vendor, #, date, job, lines, amounts) so intake survives an AI outage. Keep it minimal. Surface: invoice upload/parse path (`src/lib/invoices/*` + the intake/upload UI); wire the fallback where a parse error currently surfaces.
 
 ## Flags / open
-- **Edit-mode/blocking-guard** flow decision (see ⚠ block) — blocks pt2b UI walks only; money logic verified.
-- **DrawPrintView signatory hardcode** — "Jake Ross" / "Director of Construction" still fixed; no org `pay_app_signatory` config field exists. Org NAME is wired. Needs an org-config field (architectural add — surface, don't invent).
-- `/people/vendors` static fixtures (→ 2.6).
+- **DrawPrintView signatory person/title** — now FULLY configurable (R2). Set to "Jake Ross"/"Director of Construction" for RB via /admin/financial. No open item.
+- **Edit-mode/blocking-guard** — RESOLVED by R1. pt2b-tail UI walks (pending-pool DISPLAY, approve-cap race, multi-draft void-returns-pool) are now unblocked; fixtures still in place if you want to walk them: draft `da4ca554` ($5k deposit) + approved adjustment `67d0df76` (−$500) on Sample Client A.
+- **Attribution residuals (2.2 scope note):** historical activity_log rows with user_id=NULL still render "System" (no known actor to backfill); defensive `?? roleLabel`/`?? "pm"` fallbacks left (only fire if auth missing).
 
 ## Ops
 `tsc --noEmit` for green while `next dev` runs (NOT `next build`). Code commits need a fresh `.planning/qa-runs/*-qa-report.md`. Ceiling $150 / surface $120; halt-on-money-surprise; Rule 12 on live financial writes (draw writes on test data authorized per nwrp for verification walks). End every session by updating this file + committing doc-only.
