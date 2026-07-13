@@ -1,10 +1,12 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-13 · **HEAD (origin/main):** `5f0ddd4` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
+**Updated:** 2026-07-13 · **HEAD (origin/main):** `f6db1a5` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
 
 Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings) and `invoices-draws-deep-dive/HANDOFF.md` (TOP-20).
 
-**STAGE 2 FULLY CLOSED** (incl. 2.5b live-save verified: manual invoice → PM Queue, flags [manual_entry], soft-deleted). **STAGE 3: 3.1/3.3/3.4/3.5/3.6/3.7/3.8/3.9 SHIPPED — all five cheap kills banked this session (`9d5f6f8`..`5f0ddd4`, pushed to origin/main). Only 3.2 ONE QUEUE remains — HALTED for its own focused pass; pre-3.2 recon done + extraction plan drafted below (plan, not build).**
+**STAGE 2 FULLY CLOSED** (incl. 2.5b live-save verified: manual invoice → PM Queue, flags [manual_entry], soft-deleted). **STAGE 3: 3.1/3.3/3.4/3.5/3.6/3.7/3.8/3.9 SHIPPED (`9d5f6f8`..`5f0ddd4`). 3.2 ONE QUEUE IN PROGRESS: steps 1+2a done + pushed (`f6db1a5` — list-route field parity + extracted eligibility module, 28/28 unit tests). Remaining = step 2b (hook + components) → step 3 ABSORB → step 4 RETIRE → verify → QA; PLAN-REVIEW gate sits before step 3. Detailed remaining build plan in "## 3.2 PROGRESS" below.**
+
+Prior-session spot-checks CLOSED this session (authorized fixture writes, reverted): 3.6 Delete-in-overflow renders danger-red below the divider ✓ (Demo Electric temp-flipped to pm_review + restored); 3.8 QA-approve flash "✓ Invoice QA approved" fires on the destination ✓ (Mock Concrete QA-approved + restored to qa_review). Fixture set back to original (3 in_draw, 2 qa_approved, 1 qa_review); Mock Concrete + Demo Electric carry harmless extra status_history/activity_log rows from the walks.
 
 ## ⚠ 3.2 ONE QUEUE — HALTED (Stage-3 HARD RULE). Decision needed.
 Absorbing Quick-Approve + bulk-select into /financials/bills means relocating ~1500 lines of **approval-control machinery** (Quick-Approve eligibility `isQuickApproveEligible`/`getApprovalBlockers`, batch approve/hold/deny modals, selection, floating bar) from `invoices/queue/page.tsx` (1583 ln, has it all) into `invoices/page.tsx` (1028 ln, has ZERO). That's approval-adjacent + regression-prone; a redirect-without-porting would REMOVE bulk-approve (a functionality regression). Per "any kill that would touch approval/money logic HALTS," left for a focused pass — recommend extracting the approve machinery into a shared component tested against the approval flows, OR a product call on whether losing bulk-approve on a first-step redirect is acceptable.
@@ -58,6 +60,24 @@ Goal: fold the PM Queue's Quick-Approve + bulk-select into the plain list (`/fin
 4. **Retire the duplicate:** point `/financials/bills/queue` at the list (redirect) OR delete `invoices/queue/page.tsx`; collapse `FinancialViewTabs`. Only after the list has full parity.
 
 **Test surface:** eligibility unit tests (each blocker rule + the quick-approve confidence/status gates — pure fns, cheap); integration: quick-approve one (optimistic remove + toast), batch approve/hold/deny (filter + toast), approve-confirm eligible/excluded split. This pass IS money-gate logic → `/nightwork-plan-review` + `/nightwork-qa` + Rule-1 runtime verification required.
+
+## 3.2 PROGRESS — done this session + REMAINING build plan
+
+**DONE (banked `f6db1a5`, pushed to origin/main):**
+- **Step 1 field parity** — `/api/invoices/list` now returns `job_id, cost_code_id, po_id, is_potential_duplicate, duplicate_dismissed_at` + `line_item_summary {hasAllBudgetLines, hasAllPOs, lineCount}` (same line-items query as the cost-code badge; runtime-verified 200 / 6 invoices). Legacy-safe fallback.
+- **Step 2a eligibility module** — `src/lib/invoices/approval-eligibility.ts` (`getApprovalBlockers` / `isQuickApproveEligible` / `quickApproveThreshold`, byte-equivalent from queue 308–354, parameterized on settings + lineItemSummary). `__tests__/approval-eligibility.test.ts` **28/28**.
+
+**REMAINING (money-adjacent → PLAN-REVIEW runs before step 3):**
+
+- **Step 2b — extract hook + components** (source line refs in `invoices/queue/page.tsx`):
+  - `useInvoiceApproval({ invoices, workflowSettings, lineItemSummary, onMutated })` — owns: `selectedIds` + `toggleSelect`/`toggleSelectAll` (609–619, 595–607); quick-approve state + `handleQuickApprove` (161–163, 356–390); batch state (138–147) + `handleBatchApprove`/`confirmBatchApprove`/`handleBatchHold`/`handleBatchDeny` (622–725); toast (158). Returns state + handlers + eligibility predicates bound to the module. Takes data as PROPS — no fetch inside. Endpoints unchanged: `POST /api/invoices/[id]/action {action:"approve",note}` + `POST /api/invoices/batch-action {action, invoice_ids, note?}` → `{success:[], failed:[]}`.
+  - Components (`src/components/invoices/`): `<BatchActionBar>` (1368–1423), `<BatchApproveConfirmModal>` eligible/excluded split (1504–1583), `<HoldNoteModal>`/`<DenyNoteModal>` (1434–1502; can be one `<BatchNoteModal>`), `<QuickApproveControl>` row cell (1091–1145 mobile / 1321–1357 desktop), `<ApprovalToast>` (1425–1432). Token-clean, driven by the hook.
+- **Step 3 — ABSORB [PLAN-REVIEW FIRST]:** 3a wire the QUEUE page to the hook+components (byte-equivalent refactor-in-place) → live-walk quick-approve + batch approve/hold/deny; must be identical (regression check). 3b wire the LIST page (`invoices/page.tsx`; its rows already carry the eligibility fields + summary from step 1): add checkbox column + quick-approve cell + batch bar, gated on `batch_approval_enabled`/`quick_approve_enabled` (fetch `/api/workflow-settings`); the stage tabs + Review filter (3.3) govern what's actionable (quick/batch only on pm_review/ai_processed). Add the new fields to the page's `Invoice` interface.
+- **Step 4 — RETIRE:** `/financials/bills/queue` → redirect to the list with the Review filter preset (or delete `invoices/queue/page.tsx`); collapse `FinancialViewTabs`. ONLY after explicit list parity (eligibility display, batch approve/hold/deny, selection, keyboard).
+- **Step 5 — QA queue:** fold into the Accounting-QA Review-filter view IF clean; else report the delta + stop.
+- **VERIFY (authorized fixtures):** batch-approve 2 eligible pm_review fixtures from the LIST page — gates render, batch succeeds, flash fires, counts deterministic, invariants green; then old queue URL lands on the filtered list with nothing missing.
+
+**Fixture recipe for VERIFY:** create 2–3 eligible pm_review clones on Sample Client A — `job_id=0cef246b-cd5f-4dbb-b28a-d00ef034cfac`, `cost_code_id=52912ec0-cebf-4422-98c4-d26daca36d1d` (01101), `invoice_date` set, `is_potential_duplicate=false`, `confidence_score≥0.95`; soft-delete at close. RB settings (govern eligibility): batch_approval_enabled=true, quick_approve_enabled=true, min_confidence=95, require_invoice_date=true, require_budget_allocation=false, require_po_linkage=false, dup_detection=true. RB org=`00000000-0000-0000-0000-000000000001`.
 
 ## ROUTE-CONSOLIDATION PROPOSAL (from 3.9 — reported for a LATER decision; NOT done)
 Namespace split to reconcile (route renames were out of scope for the labels-only 3.9 kill):
