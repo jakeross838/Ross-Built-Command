@@ -1,10 +1,17 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-13 · **HEAD (origin/main):** `13829cd` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
+**Updated:** 2026-07-13 · **HEAD (origin/main):** `9523c09` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
 
 Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings) and `invoices-draws-deep-dive/HANDOFF.md` (TOP-20).
 
+**STAGE-2 SWEEP COMPLETE** (R1, R2, 2.2, 2.3, 2.4, 2.5a, 2.5b, 2.6). Next = STAGE 3 (redundancy kills) — fresh session, see NEXT.
+
 ## Shipped (recent → older)
+- **2.5b manual entry** (`9523c09`) — ManualInvoiceForm (mode toggle Upload/Manual on the upload modal) → POSTs the same /api/invoices/save pipeline, confidence 1.0 → PM Queue, flags manual_entry. Verified render+validation. **Live save NOT walked (Rule 12 — invoice write); verified-by-construction; 30-sec authorized walk pending.**
+- **2.5a friendly errors** (`4d99901`) — idempotent friendlyIngestError sanitizer across parse/save/parse-next routes + upload/import UIs; raw JSON never user-visible. Unit test 24/24.
+- **2.4 new-job honesty** (`9ccfad2`) — Contract-Type vs Billing-Method distinct; Retainage % at creation (WHOLE-percent scale, bound to org default via ORG_COLUMNS fix); generic placeholders. Verified.
+- **2.3 determinism** (`2561897`) — intake card + list badge count only amount>0 codes = persisted allocations. DB tie-out + "MULTIPLE (2)" verified.
+- **2.2 attribution** (`13829cd`) · **R1 edit-guard** (`d8a0301`) · **R2 signatory** (`3f16aaf`) · **2.6 vendors 404** (verify only).
 - **2.2 ATTRIBUTION** (`13829cd`) — real acting user recorded on every approval/action (draws action/adjustments/update-draft/revise + invoices action/batch/partial resolve actorId; literal "system"/"user" gone; AI-parse honestly labeled "AI extraction"); draw activity_log rows now carry user_id; QA queue `getApprovalInfo` keys on the pm_approved entry + resolves UUID→profile name. Verified: QA queue shows "Jake Ross", not "system". Fixes HANDOFF #17.
 - **R1 edit-mode guard** (`d8a0301`) — blockingOpenDraw excludes the edited draw; honest "Edit Draw #N — Draft" header. Verified both halves.
 - **R2 signatory** (`3f16aaf`) — org pay_app_signatory_name/_title (migration 00121) via /admin/financial "Pay App Signatory"; print blank-when-unset, renders when set. Killed the Jake Ross hardcode. Verified full chain.
@@ -14,12 +21,20 @@ Chat transfer is unreliable — this file is the durable handoff. Read alongside
 - **pt2b core** (`c706bb1`) — deposit input + ledger + line 7a + save cap.
 - **HANDOFF #2 credit fix** (`036b53a`) · **pt2a display** (`58921dd`) · **Stage 2.1 sweep** (`ee1765d`) · earlier 1.1d/pt1/1.1/1.1c/1.4/1.5/1.7.
 
-## NEXT (in order) — fresh-session entry point (3 sweep items remain)
-1. **2.3 DETERMINISM** (#20) — **root cause already found:** the intake review card's cost-code count ("Mixed · 4 codes" then "3 codes" on identical uploads) ≠ persisted allocations (DB=2) ≠ queue "MULTIPLE (2)". Investigate the intake review card's code-count derivation (the one-model dominant-line-code resolution in `src/lib/invoices/save.ts` `resolveDominantLineCode` + the card's client-side count in the intake/review component). Show the count that WILL persist; make coding deterministic per document. Surfaces: intake review card + `/invoices/queue` "MULTIPLE (N)" cell.
-2. **2.4 NEW-JOB HONESTY** (#18) — preview values ≡ what saves; label **Contract-Type vs Billing-Method distinctly** (they're conflated in job create); **retainage field at job creation for AIA** jobs; **generic placeholder text** (no Drummond/RB bleed). Surface: the New Job flow (`+ NEW JOB` → job create form) + the draw wizard's job-setup inline form (`src/app/draws/new/page.tsx` needsSetup block already captures contract + retainage — mirror that honesty at job creation).
-3. **2.5 PARSE ERRORS + MANUAL-ENTRY** (#16) — friendly copy (raw provider JSON **never** user-visible) on parse failure + a **minimal manual-entry fallback form** (vendor, #, date, job, lines, amounts) so intake survives an AI outage. Keep it minimal. Surface: invoice upload/parse path (`src/lib/invoices/*` + the intake/upload UI); wire the fallback where a parse error currently surfaces.
+## NEXT — STAGE 3: THE REDUNDANCY KILLS (fresh session; nav/chrome only, NEVER math/state-machines — any kill touching approval/money logic HALTS). Before/after screenshot per kill. Order matters (3.3 first — 3.2 lands on the same surface).
+Live recon gathered this session (surfaces confirmed in-browser):
+- **`/financials/bills`** = re-export of `src/app/invoices/page.tsx` (the list) + `src/components/financial-view-tabs.tsx` (Invoices/Queue/QA tabs). The list header shows **TWO tab strips**: stage tabs "TO REVIEW / NEEDS ATTENTION / READY FOR DRAW" + a duplicate "ALL / PM REVIEW / ACCOUNTING QA" strip. Two doors: **IMPORT CSV** + **UPLOAD INVOICE** buttons.
+- **`/financials/bills/queue`** = re-export of `src/app/invoices/queue/page.tsx` (PM Queue: Quick-Approve + bulk-select). **QA** = `src/app/invoices/qa/page.tsx`.
+- **Upload modal** (`invoice-upload-modal` → `invoice-upload-content.tsx`) now has the Upload/Manual toggle (2.5b) — the natural home to demote Import CSV into (3.1). New Job = `NewJobSlideOver` drawer (already exists; 2.4).
+
+1. **3.3 ONE TAB AXIS** (FIRST) — keep the stage tabs (To Review / Needs Attention / Ready for Draw); the role/queue split (ALL/PM REVIEW/ACCOUNTING QA) becomes a FILTER; the duplicate second strip dies. Surface: `invoices/page.tsx` + `financial-view-tabs.tsx`.
+2. **3.2 ONE QUEUE** — `/financials/bills` absorbs Quick-Approve + bulk-select from the PM Queue; `/financials/bills/queue` deleted (redirect in next.config). QA folds into the Accounting-QA filter view if clean this session — else report.
+3. **3.1 ONE DOOR** — single primary UPLOAD INVOICE; Import CSV demoted inside the upload surface (add an Import tab beside Upload/Manual) as a secondary path; onboarding CTA → same door. Receipt stays a card toggle (already is).
+4. **3.4 ONE NEW-JOB** — drawer everywhere; `/jobs/new` deleted (redirect opens the `NewJobSlideOver` drawer); one create-draw affordance, one casing.
+(3.5-3.9 — row semantics, DELETE-to-overflow, combobox picker, mutation feedback, vocabulary — later.)
 
 ## Flags / open
+- **2.5b live-save walk** — pending a one-line Rule-12 go-ahead: fill the Manual Entry form on Sample Client A → confirm it lands in the PM Queue → soft-delete. Save path verified-by-construction (reuses /api/invoices/save).
 - **DrawPrintView signatory person/title** — now FULLY configurable (R2). Set to "Jake Ross"/"Director of Construction" for RB via /admin/financial. No open item.
 - **Edit-mode/blocking-guard** — RESOLVED by R1. pt2b-tail UI walks (pending-pool DISPLAY, approve-cap race, multi-draft void-returns-pool) are now unblocked; fixtures still in place if you want to walk them: draft `da4ca554` ($5k deposit) + approved adjustment `67d0df76` (−$500) on Sample Client A.
 - **Attribution residuals (2.2 scope note):** historical activity_log rows with user_id=NULL still render "System" (no known actor to backfill); defensive `?? roleLabel`/`?? "pm"` fallbacks left (only fire if auth missing).
