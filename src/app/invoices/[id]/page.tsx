@@ -10,6 +10,7 @@ import InvoiceFilePreview from "@/components/invoice-file-preview";
 import InvoiceAllocationsEditor, { type InvoiceAllocationsEditorHandle } from "@/components/invoice-allocations-editor";
 import NwButton from "@/components/nw/Button";
 import NwEyebrow from "@/components/nw/Eyebrow";
+import OverflowMenu, { type OverflowMenuItem } from "@/components/nw/OverflowMenu";
 import { invoiceDisplayName } from "@/lib/invoices/display";
 import { toast } from "@/lib/utils/toast";
 import PaymentPanel from "@/components/invoices/PaymentPanel";
@@ -1168,6 +1169,50 @@ export default function InvoiceReviewPage() {
         actions row, payment row, cost-intelligence link-out. ═══ */}
  {(() => {
    const isQaApproved = invoice.status === "qa_approved";
+   // Secondary + destructive actions live in a quiet "More" overflow so the
+   // primary row is just the frequent decisions (audit 3.6 / #15). Delete is
+   // danger-styled and grouped below a divider inside the menu.
+   const overflowItems: OverflowMenuItem[] = [];
+   if (isReviewable) {
+     overflowItems.push({
+       key: "partial",
+       label: "Partial",
+       disabled: saving || lineItems.length < 2 || !!approveDisabledReason,
+       title:
+         approveDisabledReason ??
+         (lineItems.length < 2
+           ? "Partial approval requires 2+ line items"
+           : "Split this invoice into approved and held portions"),
+       onClick: () => {
+         setPartialApprovedIds(new Set());
+         setPartialNote("");
+         setPartialError(null);
+         setShowPartialModal(true);
+       },
+     });
+     overflowItems.push({
+       key: "request_info",
+       label: "Request Info",
+       disabled: saving,
+       onClick: () => setShowRequestInfoModal(true),
+     });
+   }
+   if (invoice.signed_file_url) {
+     overflowItems.push({ key: "download", label: "Download PDF", href: invoice.signed_file_url });
+   }
+   if (canDelete) {
+     overflowItems.push({
+       key: "delete",
+       label: "Delete",
+       danger: true,
+       title: "Delete this un-approved invoice",
+       onClick: () => {
+         setDeleteReason("");
+         setDeleteError(null);
+         setShowDeleteModal(true);
+       },
+     });
+   }
    const vendorName = invoice.vendor_name_raw ?? invoice.vendors?.name ?? "Unknown vendor";
    const projectName = invoice.jobs?.name ?? "—";
    const receivedAtLabel = invoice.received_date ? formatDate(invoice.received_date) : null;
@@ -1277,25 +1322,6 @@ export default function InvoiceReviewPage() {
                  <NwButton
                    variant="secondary"
                    size="sm"
-                   onClick={() => {
-                     setPartialApprovedIds(new Set());
-                     setPartialNote("");
-                     setPartialError(null);
-                     setShowPartialModal(true);
-                   }}
-                   disabled={saving || lineItems.length < 2 || !!approveDisabledReason}
-                   title={
-                     approveDisabledReason ??
-                     (lineItems.length < 2
-                       ? "Partial approval requires 2+ line items"
-                       : "Split this invoice into approved and held portions")
-                   }
-                 >
-                   Partial
-                 </NwButton>
-                 <NwButton
-                   variant="secondary"
-                   size="sm"
                    onClick={() => setShowNoteModal("hold")}
                    disabled={saving}
                  >
@@ -1308,14 +1334,6 @@ export default function InvoiceReviewPage() {
                    disabled={saving}
                  >
                    Deny
-                 </NwButton>
-                 <NwButton
-                   variant="ghost"
-                   size="sm"
-                   onClick={() => setShowRequestInfoModal(true)}
-                   disabled={saving}
-                 >
-                   Request Info
                  </NwButton>
                </>
              ) : null}
@@ -1343,16 +1361,6 @@ export default function InvoiceReviewPage() {
                  </NwButton>
                </>
              ) : null}
-             {invoice.signed_file_url ? (
-               <a
-                 href={invoice.signed_file_url}
-                 target="_blank"
-                 rel="noopener noreferrer"
-                 download
-               >
-                 <NwButton variant="ghost" size="sm">Download PDF</NwButton>
-               </a>
-             ) : null}
              {isQaApproved ? (
                <NwButton
                  variant="primary"
@@ -1362,16 +1370,7 @@ export default function InvoiceReviewPage() {
                  Push to QuickBooks →
                </NwButton>
              ) : null}
-             {canDelete ? (
-               <NwButton
-                 variant="ghost"
-                 size="sm"
-                 onClick={() => { setDeleteReason(""); setDeleteError(null); setShowDeleteModal(true); }}
-                 title="Delete this un-approved invoice"
-               >
-                 Delete
-               </NwButton>
-             ) : null}
+             <OverflowMenu items={overflowItems} label="More" ariaLabel="More invoice actions" />
            </div>
          </div>
        </div>
