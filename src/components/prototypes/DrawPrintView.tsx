@@ -62,6 +62,9 @@ export interface DrawPrintViewProps {
   /** PRINT FIDELITY — contractor letterhead identity from the org row. When
    *  absent (prototype gallery fixtures), falls back to the Ross Built demo. */
   contractor?: { name: string; address: string };
+  /** R2 — org-configured G702 signatory. Empty/absent → blank signature lines
+   *  (wet signature); never a defaulted or hardcoded person. */
+  signatory?: { name: string; title: string };
   /** Optional href for back-to-draw link. Defaults to portfolio path. */
   backHref?: string;
 }
@@ -88,6 +91,7 @@ export default function DrawPrintView({
   adjustments = [],
   retainage,
   contractor,
+  signatory,
   backHref,
 }: DrawPrintViewProps) {
   // Contractor letterhead — org identity when wired (production), Ross Built
@@ -615,13 +619,14 @@ export default function DrawPrintView({
             <div className="grid grid-cols-2 gap-8 mt-6">
               <div>
                 <div className="aia-signature-line pt-1">
-                  {/* Signatory person + title are still fixed to the Ross Built
-                      signer — there is no org "pay-app signatory" setting yet
-                      (name + title would need one). Org NAME is de-hardcoded.
-                      Flagged in STATUS.md for a future org-config field. */}
-                  <div className="font-medium">Jake Ross</div>
+                  {/* R2 — org-configured signatory (settings → Company → Pay App
+                      Signatory). Blank lines when unset — a wet signature, never
+                      a defaulted or hardcoded person. */}
+                  <div className="font-medium">
+                    {signatory?.name?.trim() || " "}
+                  </div>
                   <div className="text-[8pt]">
-                    Director of Construction · {contractorName}
+                    {signatory?.title?.trim() || " "}
                   </div>
                 </div>
               </div>

@@ -154,6 +154,8 @@ export type PayAppViewData = {
   // "Ross Built Custom Homes", contradicting the withheld math on any tenant.
   retainage: { percent: number; amount: number }; // percent 0-100; amount cents
   contractor: { name: string; address: string };
+  // R2 — org-configured G702 signatory; empty strings when unset (print blank).
+  signatory: { name: string; title: string };
 };
 
 // PRINT FIDELITY — format the org row's company_* parts into a single
@@ -247,7 +249,7 @@ export async function loadPayAppViewData(
   const { data: orgRow } = await supabase
     .from("organizations")
     .select(
-      "name, logo_url, company_address, company_city, company_state, company_zip, default_markup_display, default_backup_detail"
+      "name, logo_url, company_address, company_city, company_state, company_zip, pay_app_signatory_name, pay_app_signatory_title, default_markup_display, default_backup_detail"
     )
     .eq("id", membership.org_id)
     .maybeSingle();
@@ -261,6 +263,12 @@ export async function loadPayAppViewData(
         company_zip?: string | null;
       } | null
     ),
+  };
+  // R2 (PRINT SIGNATORY) — org-configured G702 signer. Empty when unset → the
+  // print renders blank signature lines (never a defaulted/hardcoded person).
+  const signatory = {
+    name: (orgRow?.pay_app_signatory_name as string | null) ?? "",
+    title: (orgRow?.pay_app_signatory_title as string | null) ?? "",
   };
 
   // ── FROZEN SNAPSHOT (TD-NW-DRAW-SNAPSHOT) ─────────────────────────────
@@ -306,6 +314,7 @@ export async function loadPayAppViewData(
       // (presentation identity, not frozen financials).
       retainage: snap.retainage ?? { percent: 0, amount: 0 },
       contractor,
+      signatory,
     };
   }
 
@@ -804,6 +813,7 @@ export async function loadPayAppViewData(
     // + org letterhead identity, both fed into DrawPrintView.
     retainage: { percent: retainagePct, amount: totals.total_retainage },
     contractor,
+    signatory,
   };
 }
 

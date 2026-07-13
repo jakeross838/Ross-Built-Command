@@ -17,6 +17,8 @@ export type CurrentOrg = {
   company_phone: string | null;
   company_email: string | null;
   company_website: string | null;
+  pay_app_signatory_name: string | null;
+  pay_app_signatory_title: string | null;
   default_gc_fee_percentage: number;
   default_deposit_percentage: number;
   payment_schedule_type: "5_20" | "15_30" | "monthly" | "custom";
@@ -48,6 +50,7 @@ const ORG_COLUMNS =
   "id, name, slug, tagline, logo_url, " +
   "company_address, company_city, company_state, company_zip, " +
   "company_phone, company_email, company_website, " +
+  "pay_app_signatory_name, pay_app_signatory_title, " +
   "default_gc_fee_percentage, default_deposit_percentage, " +
   "default_billing_method, default_markup_display, default_backup_detail, " +
   "payment_schedule_type, payment_schedule_config, " +

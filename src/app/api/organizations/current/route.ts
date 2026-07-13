@@ -18,6 +18,8 @@ const EDITABLE_COLUMNS = new Set([
   "company_phone",
   "company_email",
   "company_website",
+  "pay_app_signatory_name",
+  "pay_app_signatory_title",
   "default_gc_fee_percentage",
   "default_deposit_percentage",
   "payment_schedule_type",

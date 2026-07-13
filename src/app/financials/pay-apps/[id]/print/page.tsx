@@ -55,6 +55,7 @@ export default async function PayAppPrintPage({
           adjustments={data.adjustments}
           retainage={data.retainage}
           contractor={data.contractor}
+          signatory={data.signatory}
         />
       )}
     </div>

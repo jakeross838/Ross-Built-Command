@@ -3493,6 +3493,8 @@ export type Database = {
           logo_url: string | null
           name: string
           onboarding_complete: boolean
+          pay_app_signatory_name: string | null
+          pay_app_signatory_title: string | null
           payment_schedule_config: Json
           payment_schedule_type: string
           primary_color: string
@@ -3533,6 +3535,8 @@ export type Database = {
           logo_url?: string | null
           name: string
           onboarding_complete?: boolean
+          pay_app_signatory_name?: string | null
+          pay_app_signatory_title?: string | null
           payment_schedule_config?: Json
           payment_schedule_type?: string
           primary_color?: string
@@ -3573,6 +3577,8 @@ export type Database = {
           logo_url?: string | null
           name?: string
           onboarding_complete?: boolean
+          pay_app_signatory_name?: string | null
+          pay_app_signatory_title?: string | null
           payment_schedule_config?: Json
           payment_schedule_type?: string
           primary_color?: string

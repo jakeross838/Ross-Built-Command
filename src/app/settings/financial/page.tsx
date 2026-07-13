@@ -21,6 +21,8 @@ export default async function FinancialSettingsPage() {
           verification_required_for_low_confidence:
             org.cost_intelligence_settings?.verification_required_for_low_confidence ?? true,
         },
+        pay_app_signatory_name: org.pay_app_signatory_name,
+        pay_app_signatory_title: org.pay_app_signatory_title,
       }}
     />
   );
