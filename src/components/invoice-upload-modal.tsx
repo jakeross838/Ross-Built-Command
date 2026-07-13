@@ -36,12 +36,16 @@ export default function InvoiceUploadModal({
   open,
   onClose,
   onSaved,
+  initialMode = "upload",
 }: {
   open: boolean;
   onClose: () => void;
   /** Fired after an invoice is saved & routed from inside the modal, so the
    *  host can close the modal + flash the list (never strand the user here). */
   onSaved?: (count: number) => void;
+  /** 3.1 ONE DOOR — which mode to open in (upload / manual / import). Lets
+   *  ?action=import deep-link straight to Import CSV inside the one door. */
+  initialMode?: "upload" | "manual" | "import";
 }) {
   // Lock body scroll when open
   useEffect(() => {
@@ -97,7 +101,7 @@ export default function InvoiceUploadModal({
       </div>
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        <UploadContent onSaved={onSaved} />
+        <UploadContent onSaved={onSaved} initialMode={initialMode} />
       </div>
     </div>,
     document.body

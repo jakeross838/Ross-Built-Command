@@ -13,6 +13,7 @@ import CostCodeCombobox, { type CostCodeOption } from "@/components/cost-code-co
 import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
 import { friendlyIngestError } from "@/lib/invoices/friendly-error";
 import ManualInvoiceForm from "@/components/manual-invoice-form";
+import ImportPageContent from "@/components/invoice-import-content";
 
 
 type ParseStep = "uploading" | "analyzing" | "extracting" | "matching" | "complete";
@@ -892,15 +893,23 @@ function DuplicateModal({
  * When `onSaved` is provided, it's called after each successful save
  * so the caller can close the modal / refresh a list.
  */
-export default function UploadContent({ onSaved }: { onSaved?: (count: number) => void } = {}) {
+export default function UploadContent({
+ onSaved,
+ initialMode = "upload",
+}: {
+ onSaved?: (count: number) => void;
+ // 3.1 ONE DOOR — the upload surface hosts three modes; ?action=import deep-links
+ // straight to "import" so there's no separate Import CSV door.
+ initialMode?: "upload" | "manual" | "import";
+} = {}) {
  const [files, setFiles] = useState<FileStatus[]>([]);
  const [isDragging, setIsDragging] = useState(false);
  const [savingAll, setSavingAll] = useState(false);
  const [duplicateModal, setDuplicateModal] = useState<DuplicateInfo | null>(null);
  const [duplicateSaving, setDuplicateSaving] = useState(false);
  const [documentType, setDocumentType] = useState<"invoice" | "receipt">("invoice");
- // 2.5(b) — Upload (AI) vs Manual entry (AI-outage fallback).
- const [mode, setMode] = useState<"upload" | "manual">("upload");
+ // 2.5(b) Upload (AI) / Manual entry (AI-outage fallback) + 3.1 Import CSV (batch).
+ const [mode, setMode] = useState<"upload" | "manual" | "import">(initialMode);
  const duplicateHitRef = useRef(false);
  // Suppresses the per-file onSaved close while Save-All is looping — we fire
  // onSaved once at the end of the batch instead.
@@ -1097,27 +1106,34 @@ export default function UploadContent({ onSaved }: { onSaved?: (count: number) =
  </div>
  )}
 
- <main className="max-w-7xl mx-auto px-4 md:px-6 py-8">
- {/* 2.5(b) — Upload (AI) vs Manual entry toggle */}
- <div className="inline-flex border border-[var(--border-default)] mb-6">
+ <div>
+ {/* 2.5(b) Upload / Manual entry + 3.1 Import CSV — one door, three modes.
+     Thin toggle header; Import brings its own <main>, so it renders as a
+     sibling (no nested <main>, no double padding). */}
+ <div className="max-w-7xl mx-auto px-4 md:px-6 pt-8">
+ <div className="inline-flex border border-[var(--border-default)]">
+ {([
+  ["upload", "Upload Document"],
+  ["manual", "Manual Entry"],
+  ["import", "Import CSV"],
+ ] as ["upload" | "manual" | "import", string][]).map(([m, label]) => (
  <button
-  onClick={() => setMode("upload")}
+  key={m}
+  onClick={() => setMode(m)}
   className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-  mode === "upload"
+  mode === m
    ? "bg-[var(--nw-stone-blue)] text-[color:var(--bg-page)]"
    : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] hover:bg-[var(--bg-subtle)]"
   }`}
- >Upload Document</button>
- <button
-  onClick={() => setMode("manual")}
-  className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-  mode === "manual"
-   ? "bg-[var(--nw-stone-blue)] text-[color:var(--bg-page)]"
-   : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] hover:bg-[var(--bg-subtle)]"
-  }`}
- >Manual Entry</button>
+ >{label}</button>
+ ))}
+ </div>
  </div>
 
+ {mode === "import" ? (
+ <ImportPageContent />
+ ) : (
+ <main className="max-w-7xl mx-auto px-4 md:px-6 pb-8 pt-6">
  {mode === "manual" ? (
  <ManualInvoiceForm
   jobOptions={jobOptions}
@@ -1296,6 +1312,8 @@ export default function UploadContent({ onSaved }: { onSaved?: (count: number) =
  </>
  )}
  </main>
+ )}
+ </div>
 
  {/* Duplicate invoice warning modal */}
  {duplicateModal && (

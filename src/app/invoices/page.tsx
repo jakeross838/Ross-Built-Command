@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
 import { formatCents, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
 import InvoiceUploadModal from "@/components/invoice-upload-modal";
-import InvoiceImportModal from "@/components/invoice-import-modal";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
 import { SkeletonList } from "@/components/loading-skeleton";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
@@ -136,8 +135,14 @@ export default function AllInvoicesPage() {
  // actual data counts, not a stored onboarding flag.
  const [setupCounts, setSetupCounts] = useState<{ costCodes: number; jobs: number }>({ costCodes: 0, jobs: 0 });
  const [loading, setLoading] = useState(true);
- const [uploadOpen, setUploadOpen] = useState(searchParams.get("action") === "upload");
- const [importOpen, setImportOpen] = useState(searchParams.get("action") === "import");
+ // 3.1 ONE DOOR — a single upload surface hosts Upload / Manual / Import. The
+ // ?action=import deep-link opens that door in import mode (no separate modal).
+ const [uploadOpen, setUploadOpen] = useState(
+ searchParams.get("action") === "upload" || searchParams.get("action") === "import"
+ );
+ const [uploadMode, setUploadMode] = useState<"upload" | "manual" | "import">(
+ searchParams.get("action") === "import" ? "import" : "upload"
+ );
  // Flash strip (Pattern 5) shown after a Save & Route so the user lands back
  // on the list with confirmation instead of being stranded in the modal.
  const [flashMsg, setFlashMsg] = useState<string | null>(null);
@@ -426,10 +431,7 @@ export default function AllInvoicesPage() {
  </p>
  </div>
  <div className="flex items-center gap-2">
- <NwButton variant="secondary" size="md" onClick={() => setImportOpen(true)}>
- Import CSV
- </NwButton>
- <NwButton variant="primary" size="md" onClick={() => setUploadOpen(true)}>
+ <NwButton variant="primary" size="md" onClick={() => { setUploadMode("upload"); setUploadOpen(true); }}>
  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
  </svg>
@@ -864,6 +866,7 @@ export default function AllInvoicesPage() {
  </main>
  <InvoiceUploadModal
  open={uploadOpen}
+ initialMode={uploadMode}
  onClose={() => {
  setUploadOpen(false);
  if (searchParams.get("action")) router.replace("/invoices");
@@ -876,11 +879,6 @@ export default function AllInvoicesPage() {
  setFlashMsg(`${count} invoice${count === 1 ? "" : "s"} saved & routed for review.`);
  }}
  />
- <InvoiceImportModal open={importOpen} onClose={() => {
- setImportOpen(false);
- if (searchParams.get("action")) router.replace("/invoices");
- router.refresh();
- }} />
  </>
  );
 }
