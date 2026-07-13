@@ -19,11 +19,20 @@ export const dynamic = "force-dynamic";
 // "Filter every query by membership.org_id"); RLS is the backstop.
 
 // Column set with the partial-approval columns (migration 00015).
+// The scalar `job_id, cost_code_id, po_id, is_potential_duplicate,
+// duplicate_dismissed_at` are the approval-eligibility fields (3.2 field
+// parity) — the queue's Quick-Approve/batch gates read them, and folding
+// that machinery into this list page (which loads server-side) needs them
+// here. Additive: the existing `jobs:`/`cost_codes:` embeds are unchanged.
 const INVOICES_FULL =
-  "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, parent_invoice_id, partial_approval_note, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
-// Fallback for orgs whose schema predates those columns.
+  "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, job_id, cost_code_id, po_id, is_potential_duplicate, duplicate_dismissed_at, is_change_order, parent_invoice_id, partial_approval_note, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
+// Fallback for orgs whose schema predates the newer columns. job_id +
+// cost_code_id are core (always present); po_id / is_potential_duplicate /
+// duplicate_dismissed_at are omitted here (eligibility degrades safely when
+// they're undefined), and the fallback regex below catches a missing-column
+// error on any of them.
 const INVOICES_MINIMAL =
-  "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, is_change_order, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
+  "id, vendor_name_raw, vendor_id, invoice_number, invoice_date, total_amount, confidence_score, received_date, payment_date, status, check_number, picked_up, mailed_date, document_category, document_type, job_id, cost_code_id, is_change_order, payment_status, draw_id, draws:draw_id (draw_number, status), jobs:job_id (id, name), cost_codes:cost_code_id (code, description), assigned_pm:assigned_pm_id (id, full_name)";
 
 export async function GET(request: NextRequest) {
   // Fast path: read org from middleware-set headers (skips a redundant
@@ -46,7 +55,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(2000)
       .then(async (r) => {
-        if (r.error && /parent_invoice_id|partial_approval_note/i.test(r.error.message)) {
+        if (r.error && /parent_invoice_id|partial_approval_note|po_id|is_potential_duplicate|duplicate_dismissed_at/i.test(r.error.message)) {
           return await supabase
             .from("invoices")
             .select(INVOICES_MINIMAL)
@@ -67,27 +76,55 @@ export async function GET(request: NextRequest) {
 
   const invoices = (invResult.data as unknown as Array<{ id: string }> | null) ?? [];
 
-  // Per-invoice unique cost-code strings — only for the invoices we return.
+  // Per-invoice unique cost-code strings + approval line-item summary — both
+  // built from ONE invoice_line_items query (no extra round-trip). The summary
+  // (budget-line / PO coverage per invoice) feeds the folded-in Quick-Approve /
+  // batch eligibility gates (3.2), mirroring the PM Queue's own computation.
   const lineItemCodesByInvoice = new Map<string, Set<string>>();
+  const lineItemSummaryByInvoice = new Map<
+    string,
+    { hasAllBudgetLines: boolean; hasAllPOs: boolean; lineCount: number }
+  >();
   const invoiceIds = invoices.map((i) => i.id);
   if (invoiceIds.length > 0) {
     const { data: lineItems } = await supabase
       .from("invoice_line_items")
-      .select("invoice_id, cost_code_id, amount_cents, cost_codes:cost_code_id(code)")
+      .select("invoice_id, cost_code_id, amount_cents, budget_line_id, po_id, cost_codes:cost_code_id(code)")
       .in("invoice_id", invoiceIds)
       .is("deleted_at", null);
     for (const li of lineItems ?? []) {
+      const row = li as unknown as {
+        invoice_id: string;
+        amount_cents: number | null;
+        budget_line_id: string | null;
+        po_id: string | null;
+        cost_codes: { code: string } | { code: string }[] | null;
+      };
+      const invId = row.invoice_id;
+
+      // Approval summary — mirrors the PM Queue gate: uses ALL non-deleted
+      // lines (not just amount>0). hasAllBudgetLines/hasAllPOs require ≥1 line
+      // AND every line carrying the field (the AND-from-true accumulation
+      // yields exactly `length>0 && every(...)`; invoices with 0 lines fall to
+      // the `{false,false,0}` default in `enriched`).
+      const prev = lineItemSummaryByInvoice.get(invId) ?? {
+        hasAllBudgetLines: true,
+        hasAllPOs: true,
+        lineCount: 0,
+      };
+      lineItemSummaryByInvoice.set(invId, {
+        hasAllBudgetLines: prev.hasAllBudgetLines && !!row.budget_line_id,
+        hasAllPOs: prev.hasAllPOs && !!row.po_id,
+        lineCount: prev.lineCount + 1,
+      });
+
       // 2.3 determinism (#20): count only codes that persist as allocations
       // (amount_cents > 0) so the "Multiple (N)" badge == the intake card ==
       // the saved allocations. A $0-amount coded line creates no allocation.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (((li as any).amount_cents ?? 0) <= 0) continue;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cc = (li as any).cost_codes;
+      if ((row.amount_cents ?? 0) <= 0) continue;
+      const cc = row.cost_codes;
       const code = Array.isArray(cc) ? cc[0]?.code : cc?.code;
       if (!code) continue;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const invId = (li as any).invoice_id as string;
       if (!lineItemCodesByInvoice.has(invId)) lineItemCodesByInvoice.set(invId, new Set());
       lineItemCodesByInvoice.get(invId)!.add(code);
     }
@@ -96,6 +133,11 @@ export async function GET(request: NextRequest) {
   const enriched = invoices.map((inv) => ({
     ...inv,
     line_item_cost_codes: Array.from(lineItemCodesByInvoice.get(inv.id) ?? []),
+    line_item_summary: lineItemSummaryByInvoice.get(inv.id) ?? {
+      hasAllBudgetLines: false,
+      hasAllPOs: false,
+      lineCount: 0,
+    },
   }));
 
   const pmUsers = (
