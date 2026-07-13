@@ -5,8 +5,7 @@ import { formatCents } from "@/lib/utils/format";
 import NwButton from "@/components/nw/Button";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import NwMoney from "@/components/nw/Money";
-
-type CostCode = { id: string; code: string; description: string };
+import CostCodeCombobox, { type CostCodeOption } from "@/components/cost-code-combobox";
 
 type Allocation = {
   id?: string;
@@ -28,7 +27,7 @@ const InvoiceAllocationsEditor = forwardRef<
   {
     invoiceId: string;
     invoiceTotalCents: number;
-    costCodes: CostCode[];
+    costCodes: CostCodeOption[];
     readOnly?: boolean;
     onChange?: () => void;
   }
@@ -67,6 +66,14 @@ const InvoiceAllocationsEditor = forwardRef<
   const balanced = sum === invoiceTotalCents;
   const anyCostCodeMissing = rows.some((r) => !r.cost_code_id);
   const isDirty = JSON.stringify(rows) !== initialSnapshot;
+
+  // The combobox groups by category and preserves the order it's given, so
+  // hand it a code-sorted copy (numeric-aware so 5101 < 15101). Grouping uses
+  // the `category` the review page already fetches (audit #14).
+  const codeOptions = useMemo(
+    () => [...costCodes].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })),
+    [costCodes]
+  );
 
   function updateRow(i: number, patch: Partial<Allocation>) {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -197,20 +204,17 @@ const InvoiceAllocationsEditor = forwardRef<
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} className="border-b border-[var(--border-default)] last:border-0">
-              <td className="py-1 pr-2">
-                <select
-                  className={`input text-xs${!r.cost_code_id ? " border-[rgba(176,85,78,0.55)]" : ""}`}
-                  value={r.cost_code_id ?? ""}
-                  onChange={(e) => updateRow(i, { cost_code_id: e.target.value || null })}
+              <td className="py-1 pr-2 align-top min-w-[220px]">
+                <CostCodeCombobox
+                  value={r.cost_code_id}
+                  onChange={(id) => updateRow(i, { cost_code_id: id })}
+                  options={codeOptions}
                   disabled={!canEdit}
-                >
-                  <option value="">-- select cost code --</option>
-                  {costCodes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} — {c.description}
-                    </option>
-                  ))}
-                </select>
+                  size="sm"
+                  ariaLabel="Cost code"
+                  placeholder="Select cost code…"
+                  className={!r.cost_code_id ? "border-[rgba(176,85,78,0.55)]" : ""}
+                />
               </td>
               <td className="py-1 pr-2">
                 <input
