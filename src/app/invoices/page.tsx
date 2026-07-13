@@ -457,25 +457,21 @@ export default function AllInvoicesPage() {
  </button>
  ))}
  </div>
- {/* To Review sub-toggle — keeps the PM-vs-accountant split the app is built on. */}
+ {/* 3.3 ONE TAB AXIS — the PM-vs-accountant split (load-bearing) is a FILTER,
+ not a second tab strip. Stage tabs above are the only tab axis; this dropdown
+ refines "To Review" by reviewer audience. */}
  {stageTab === "to_review" && (
- <div className="flex gap-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] p-1 w-fit">
- {([
- ["all", "All", stageCounts.pm + stageCounts.qa],
- ["pm", "PM Review", stageCounts.pm],
- ["qa", "Accounting QA", stageCounts.qa],
- ] as ["all" | "pm" | "qa", string, number][]).map(([key, label, count]) => (
- <button
- key={key}
- onClick={() => setReviewSub(key)}
- className={`px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase font-medium transition-colors inline-flex items-center gap-1.5 ${
- reviewSub === key ? "bg-[var(--bg-muted)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
- }`}>
- {label}
- <span className="text-[var(--text-tertiary)]">{count}</span>
- </button>
- ))}
- </div>
+ <label className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.12em] uppercase text-[var(--text-tertiary)]">
+ Review
+ <select
+ value={reviewSub}
+ onChange={(e) => setReviewSub(e.target.value as "all" | "pm" | "qa")}
+ className="px-3 py-1.5 bg-[var(--bg-subtle)] border border-[var(--border-default)] font-mono text-[10px] tracking-[0.12em] uppercase text-[var(--text-primary)] focus:border-[var(--nw-stone-blue)] focus:outline-none">
+ <option value="all">All ({stageCounts.pm + stageCounts.qa})</option>
+ <option value="pm">PM Review ({stageCounts.pm})</option>
+ <option value="qa">Accounting QA ({stageCounts.qa})</option>
+ </select>
+ </label>
  )}
  </div>
 
