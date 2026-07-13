@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentMembership } from "@/lib/org/session";
 import {
+  appliedAdjustmentsForDraw,
   computeDrawLines,
   depositAppliedToDateForJob,
   lessPreviousCertificatesForJob,
@@ -119,6 +120,28 @@ export async function POST(request: NextRequest) {
       0,
       Math.min(body.deposit_applied_cents ?? 0, depositRemaining)
     );
+    // BLOCK B pt2b — adjustments: applied_to_draw count in the preview total;
+    // approved-but-unapplied are the pending pool the wizard surfaces
+    // (visible ≠ counted). Only meaningful for an existing draft (draw_id).
+    const appliedAdjustments = body.draw_id
+      ? await appliedAdjustmentsForDraw(body.draw_id)
+      : 0;
+    const { data: pendingAdjRows } = body.draw_id
+      ? await supabase
+          .from("draw_adjustments")
+          .select("id, adjustment_type, amount_cents, reason")
+          .eq("draw_id", body.draw_id)
+          .eq("org_id", orgId)
+          .eq("adjustment_status", "approved")
+          .is("deleted_at", null)
+          .order("created_at")
+      : { data: null };
+    const pendingAdjustments = (pendingAdjRows ?? []).map((a) => ({
+      id: a.id as string,
+      adjustment_type: (a.adjustment_type as string) ?? "",
+      amount_cents: Number(a.amount_cents ?? 0),
+      reason: (a.reason as string) ?? "",
+    }));
     const totals = rollupDrawTotals({
       originalContractSum: job.original_contract_amount ?? 0,
       netChangeOrders,
@@ -131,7 +154,7 @@ export async function POST(request: NextRequest) {
       previousCoCompletedAmount:
         (job as { previous_co_completed_amount?: number }).previous_co_completed_amount ?? 0,
       depositAppliedCents: depositApplied,
-      appliedAdjustmentsCents: 0,
+      appliedAdjustmentsCents: appliedAdjustments,
       uncapturedLinkedCents: uncapturedLinked,
     });
 
@@ -255,6 +278,7 @@ export async function POST(request: NextRequest) {
         applied_this_draw: depositApplied,
         remaining: depositRemaining,
       },
+      pending_adjustments: pendingAdjustments,
     });
   } catch (err) {
     return NextResponse.json(

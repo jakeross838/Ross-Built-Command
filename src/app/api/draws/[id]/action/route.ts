@@ -43,6 +43,7 @@ import {
 } from "@/lib/notifications";
 import { updateWithLock, isLockConflict } from "@/lib/api/optimistic-lock";
 import { captureAndStoreSnapshot } from "@/app/financials/pay-apps/[id]/_data";
+import { depositAppliedToDateForJob } from "@/lib/draw-calc";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -159,7 +160,7 @@ export async function POST(
     const { data: draw, error: fetchError } = await supabase
       .from("draws")
       .select(
-        "id, job_id, org_id, status, status_history, draw_number, revision_number, period_end, is_final, current_payment_due, created_by"
+        "id, job_id, org_id, status, status_history, draw_number, revision_number, period_end, is_final, current_payment_due, created_by, deposit_applied_cents"
       )
       .eq("id", params.id)
       .eq("org_id", orgId)
@@ -269,6 +270,43 @@ export async function POST(
     }
 
     if (action === "approve") {
+      // BLOCK B pt2b — approve-time deposit cap. Re-validate the applied deposit
+      // against the remaining pool at approval: a draft edited elsewhere between
+      // save and approve must not oversubscribe (the save-time clamp only holds
+      // for the state at save). pool = contract × deposit%; remaining = pool −
+      // Σ applied on OTHER non-void draws.
+      const depositApplied =
+        (draw as { deposit_applied_cents?: number }).deposit_applied_cents ?? 0;
+      if (depositApplied > 0) {
+        const { data: jobRow } = await supabase
+          .from("jobs")
+          .select("original_contract_amount, deposit_percentage")
+          .eq("id", draw.job_id as string)
+          .single();
+        const pool = Math.round(
+          ((jobRow as { original_contract_amount?: number } | null)?.original_contract_amount ?? 0) *
+            ((jobRow as { deposit_percentage?: number } | null)?.deposit_percentage ?? 0.1)
+        );
+        const appliedOnOthers = await depositAppliedToDateForJob(
+          draw.job_id as string,
+          params.id
+        );
+        const remaining = Math.max(0, pool - appliedOnOthers);
+        if (depositApplied > remaining) {
+          const fmt = (c: number) =>
+            `$${(c / 100).toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}`;
+          return NextResponse.json(
+            {
+              error: `Cannot approve — deposit applied (${fmt(depositApplied)}) exceeds the remaining pool (${fmt(remaining)}). Another draw consumed the deposit; reduce this draw's deposit application first.`,
+            },
+            { status: 400 }
+          );
+        }
+      }
+
       const forceFail = readForceFail("FORCE_APPROVE_FAIL", "approve", request);
       const { data, error } = await supabase.rpc("draw_approve_rpc", {
         _draw_id: params.id,

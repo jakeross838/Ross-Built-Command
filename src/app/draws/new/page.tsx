@@ -96,6 +96,13 @@ interface PreviewResponse {
     applied_this_draw: number;
     remaining: number;
   };
+  // BLOCK B pt2b — approved-but-unapplied adjustments (the pending pool).
+  pending_adjustments?: {
+    id: string;
+    adjustment_type: string;
+    amount_cents: number;
+    reason: string;
+  }[];
 }
 
 interface WorkflowSettings {
@@ -211,7 +218,7 @@ export default function NewDrawWizardPage() {
     (async () => {
       const { data } = await supabase
         .from("draws")
-        .select("id, job_id, status, wizard_draft, application_date, period_start, period_end, is_final")
+        .select("id, job_id, status, wizard_draft, application_date, period_start, period_end, is_final, deposit_applied_cents")
         .eq("id", draftId)
         .eq("org_id", oid)
         .single();
@@ -226,6 +233,11 @@ export default function NewDrawWizardPage() {
       }
       const draft = data.wizard_draft as Record<string, unknown> | null;
       if (data.job_id) setJobId(data.job_id as string);
+      // BLOCK B pt2b — pre-fill the deposit-apply input from the draft so an
+      // edit + save doesn't zero an already-applied deposit.
+      const loadedDeposit =
+        (data as { deposit_applied_cents?: number }).deposit_applied_cents ?? 0;
+      if (loadedDeposit > 0) setDepositApplyDollars((loadedDeposit / 100).toString());
       if (data.application_date) setAppDate(data.application_date as string);
       if (data.period_start) setPeriodStart(data.period_start as string);
       if (data.period_end) setPeriodEnd(data.period_end as string);
@@ -609,6 +621,23 @@ export default function NewDrawWizardPage() {
     const cents = Math.round(Number(dollars || "0") * 100);
     setOverrides((prev) => ({ ...prev, [ccId]: cents }));
     setOverrideReasons((prev) => ({ ...prev, [ccId]: reason }));
+  }
+
+  // BLOCK B pt2b — apply an approved adjustment from the pending pool. Only
+  // possible on an existing draft (adjustments live on a draw); re-previews so
+  // the applied credit flows into current_payment_due.
+  async function applyAdjustment(adjustmentId: string) {
+    if (!draftId) return;
+    try {
+      const res = await fetch(`/api/draws/${draftId}/adjustments/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adjustment_id: adjustmentId }),
+      });
+      if (res.ok) fetchPreview();
+    } catch {
+      /* leave pending on failure */
+    }
   }
 
   async function handleSaveDraft() {
@@ -1199,12 +1228,16 @@ export default function NewDrawWizardPage() {
                     <div className="text-[color:var(--text-primary)] tabular-nums">{formatCents(preview.deposit.pool)}</div>
                   </div>
                   <div>
-                    <div className="text-[color:var(--text-secondary)]">Applied to date</div>
-                    <div className="text-[color:var(--text-primary)] tabular-nums">{formatCents(preview.deposit.applied_to_date)}</div>
+                    <div className="text-[color:var(--text-secondary)]">Applied</div>
+                    <div className="text-[color:var(--text-primary)] tabular-nums">
+                      {formatCents(preview.deposit.applied_to_date + preview.deposit.applied_this_draw)}
+                    </div>
                   </div>
                   <div>
                     <div className="text-[color:var(--text-secondary)]">Remaining</div>
-                    <div className="text-[color:var(--text-primary)] tabular-nums">{formatCents(preview.deposit.remaining)}</div>
+                    <div className="text-[color:var(--text-primary)] tabular-nums">
+                      {formatCents(preview.deposit.pool - preview.deposit.applied_to_date - preview.deposit.applied_this_draw)}
+                    </div>
                   </div>
                 </div>
                 <label className="block text-sm text-[color:var(--text-secondary)] mb-1">
@@ -1228,6 +1261,35 @@ export default function NewDrawWizardPage() {
                     Applying {formatCents(preview.deposit.applied_this_draw)} — reflected in Current Payment Due (line 7a) above.
                   </p>
                 ) : null}
+              </div>
+            )}
+
+            {preview.pending_adjustments && preview.pending_adjustments.length > 0 && (
+              <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6">
+                <p className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider mb-2">
+                  Pending Adjustments
+                </p>
+                <p className="text-sm text-[color:var(--text-secondary)] mb-3">
+                  {preview.pending_adjustments.length} approved credit(s) not yet applied — visible but NOT counted until applied.
+                </p>
+                <ul className="space-y-2">
+                  {preview.pending_adjustments.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 flex-1 text-[color:var(--text-primary)]">
+                        {a.reason || a.adjustment_type}
+                      </span>
+                      <span className="tabular-nums text-[color:var(--text-primary)]">
+                        {formatCents(a.amount_cents)}
+                      </span>
+                      <button
+                        onClick={() => applyAdjustment(a.id)}
+                        className="px-3 py-1.5 border border-[var(--border-default)] text-[color:var(--text-primary)] hover:bg-[var(--bg-muted)] text-xs"
+                      >
+                        Apply
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
