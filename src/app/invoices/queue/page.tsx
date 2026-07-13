@@ -744,7 +744,7 @@ export default function QueuePage() {
  color: "var(--text-tertiary)",
  }}
  >
- Financial · PM Queue
+ Financials · PM Queue
  </span>
  <h2
  className="m-0"

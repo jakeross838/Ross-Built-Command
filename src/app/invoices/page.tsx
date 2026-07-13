@@ -411,7 +411,7 @@ export default function AllInvoicesPage() {
  color: "var(--text-tertiary)",
  }}
  >
- Financial · Invoices
+ Financials · Invoices
  </span>
  <h2
  className="m-0"
@@ -441,7 +441,11 @@ export default function AllInvoicesPage() {
  </div>
  </div>
 
- {/* STEP 2 — approval-stage tabs (replaces the Invoices/Queue/QA bar). */}
+ {/* STEP 2 — approval-stage tabs (replaces the Invoices/Queue/QA bar).
+ Hidden at the genuine zero-state (no invoices at all) so the onboarding
+ SetupGuide stands alone, matching the Draws empty-state model
+ (audit 3.9 / zero-state chrome). */}
+ {invoices.length > 0 && (
  <div className="flex flex-wrap items-center gap-3 mb-4">
  <div className="flex gap-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] p-1 w-fit">
  {([
@@ -477,6 +481,7 @@ export default function AllInvoicesPage() {
  </label>
  )}
  </div>
+ )}
 
  {loading ? (
  <div className="space-y-4">
@@ -485,6 +490,10 @@ export default function AllInvoicesPage() {
  ) : (
  <>
  {activeTab === "all" ? (
+ <>
+ {/* Filter chrome — hidden at the genuine zero-state so the onboarding
+ SetupGuide below stands alone (audit 3.9 / zero-state chrome). */}
+ {invoices.length > 0 && (
  <>
  {/* Primary filters */}
  <div className="flex flex-col md:flex-row gap-3 mb-3">
@@ -590,6 +599,8 @@ export default function AllInvoicesPage() {
  </div>
  </div>
  </div>
+ )}
+ </>
  )}
 
  {/* No results */}

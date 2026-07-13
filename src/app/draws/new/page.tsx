@@ -771,7 +771,7 @@ export default function NewDrawWizardPage() {
             color: "var(--text-tertiary)",
           }}
         >
-          Financial · Draw Wizard
+          Financials · Draw Wizard
         </span>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <h2

@@ -7,7 +7,6 @@ import { supabase } from "@/lib/supabase/client";
 import { formatCents, formatDate, formatPercent, formatRelativeTime } from "@/lib/utils/format";
 import { SkeletonList } from "@/components/loading-skeleton";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
-import FirstUseTip from "@/components/first-use-tip";
 import { useNewJob } from "@/components/new-job/NewJobProvider";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import NwStatusDot, { type StatusDotVariant } from "@/components/nw/StatusDot";
@@ -196,7 +195,7 @@ export default function JobsPage() {
                 color: "var(--text-tertiary)",
               }}
             >
-              Operations · Jobs
+              Jobs
             </span>
             <h2
               className="m-0"
@@ -287,17 +286,16 @@ export default function JobsPage() {
           <SkeletonList rows={6} columns={["w-24", "w-40", "w-32", "w-32", "w-20", "w-20", "w-20"]} />
         ) : filtered.length === 0 ? (
           jobs.length === 0 ? (
-            <>
-              <FirstUseTip id="jobs-empty">
-                Jobs are the foundation of everything in Nightwork. Create a job for each project you&apos;re managing — budgets, invoices, and draws all connect here.
-              </FirstUseTip>
-              <EmptyState
-                icon={<EmptyIcons.Building />}
-                title="No jobs yet"
-                message="Create your first job to start tracking budgets, invoices, and draws."
-                primaryAction={{ label: "New Job", onClick: openNewJob }}
-              />
-            </>
+            // Zero-state: the EmptyState card alone. Its message already conveys
+            // the "budgets, invoices, and draws connect here" idea, so the
+            // FirstUseTip banner that duplicated it was removed
+            // (audit 3.9 / jobs banner+empty dupe).
+            <EmptyState
+              icon={<EmptyIcons.Building />}
+              title="No jobs yet"
+              message="Create your first job to start tracking budgets, invoices, and draws."
+              primaryAction={{ label: "New Job", onClick: openNewJob }}
+            />
           ) : (
             <EmptyState
               icon={<EmptyIcons.Search />}

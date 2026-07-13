@@ -103,7 +103,7 @@ export default function QaQueuePage() {
  color: "var(--text-tertiary)",
  }}
  >
- Financial · Accounting QA
+ Financials · Accounting QA
  </span>
  <h2
  className="m-0"
