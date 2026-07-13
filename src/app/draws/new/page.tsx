@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { useFlash } from "@/components/nw/FlashProvider";
 import { useOrgId } from "@/hooks/use-org-id";
 import { formatCents, formatDate } from "@/lib/utils/format";
 
@@ -118,6 +119,7 @@ const STEPS = [
 
 export default function NewDrawWizardPage() {
   const router = useRouter();
+  const flash = useFlash();
   const search = useSearchParams();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -723,6 +725,7 @@ export default function NewDrawWizardPage() {
       if (res.ok) {
         const { id } = await res.json();
         setDraftId(id);
+        flash.show("Draw created");
         router.push(`/draws/${id}`);
       } else {
         const data = await res.json().catch(() => ({ error: "Save failed" }));

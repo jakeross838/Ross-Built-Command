@@ -11,6 +11,7 @@ import InvoiceAllocationsEditor, { type InvoiceAllocationsEditorHandle } from "@
 import NwButton from "@/components/nw/Button";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import OverflowMenu, { type OverflowMenuItem } from "@/components/nw/OverflowMenu";
+import { useFlash } from "@/components/nw/FlashProvider";
 import { invoiceDisplayName } from "@/lib/invoices/display";
 import { toast } from "@/lib/utils/toast";
 import PaymentPanel from "@/components/invoices/PaymentPanel";
@@ -117,6 +118,7 @@ interface EditableLineItem {
 export default function InvoiceReviewPage() {
  const params = useParams();
  const router = useRouter();
+ const flash = useFlash();
  const invoiceId = params.id as string;
  // Ref to the allocations editor so Approve flushes pending cost-code edits
  // before committing — otherwise a changed allocation is silently discarded
@@ -612,7 +614,7 @@ export default function InvoiceReviewPage() {
  request_info: "Info request sent",
  info_received: "Returned to PM review",
  };
- toast.success(ACTION_LABEL[action] ?? "Action saved");
+ flash.show(ACTION_LABEL[action] ?? "Action saved");
  router.push("/invoices/queue");
  } else {
  const data = await res.json().catch(() => ({}));
@@ -859,6 +861,7 @@ export default function InvoiceReviewPage() {
  });
  setSaving(false);
  if (res.ok) {
+ flash.show("Invoice QA approved");
  router.push("/invoices/qa");
  } else {
  const data = await res.json().catch(() => ({}));
@@ -881,6 +884,7 @@ export default function InvoiceReviewPage() {
  });
  setSaving(false);
  if (res.ok) {
+ flash.show("Kicked back to PM");
  router.push("/invoices/qa");
  } else {
  const data = await res.json().catch(() => ({}));
@@ -899,7 +903,7 @@ export default function InvoiceReviewPage() {
  body: JSON.stringify({ reason: deleteReason.trim() }),
  });
  if (res.ok) {
- toast.success("Invoice deleted");
+ flash.show("Invoice deleted");
  router.push("/financials/bills");
  return;
  }
