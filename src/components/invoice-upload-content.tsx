@@ -12,6 +12,7 @@ import NwButton from "@/components/nw/Button";
 import CostCodeCombobox, { type CostCodeOption } from "@/components/cost-code-combobox";
 import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
 import { friendlyIngestError } from "@/lib/invoices/friendly-error";
+import ManualInvoiceForm from "@/components/manual-invoice-form";
 
 
 type ParseStep = "uploading" | "analyzing" | "extracting" | "matching" | "complete";
@@ -898,6 +899,8 @@ export default function UploadContent({ onSaved }: { onSaved?: (count: number) =
  const [duplicateModal, setDuplicateModal] = useState<DuplicateInfo | null>(null);
  const [duplicateSaving, setDuplicateSaving] = useState(false);
  const [documentType, setDocumentType] = useState<"invoice" | "receipt">("invoice");
+ // 2.5(b) — Upload (AI) vs Manual entry (AI-outage fallback).
+ const [mode, setMode] = useState<"upload" | "manual">("upload");
  const duplicateHitRef = useRef(false);
  // Suppresses the per-file onSaved close while Save-All is looping — we fire
  // onSaved once at the end of the batch instead.
@@ -1095,6 +1098,34 @@ export default function UploadContent({ onSaved }: { onSaved?: (count: number) =
  )}
 
  <main className="max-w-7xl mx-auto px-4 md:px-6 py-8">
+ {/* 2.5(b) — Upload (AI) vs Manual entry toggle */}
+ <div className="inline-flex border border-[var(--border-default)] mb-6">
+ <button
+  onClick={() => setMode("upload")}
+  className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+  mode === "upload"
+   ? "bg-[var(--nw-stone-blue)] text-[color:var(--bg-page)]"
+   : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] hover:bg-[var(--bg-subtle)]"
+  }`}
+ >Upload Document</button>
+ <button
+  onClick={() => setMode("manual")}
+  className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+  mode === "manual"
+   ? "bg-[var(--nw-stone-blue)] text-[color:var(--bg-page)]"
+   : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] hover:bg-[var(--bg-subtle)]"
+  }`}
+ >Manual Entry</button>
+ </div>
+
+ {mode === "manual" ? (
+ <ManualInvoiceForm
+  jobOptions={jobOptions}
+  costCodeOptions={costCodeOptions}
+  onSaved={onSaved}
+ />
+ ) : (
+ <>
  {/* Document type toggle */}
  <div className="flex items-center gap-3 mb-6">
  <span className="text-[11px] font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">Document Type</span>
@@ -1261,6 +1292,8 @@ export default function UploadContent({ onSaved }: { onSaved?: (count: number) =
  </div>
  ))}
  </div>
+ )}
+ </>
  )}
  </main>
 
