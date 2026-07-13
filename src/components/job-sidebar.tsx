@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { useNewJob } from "@/components/new-job/NewJobProvider";
 
 type UserRole = "owner" | "admin" | "pm" | "accounting";
 type SortKey = "alpha" | "status" | "recent";
@@ -42,6 +43,8 @@ function statusLabel(status: string): string {
 
 export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
   const pathname = usePathname();
+  // 3.4 ONE NEW-JOB — open the create drawer in place, not a /jobs/new nav.
+  const { open: openNewJob } = useNewJob();
   const [jobs, setJobs] = useState<SidebarJob[]>([]);
   const [role, setRole] = useState<UserRole | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -224,12 +227,13 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
       <div className="flex flex-col h-full">
         <div className="p-3 space-y-2">
           {canCreateJob && (
-            <Link
-              href="/jobs/new"
+            <button
+              type="button"
+              onClick={openNewJob}
               className="flex items-center justify-center gap-1.5 w-full py-1.5 text-[11px] tracking-[0.06em] uppercase font-medium border border-nw-stone-blue text-nw-stone-blue hover:bg-nw-stone-blue hover:text-[color:var(--nw-white-sand)] transition-colors"
             >
               + New Job
-            </Link>
+            </button>
           )}
           {role === "pm" && (
             <div className="flex gap-1 bg-[var(--bg-subtle)] border border-[var(--border-default)] p-0.5">
@@ -362,12 +366,13 @@ export default function JobSidebar({ mobile }: { mobile?: boolean } = {}) {
         </div>
 
         {canCreateJob && (
-          <Link
-            href="/jobs/new"
+          <button
+            type="button"
+            onClick={openNewJob}
             className="flex items-center justify-center gap-1.5 w-full py-1.5 text-[11px] tracking-[0.06em] uppercase font-medium border border-nw-stone-blue text-nw-stone-blue hover:bg-nw-stone-blue hover:text-[color:var(--nw-white-sand)] transition-colors"
           >
             + New Job
-          </Link>
+          </button>
         )}
 
         {/* Filter toggle — only shown for PMs who have a meaningful distinction */}

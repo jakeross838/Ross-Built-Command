@@ -8,6 +8,7 @@ import { formatCents, formatDate, formatPercent, formatRelativeTime } from "@/li
 import { SkeletonList } from "@/components/loading-skeleton";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
 import FirstUseTip from "@/components/first-use-tip";
+import { useNewJob } from "@/components/new-job/NewJobProvider";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import NwStatusDot, { type StatusDotVariant } from "@/components/nw/StatusDot";
 
@@ -85,6 +86,8 @@ function HealthDot({ health, reasons }: { health: Health; reasons: string[] }) {
 
 export default function JobsPage() {
   const router = useRouter();
+  // 3.4 ONE NEW-JOB — open the create drawer OVER this page (no /jobs/new hop).
+  const { open: openNewJob } = useNewJob();
   const [jobs, setJobs] = useState<JobHealth[]>([]);
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
@@ -213,8 +216,9 @@ export default function JobsPage() {
                 : `${filtered.length} ${filtered.length === 1 ? "job" : "jobs"}${statusFilter !== "all" ? ` (${statusFilter})` : ""}`}
             </p>
           </div>
-          <Link
-            href="/jobs/new"
+          <button
+            type="button"
+            onClick={openNewJob}
             className="inline-flex items-center gap-1.5 h-9 px-4 text-[11px] uppercase font-medium border transition-colors"
             style={{
               fontFamily: "var(--font-jetbrains-mono)",
@@ -228,7 +232,7 @@ export default function JobsPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
             New Job
-          </Link>
+          </button>
         </div>
 
         {/* Filters */}
@@ -291,7 +295,7 @@ export default function JobsPage() {
                 icon={<EmptyIcons.Building />}
                 title="No jobs yet"
                 message="Create your first job to start tracking budgets, invoices, and draws."
-                primaryAction={{ label: "+ New Job", href: "/jobs/new" }}
+                primaryAction={{ label: "New Job", onClick: openNewJob }}
               />
             </>
           ) : (

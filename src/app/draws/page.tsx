@@ -113,7 +113,7 @@ export default function DrawsPage() {
               color: "var(--nw-white-sand)",
             }}
           >
-            Create New Draw
+            + New Draw
           </Link>
         </div>
       </div>
@@ -156,7 +156,7 @@ export default function DrawsPage() {
                   : "No draws for this job"
           }
           message="Create a draw to generate an AIA G702/G703 pay application from approved invoices."
-          primaryAction={{ label: "+ Create Draw", href: "/financials/pay-apps/new" }}
+          primaryAction={{ label: "New Draw", href: "/financials/pay-apps/new" }}
         />
       ) : (
         <div className="overflow-x-auto bg-[var(--bg-card)] border border-[var(--border-default)] animate-fade-up">
