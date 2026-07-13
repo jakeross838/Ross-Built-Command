@@ -53,6 +53,8 @@ export default async function PayAppPrintPage({
           backHref={backHref}
           deposit={data.deposit}
           adjustments={data.adjustments}
+          retainage={data.retainage}
+          contractor={data.contractor}
         />
       )}
     </div>

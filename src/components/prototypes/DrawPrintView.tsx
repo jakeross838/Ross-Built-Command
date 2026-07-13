@@ -56,6 +56,12 @@ export interface DrawPrintViewProps {
   deposit?: DepositState;
   /** BLOCK B pt2 — applied adjustments (deduction rows before payment due). */
   adjustments?: DrawAdjustment[];
+  /** PRINT FIDELITY — retainage withheld this application (AIA line 5). When
+   *  absent (prototype gallery fixtures), the line renders 0% / $0.00. */
+  retainage?: { percent: number; amount: number };
+  /** PRINT FIDELITY — contractor letterhead identity from the org row. When
+   *  absent (prototype gallery fixtures), falls back to the Ross Built demo. */
+  contractor?: { name: string; address: string };
   /** Optional href for back-to-draw link. Defaults to portfolio path. */
   backHref?: string;
 }
@@ -80,8 +86,22 @@ export default function DrawPrintView({
   changeOrdersThroughThisDraw,
   deposit,
   adjustments = [],
+  retainage,
+  contractor,
   backHref,
 }: DrawPrintViewProps) {
+  // Contractor letterhead — org identity when wired (production), Ross Built
+  // demo as the fixture-gallery fallback.
+  const contractorName = contractor?.name?.trim() || "Ross Built Custom Homes";
+  const contractorAddress =
+    contractor?.address?.trim() || "305 67th St West, Bradenton FL 34209";
+  // AIA line 5 retainage (withheld this application) + the line-6 subtotal
+  // "total earned less retainage" (line 4 − line 5). Both are computed from
+  // real draw math; the prior hardcoded "$0.00" contradicted current_payment_due
+  // on any job that withholds retainage.
+  const retainageAmount = retainage?.amount ?? 0;
+  const retainagePct = retainage?.percent ?? 0;
+  const totalEarnedLessRetainage = draw.total_completed_to_date - retainageAmount;
   const cosThroughThisDraw = [...changeOrdersThroughThisDraw].sort(
     (a, b) => a.pcco_number - b.pcco_number,
   );
@@ -310,8 +330,8 @@ export default function DrawPrintView({
               >
                 FROM CONTRACTOR:
               </div>
-              <div className="font-medium">Ross Built Custom Homes</div>
-              <div>305 67th St West, Bradenton FL 34209</div>
+              <div className="font-medium">{contractorName}</div>
+              <div>{contractorAddress}</div>
             </div>
             <div className="aia-cell-divider-right p-2">
               <div
@@ -330,7 +350,11 @@ export default function DrawPrintView({
               >
                 CONTRACT FOR:
               </div>
-              <div className="font-medium">Cost-Plus Construction</div>
+              <div className="font-medium">
+                {job.contract_type === "fixed"
+                  ? "Fixed-Price Construction"
+                  : "Cost-Plus Construction"}
+              </div>
               <div>
                 GC Fee: {((job.gc_fee_percentage ?? 0) * 100).toFixed(0)}% ·
                 Open-book reimbursable
@@ -432,13 +456,25 @@ export default function DrawPrintView({
                 </tr>
                 <tr className="aia-row-separator">
                   <td className="py-1 pl-3">
-                    5. RETAINAGE (0% per Ross Built standard)
+                    5. RETAINAGE{retainagePct > 0 ? ` (${retainagePct}%)` : ""}
                   </td>
-                  <td className="aia-mono text-right py-1 pr-3">$0.00</td>
+                  <td className="aia-mono text-right py-1 pr-3">
+                    {retainageAmount > 0
+                      ? `(${fmt(retainageAmount)})`
+                      : fmt(0)}
+                  </td>
                 </tr>
                 <tr className="aia-line-bold-top">
+                  <td className="py-1 pl-3 font-semibold">
+                    6. TOTAL EARNED LESS RETAINAGE (Line 4 − 5)
+                  </td>
+                  <td className="aia-mono text-right py-1 pr-3 font-semibold">
+                    {fmt(totalEarnedLessRetainage)}
+                  </td>
+                </tr>
+                <tr className="aia-row-separator">
                   <td className="py-1 pl-3">
-                    6. LESS PREVIOUS CERTIFICATES FOR PAYMENT
+                    7. LESS PREVIOUS CERTIFICATES FOR PAYMENT
                   </td>
                   <td className="aia-mono text-right py-1 pr-3">
                     {fmt(draw.less_previous_payments)}
@@ -464,14 +500,16 @@ export default function DrawPrintView({
                 ))}
                 <tr className="aia-line-bold-top aia-line-emphasis">
                   <td className="py-2 pl-3 font-bold text-[12pt]">
-                    7. CURRENT PAYMENT DUE
+                    8. CURRENT PAYMENT DUE
                   </td>
                   <td className="aia-mono text-right py-2 pr-3 font-bold text-[12pt]">
                     {fmt(draw.current_payment_due)}
                   </td>
                 </tr>
                 <tr className="aia-line-bold-top">
-                  <td className="py-1 pl-3 italic">BALANCE TO FINISH</td>
+                  <td className="py-1 pl-3 italic">
+                    9. BALANCE TO FINISH (incl. retainage)
+                  </td>
                   <td className="aia-mono text-right py-1 pr-3 italic">
                     {fmt(draw.balance_to_finish)}
                   </td>
@@ -577,9 +615,13 @@ export default function DrawPrintView({
             <div className="grid grid-cols-2 gap-8 mt-6">
               <div>
                 <div className="aia-signature-line pt-1">
+                  {/* Signatory person + title are still fixed to the Ross Built
+                      signer — there is no org "pay-app signatory" setting yet
+                      (name + title would need one). Org NAME is de-hardcoded.
+                      Flagged in STATUS.md for a future org-config field. */}
                   <div className="font-medium">Jake Ross</div>
                   <div className="text-[8pt]">
-                    Director of Construction · Ross Built Custom Homes
+                    Director of Construction · {contractorName}
                   </div>
                 </div>
               </div>

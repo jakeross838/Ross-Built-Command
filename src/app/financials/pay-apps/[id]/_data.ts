@@ -148,7 +148,35 @@ export type PayAppViewData = {
   deposit: DepositState;
   adjustments: DrawAdjustment[]; // applied_to_draw + approved (pending pool)
   appliedAdjustmentsTotal: number; // signed sum of applied_to_draw only
+  // PRINT FIDELITY — AIA G702 line 5 (retainage withheld this application) +
+  // contractor letterhead identity sourced from the org row (NOT hardcoded).
+  // Both drive DrawPrintView; previously the print hardcoded 0% retainage +
+  // "Ross Built Custom Homes", contradicting the withheld math on any tenant.
+  retainage: { percent: number; amount: number }; // percent 0-100; amount cents
+  contractor: { name: string; address: string };
 };
+
+// PRINT FIDELITY — format the org row's company_* parts into a single
+// letterhead address line ("305 67th St West, Bradenton FL 34209"). Missing
+// parts drop gracefully so a partially-filled org still renders cleanly.
+function formatOrgAddress(
+  org: {
+    company_address?: string | null;
+    company_city?: string | null;
+    company_state?: string | null;
+    company_zip?: string | null;
+  } | null
+): string {
+  if (!org) return "";
+  const street = (org.company_address ?? "").trim();
+  const city = (org.company_city ?? "").trim();
+  const state = (org.company_state ?? "").trim();
+  const zip = (org.company_zip ?? "").trim();
+  const cityStateZip = [city, [state, zip].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(" ");
+  return [street, cityStateZip].filter(Boolean).join(", ");
+}
 
 const KNOWN_DRAW_STATUSES: ReadonlyArray<CaldwellDraw["status"]> = [
   "draft",
@@ -210,6 +238,31 @@ export async function loadPayAppViewData(
   }
   if (!draw) return null;
 
+  // PRINT FIDELITY — contractor letterhead identity from the org row (NOT
+  // hardcoded). Fetched once here so BOTH the frozen-snapshot early-return and
+  // the live recompute path share it. Presentation identity legitimately
+  // reflects CURRENT org identity even on a frozen draw — only the FINANCIALS
+  // are byte-frozen at approval, not the letterhead. Also reused by the
+  // cost_plus_statement branch below (default_markup_display/backup_detail).
+  const { data: orgRow } = await supabase
+    .from("organizations")
+    .select(
+      "name, logo_url, company_address, company_city, company_state, company_zip, default_markup_display, default_backup_detail"
+    )
+    .eq("id", membership.org_id)
+    .maybeSingle();
+  const contractor = {
+    name: (orgRow?.name as string | null) ?? "",
+    address: formatOrgAddress(
+      orgRow as {
+        company_address?: string | null;
+        company_city?: string | null;
+        company_state?: string | null;
+        company_zip?: string | null;
+      } | null
+    ),
+  };
+
   // ── FROZEN SNAPSHOT (TD-NW-DRAW-SNAPSHOT) ─────────────────────────────
   // Approved/locked/paid draws render from the snapshot captured at approval
   // — never recompute — so later source changes can't alter an issued draw.
@@ -248,6 +301,11 @@ export async function loadPayAppViewData(
         },
       adjustments: snap.adjustments ?? [],
       appliedAdjustmentsTotal: snap.appliedAdjustmentsTotal ?? 0,
+      // PRINT FIDELITY — pre-fix snapshots lack retainage; 0 fallback matches
+      // exactly what they printed before (no regression). Contractor is fresh
+      // (presentation identity, not frozen financials).
+      retainage: snap.retainage ?? { percent: 0, amount: 0 },
+      contractor,
     };
   }
 
@@ -630,12 +688,8 @@ export async function loadPayAppViewData(
 
   let statement: StatementViewData | null = null;
   if (billingMethod === "cost_plus_statement") {
-    // Org identity + config defaults for the statement header / inherit chain.
-    const { data: orgRow } = await supabase
-      .from("organizations")
-      .select("name, logo_url, default_markup_display, default_backup_detail")
-      .eq("id", membership.org_id)
-      .maybeSingle();
+    // Org identity + config defaults sourced from the top-level orgRow fetch
+    // (single query; reused for the contractor letterhead + statement header).
 
     // Resolve code/description for EVERY cost code carrying this-period cost
     // (snapshot spans the union of budget-line + invoice codes; unbudgeted
@@ -746,6 +800,10 @@ export async function loadPayAppViewData(
     },
     adjustments: drawAdjustments,
     appliedAdjustmentsTotal,
+    // PRINT FIDELITY — actual retainage withheld this application (AIA line 5)
+    // + org letterhead identity, both fed into DrawPrintView.
+    retainage: { percent: retainagePct, amount: totals.total_retainage },
+    contractor,
   };
 }
 
