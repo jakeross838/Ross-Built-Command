@@ -494,8 +494,16 @@ export default function NewDrawWizardPage() {
   // the remaining pool (the server clamps too; this is the UI mirror).
   const depositRemaining = preview?.deposit?.remaining ?? 0;
   const depositOverCap = !!preview?.deposit && depositApplyCents > depositRemaining;
-  const blockingOpenDraw = priorDraws.find((d) =>
-    ["draft", "pm_review", "submitted"].includes(d.status)
+  // R1 — the blocking-open-draw guard exists to stop creating draw #N+1 while
+  // draw #N is still open. It must EXCLUDE the draft currently being edited/
+  // resumed (draftId === editId in edit mode): opening draft #1 via ?edit= is
+  // not "creating draft #2". In a fresh create draftId is null → excludes
+  // nothing → the guard still fires on a genuine new-draw-while-draft-open.
+  const blockingOpenDraw = priorDraws.find(
+    (d) =>
+      d.id !== draftId &&
+      d.id !== editId &&
+      ["draft", "pm_review", "submitted"].includes(d.status)
   );
 
   // Prefill the setup form when a job needing setup is selected.
@@ -551,6 +559,13 @@ export default function NewDrawWizardPage() {
     const max = existing.reduce((m, d) => Math.max(m, d.draw_number), 0);
     return max + 1;
   }, [priorDraws]);
+  // R1 — the number of the draw being edited (honest header + stat). null until
+  // priorDraws loads (edit mode sets jobId from the draft, which triggers the
+  // priorDraws fetch).
+  const editingDrawNumber = useMemo(
+    () => (editMode ? priorDraws.find((d) => d.id === editId)?.draw_number ?? null : null),
+    [editMode, editId, priorDraws]
+  );
 
   const baseLines = useMemo(
     () => (preview?.lines ?? []).filter((l) => !l.is_change_order),
@@ -769,7 +784,9 @@ export default function NewDrawWizardPage() {
               color: "var(--text-primary)",
             }}
           >
-            Create New Draw
+            {editMode
+              ? `Edit Draw${editingDrawNumber ? ` #${editingDrawNumber}` : ""} — Draft`
+              : "Create New Draw"}
           </h2>
           {jobId && draftId && (
             <span
@@ -785,7 +802,9 @@ export default function NewDrawWizardPage() {
           )}
         </div>
         <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
-          Step-by-step wizard. Save as draft at any step — pick up later from the draws list.
+          {editMode
+            ? "Editing an existing draft. Update its period, invoices, and deposit, then save."
+            : "Step-by-step wizard. Save as draft at any step — pick up later from the draws list."}
         </p>
 
         {/* Step indicators */}
@@ -839,8 +858,8 @@ export default function NewDrawWizardPage() {
                     />
                     <Stat label="Remaining" value={formatCents(jobMeta.remaining)} sub="Contract left" />
                     <Stat
-                      label="Next draw"
-                      value={`#${nextDrawNumber}`}
+                      label={editMode ? "Editing draw" : "Next draw"}
+                      value={`#${editMode ? editingDrawNumber ?? "…" : nextDrawNumber}`}
                       sub={`Retainage ${(job.retainage_percent ?? 10).toFixed(1)}%`}
                     />
                   </div>
