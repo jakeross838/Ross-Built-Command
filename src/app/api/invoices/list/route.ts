@@ -73,10 +73,15 @@ export async function GET(request: NextRequest) {
   if (invoiceIds.length > 0) {
     const { data: lineItems } = await supabase
       .from("invoice_line_items")
-      .select("invoice_id, cost_code_id, cost_codes:cost_code_id(code)")
+      .select("invoice_id, cost_code_id, amount_cents, cost_codes:cost_code_id(code)")
       .in("invoice_id", invoiceIds)
       .is("deleted_at", null);
     for (const li of lineItems ?? []) {
+      // 2.3 determinism (#20): count only codes that persist as allocations
+      // (amount_cents > 0) so the "Multiple (N)" badge == the intake card ==
+      // the saved allocations. A $0-amount coded line creates no allocation.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (((li as any).amount_cents ?? 0) <= 0) continue;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cc = (li as any).cost_codes;
       const code = Array.isArray(cc) ? cc[0]?.code : cc?.code;

@@ -222,9 +222,17 @@ function summarizeLineCodes(
  if (prev) { prev.amount += amt; prev.count += 1; }
  else byCode.set(code, { id: edited?.id ?? opt?.id ?? "", code, description: opt?.description ?? "", amount: amt, count: 1 });
  });
- const codes = Array.from(byCode.values());
+ const allCodes = Array.from(byCode.values());
+ // Line-coding completeness ("N lines" / "unassigned") counts every coded line,
+ // any amount.
+ const withCode = allCodes.reduce((s, c) => s + c.count, 0);
+ // 2.3 determinism (#20): the count/summary shows ONLY codes that will persist
+ // as allocations — those with amount > 0. This is the same rule the server
+ // uses (save.ts codedByCode filters amount_cents > 0) and the invoices-list
+ // "Multiple (N)" badge, so card == persisted == list. A $0-amount coded line
+ // produces no allocation, so it must not inflate the code count.
+ const codes = allCodes.filter((c) => c.amount > 0);
  const dominant = codes.slice().sort((a, b) => b.amount - a.amount)[0] ?? null;
- const withCode = codes.reduce((s, c) => s + c.count, 0);
  return { codes, dominant, distinct: codes.length, withCode, totalLines: parsed.line_items.length };
 }
 
