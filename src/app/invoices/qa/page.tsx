@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useOrgId } from "@/hooks/use-org-id";
-import { daysAgo, formatDateTime } from "@/lib/utils/format";
+import { daysAgo, formatDateTime, formatWho } from "@/lib/utils/format";
 import FinancialViewTabs from "@/components/financial-view-tabs";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
 import { SkeletonList } from "@/components/loading-skeleton";
@@ -25,6 +25,10 @@ interface QaInvoice {
 export default function QaQueuePage() {
  const [invoices, setInvoices] = useState<QaInvoice[]>([]);
  const [loading, setLoading] = useState(true);
+ // Attribution (2.2 / HANDOFF #17): resolve the approver's UUID (now written by
+ // the action routes) to a real profile name, so the "PM Approved" column shows
+ // "Jake Ross", never a raw UUID or "system".
+ const [userNames, setUserNames] = useState<Map<string, string>>(new Map());
  const orgId = useOrgId();
 
  // Org-scoped (Stage 2.1): platform_admins bypass RLS, so this client-side QA
@@ -44,14 +48,44 @@ export default function QaQueuePage() {
  .in("status", ["qa_review", "pm_approved"])
  .is("deleted_at", null)
  .order("received_date", { ascending: true });
- if (!error && data) setInvoices(data as unknown as QaInvoice[]);
+ if (!error && data) {
+ const rows = data as unknown as QaInvoice[];
+ setInvoices(rows);
+ // Resolve approver UUIDs → profile names for the "PM Approved" column.
+ const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ const ids = new Set<string>();
+ for (const inv of rows) {
+ const info = getApprovalInfo(inv.status_history ?? []);
+ if (info && uuidRe.test(info.who)) ids.add(info.who);
+ }
+ if (ids.size > 0) {
+ const { data: profs } = await supabase
+ .from("profiles")
+ .select("id, full_name")
+ .in("id", Array.from(ids));
+ if (profs) {
+ const next = new Map<string, string>();
+ for (const row of profs as Array<{ id: string; full_name: string | null }>) {
+ if (row.full_name) next.set(row.id, row.full_name);
+ }
+ setUserNames(next);
+ }
+ }
+ }
  setLoading(false);
  }
  fetchQueue();
  }, [orgId]);
 
  function getApprovalInfo(history: Array<Record<string, unknown>>): { who: string; when: string } | null {
- const approval = [...history].reverse().find(e => String(e.new_status) === "qa_review" || String(e.new_status) === "pm_approved");
+ // Attribution (2.2 / HANDOFF #17): the "PM Approved" column wants WHO
+ // PM-approved — that is the `pm_approved` entry (always the real actor UUID),
+ // NOT the `qa_review` auto-advance (historically written "system"). Prefer
+ // pm_approved; fall back to qa_review only if no pm_approved entry exists.
+ const reversed = [...history].reverse();
+ const approval =
+ reversed.find((e) => String(e.new_status) === "pm_approved") ??
+ reversed.find((e) => String(e.new_status) === "qa_review");
  if (!approval) return null;
  return { who: String(approval.who), when: String(approval.when) };
  }
@@ -142,7 +176,7 @@ export default function QaQueuePage() {
  <td className="py-4 px-5 text-[color:var(--text-secondary)] text-xs">
  {approval ? (
  <>
- <span className="text-[color:var(--text-muted)]">{approval.who}</span>
+ <span className="text-[color:var(--text-muted)]">{formatWho(approval.who, userNames)}</span>
  <span className="text-[color:var(--text-secondary)]"> — {formatDateTime(approval.when)}</span>
  </>
  ) : "—"}

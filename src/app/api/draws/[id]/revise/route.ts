@@ -44,6 +44,12 @@ export async function POST(
       );
     }
     const supabase = ctx.client;
+    // Attribution (2.2): resolve the real acting user for status_history +
+    // activity_log (membership carries org/role only).
+    const {
+      data: { user: actor },
+    } = await supabase.auth.getUser();
+    const actorId = actor?.id ?? null;
 
     const { data: original, error: fetchError } = await supabase
       .from("draws")
@@ -108,7 +114,7 @@ export async function POST(
         deposit_amount: original.deposit_amount,
         status_history: [
           {
-            who: "system",
+            who: actorId,
             when: new Date().toISOString(),
             old_status: null,
             new_status: "draft",
@@ -155,6 +161,7 @@ export async function POST(
 
     await logActivity({
       org_id: orgId,
+      user_id: actorId,
       entity_type: "draw",
       entity_id: revision.id as string,
       action: "created",

@@ -204,6 +204,9 @@ const LEGACY_ROLE_LABEL: Record<string, string> = {
  admin: "Admin",
  system: "System",
  user: "User",
+ // Attribution (2.2): genuinely-automated events (AI extraction) render as a
+ // clear, honest label instead of the ambiguous "System".
+ ai: "AI extraction",
 };
 
 /**

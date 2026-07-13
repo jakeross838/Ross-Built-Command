@@ -358,7 +358,9 @@ export async function POST(
  // log that transition too
  if (NEXT_STATUS_MAP[newStatus]) {
  statusEntries.push({
- who: "system",
+ // Attribution (2.2 / HANDOFF #17): auto-advance happens BECAUSE this user
+ // acted — attribute it to them (note marks it auto-routed), never "system".
+ who,
  when: new Date().toISOString(),
  old_status: newStatus,
  new_status: finalStatus,

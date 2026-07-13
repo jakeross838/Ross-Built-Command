@@ -141,7 +141,9 @@ export const POST = withApiError(
           note: `Approved portion of partial split from invoice ${parent.invoice_number ?? parent.id}`,
         },
         {
-          who: "system",
+          // Attribution (2.2): auto-advance attributed to the acting user
+          // (the note marks it auto-routed), never "system".
+          who: user.id,
           when: nowIso,
           old_status: "pm_approved",
           new_status: "qa_review",

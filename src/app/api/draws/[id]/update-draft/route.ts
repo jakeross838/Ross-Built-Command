@@ -63,6 +63,12 @@ export async function PUT(
       );
     }
     const supabase = ctx.client;
+    // Attribution (2.2): resolve the real acting user for status_history +
+    // activity_log (membership carries org/role only).
+    const {
+      data: { user: actor },
+    } = await supabase.auth.getUser();
+    const actorId = actor?.id ?? null;
     const drawId = context.params.id;
     const body: UpdateDraftRequest = await request.json();
 
@@ -251,7 +257,7 @@ export async function PUT(
       ? (draw.status_history as unknown[])
       : [];
     history.push({
-      who: "system",
+      who: actorId,
       when: new Date().toISOString(),
       old_status: "draft",
       new_status: "draft",
@@ -294,6 +300,7 @@ export async function PUT(
 
     await logActivity({
       org_id: orgId,
+      user_id: actorId,
       entity_type: "draw",
       entity_id: drawId,
       action: "updated",

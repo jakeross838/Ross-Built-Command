@@ -24,6 +24,12 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
     const supabase = createServerClient();
+    // Attribution (2.2): record the real acting user in status_history, never
+    // a literal. membership carries org/role only, so resolve the user id here.
+    const {
+      data: { user: actor },
+    } = await supabase.auth.getUser();
+    const actorId = actor?.id ?? null;
     const { adjustment_id } = (await request.json()) as {
       adjustment_id?: string;
     };
@@ -55,7 +61,7 @@ export async function POST(
       ? (adj.status_history as unknown[])
       : [];
     history.push({
-      who: "user",
+      who: actorId,
       when: new Date().toISOString(),
       old_status: "approved",
       new_status: "applied_to_draw",

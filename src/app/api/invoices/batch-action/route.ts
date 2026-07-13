@@ -227,7 +227,9 @@ export async function POST(request: NextRequest) {
             note: note ?? "pm approve (batch)",
           },
           {
-            who: "system",
+            // Attribution (2.2): auto-advance attributed to the acting user
+            // (the note marks it auto-routed), never "system".
+            who: actorWho,
             when: now,
             old_status: "pm_approved",
             new_status: "qa_review",

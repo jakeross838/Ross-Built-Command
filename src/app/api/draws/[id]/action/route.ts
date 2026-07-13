@@ -242,6 +242,7 @@ export async function POST(
 
       await logStatusChange({
         org_id: orgId,
+        user_id: actorId,
         entity_type: "draw",
         entity_id: params.id,
         from: draw.status,
@@ -251,6 +252,7 @@ export async function POST(
       if ((result.new_lien_releases ?? 0) > 0) {
         await logActivity({
           org_id: orgId,
+          user_id: actorId,
           entity_type: "draw",
           entity_id: params.id,
           action: "updated",
@@ -336,6 +338,7 @@ export async function POST(
 
       await logStatusChange({
         org_id: orgId,
+        user_id: actorId,
         entity_type: "draw",
         entity_id: params.id,
         from: draw.status,
@@ -406,6 +409,7 @@ export async function POST(
 
       await logStatusChange({
         org_id: orgId,
+        user_id: actorId,
         entity_type: "draw",
         entity_id: params.id,
         from: draw.status,
@@ -430,7 +434,9 @@ export async function POST(
     const nowIso = new Date().toISOString();
     const existingHistory = Array.isArray(draw.status_history) ? draw.status_history : [];
     const statusEntry = {
-      who: actorId ?? "user",
+      // Attribution (2.2): the real acting user, never a literal. actorId is
+      // non-null past the auth gate above; null only if auth somehow lapsed.
+      who: actorId,
       when: nowIso,
       old_status: draw.status,
       new_status: rule.next,

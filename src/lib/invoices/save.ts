@@ -479,7 +479,10 @@ export async function saveParsedInvoice(
       : (dominantLineCodeId ?? matchedCostCode?.id ?? null);
 
   const statusEntry = {
-    who: "system",
+    // Attribution (2.2): this transition is genuinely automated (AI extraction),
+    // so it's labeled "ai" — honest, and distinct from the dishonest "system"
+    // that used to mask a real human approver. Renders as "AI extraction".
+    who: "ai",
     when: new Date().toISOString(),
     old_status: "received",
     new_status: status,
