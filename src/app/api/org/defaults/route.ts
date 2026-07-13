@@ -46,6 +46,12 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     deposit: org?.default_deposit_percentage ?? 0.1,
     gcFee: org?.default_gc_fee_percentage ?? 0.2,
+    // 2.4: retainage is WHOLE percent (0..100) — jobs.retainage_percent scale,
+    // which draw-calc reads directly. NOT the 0..1 fraction that deposit/gcFee
+    // use. Number()-coerced (PostgREST numerics arrive as strings) so the form
+    // shows "0"/"10", not "0.00"; the form must not ×100 it.
+    retainage:
+      org?.default_retainage_percent != null ? Number(org.default_retainage_percent) : 10,
     billingMethod:
       (org as { default_billing_method?: string } | null)?.default_billing_method ??
       "cost_plus_statement",

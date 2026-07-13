@@ -21,6 +21,7 @@ export type CurrentOrg = {
   pay_app_signatory_title: string | null;
   default_gc_fee_percentage: number;
   default_deposit_percentage: number;
+  default_retainage_percent: number | null; // WHOLE percent (0-100), jobs.retainage_percent scale
   payment_schedule_type: "5_20" | "15_30" | "monthly" | "custom";
   payment_schedule_config: Record<string, unknown>;
   subscription_plan: "free_trial" | "starter" | "professional" | "enterprise";
@@ -51,7 +52,7 @@ const ORG_COLUMNS =
   "company_address, company_city, company_state, company_zip, " +
   "company_phone, company_email, company_website, " +
   "pay_app_signatory_name, pay_app_signatory_title, " +
-  "default_gc_fee_percentage, default_deposit_percentage, " +
+  "default_gc_fee_percentage, default_deposit_percentage, default_retainage_percent, " +
   "default_billing_method, default_markup_display, default_backup_detail, " +
   "payment_schedule_type, payment_schedule_config, " +
   "subscription_plan, subscription_status, stripe_customer_id, stripe_subscription_id, trial_ends_at, " +

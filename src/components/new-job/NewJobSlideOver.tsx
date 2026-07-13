@@ -33,6 +33,7 @@ type BillingMethod = (typeof BILLING_METHODS)[number]["value"];
 interface OrgDefaults {
   deposit: number; // decimal 0-1
   gcFee: number; // decimal 0-1
+  retainage?: number; // WHOLE percent 0-100 (jobs.retainage_percent scale, NOT a fraction)
   billingMethod?: string;
   pms: { id: string; full_name: string }[];
 }
@@ -69,6 +70,7 @@ export default function NewJobSlideOver({
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [depositPct, setDepositPct] = useState(""); // whole-percent string
   const [gcFeePct, setGcFeePct] = useState("");
+  const [retainagePct, setRetainagePct] = useState(""); // WHOLE percent string (already 0-100, NOT ×100)
   const [pmId, setPmId] = useState<string>("");
 
   // More details
@@ -92,6 +94,7 @@ export default function NewJobSlideOver({
     setAddress("");
     setContractAmount("");
     setContractDate("");
+    setRetainagePct("");
     setPmId("");
     setPhase("idle");
     setError(null);
@@ -103,6 +106,9 @@ export default function NewJobSlideOver({
         setDefaults(d);
         setDepositPct(pctLabel(d.deposit ?? 0.1));
         setGcFeePct(pctLabel(d.gcFee ?? 0.2));
+        // Retainage is already WHOLE percent from the API — hydrate directly,
+        // NEVER pctLabel (that ×100 is for the 0..1 deposit/gcFee fractions).
+        setRetainagePct(String(d.retainage ?? 10));
         if (d.billingMethod === "aia" || d.billingMethod === "cost_plus_statement") {
           setBillingMethod(d.billingMethod);
         }
@@ -121,8 +127,9 @@ export default function NewJobSlideOver({
   const summary = useMemo(() => {
     const dep = depositPct || pctLabel(defaults?.deposit ?? 0.1);
     const gc = gcFeePct || pctLabel(defaults?.gcFee ?? 0.2);
-    return `${dep}% DEPOSIT · ${gc}% GC FEE · PM ${pmName === "—" ? "—" : pmName.toUpperCase()}`;
-  }, [depositPct, gcFeePct, defaults, pmName]);
+    const ret = retainagePct || String(defaults?.retainage ?? 10);
+    return `${dep}% DEPOSIT · ${gc}% GC FEE · ${ret}% RETAINAGE · PM ${pmName === "—" ? "—" : pmName.toUpperCase()}`;
+  }, [depositPct, gcFeePct, retainagePct, defaults, pmName]);
 
   async function handleCreate() {
     if (phase !== "idle") return;
@@ -145,6 +152,14 @@ export default function NewJobSlideOver({
     };
     if (client.kind === "existing") body.client_id = client.id;
     else if (client.kind === "new") body.client_name_for_create = client.full_name;
+    // Retainage: WHOLE percent (0..100), sent as-is — draw-calc reads
+    // jobs.retainage_percent directly. NOT /100 (that is only for the 0..1
+    // deposit/gcFee fractions above). Sent only when present so a failed
+    // defaults-load falls back to the org default server-side.
+    const retNum = Number(retainagePct);
+    if (retainagePct.trim() !== "" && Number.isFinite(retNum)) {
+      body.retainage_percent = retNum;
+    }
     if (pmId) body.pm_id = pmId;
     if (address.trim()) body.address = address.trim();
     if (contractDate) body.contract_date = contractDate;
@@ -171,7 +186,7 @@ export default function NewJobSlideOver({
       const clientName = client.kind === "existing" || client.kind === "new" ? client.full_name : "";
       const flashMsg = `Job created — ${trimmedName}${clientName ? ` (${clientName})` : ""} is live · ${
         depositPct
-      }% deposit · ${gcFeePct}% GC fee · PM ${pmName}`;
+      }% deposit · ${gcFeePct}% GC fee · ${retainagePct}% retainage · PM ${pmName}`;
 
       // Optimistic insertion: broadcast so job filters can add it immediately.
       window.dispatchEvent(
@@ -250,7 +265,7 @@ export default function NewJobSlideOver({
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={busy}
-              placeholder="Kellner — 214 Palm Ave"
+              placeholder="Client name — 100 Main St"
               className={fieldInput}
               autoFocus
             />
@@ -291,7 +306,7 @@ export default function NewJobSlideOver({
               })}
             </div>
             <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-muted)]">
-              Org default: {CONTRACT_TYPES.find((c) => c.value === DEFAULT_CONTRACT)?.label}
+              The payment MODEL (how the client is charged). Separate from Billing Method below (which draw DOCUMENT prints). Org default: {CONTRACT_TYPES.find((c) => c.value === DEFAULT_CONTRACT)?.label}
             </p>
           </div>
 
@@ -320,7 +335,7 @@ export default function NewJobSlideOver({
               })}
             </div>
             <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-muted)]">
-              How this job&apos;s draws are billed. Cost-Plus Statement = cost + markup invoice; AIA = G702/G703 pay app.
+              The draw DOCUMENT this job prints (not the payment model above). Cost-Plus Statement = cost + markup invoice; AIA = G702/G703 pay app.
             </p>
           </div>
         </div>
@@ -378,6 +393,25 @@ export default function NewJobSlideOver({
                   className={fieldInput}
                 />
               </div>
+              <div>
+                <label className={fieldLabel} htmlFor="nj-retainage">
+                  Retainage %
+                </label>
+                <input
+                  id="nj-retainage"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={retainagePct}
+                  onChange={(e) => setRetainagePct(e.target.value)}
+                  disabled={busy}
+                  className={fieldInput}
+                />
+                <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.1em] text-[color:var(--text-muted)]">
+                  Withheld on AIA draws
+                </p>
+              </div>
               <div className="col-span-2">
                 <label className={fieldLabel} htmlFor="nj-pm">
                   Assigned PM
@@ -427,7 +461,7 @@ export default function NewJobSlideOver({
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   disabled={busy}
-                  placeholder="214 Palm Ave, Anna Maria, FL"
+                  placeholder="100 Main St, City, ST"
                   className={fieldInput}
                 />
               </div>
