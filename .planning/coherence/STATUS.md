@@ -1,8 +1,16 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-14 · **HEAD (origin/main):** `a6c7ede` + this re-gauntlet-openers commit · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
+**Updated:** 2026-07-14 · **HEAD (origin/main):** `2f3d09e` + this NEW-2-fix commit · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
 
-Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings), `invoices-draws-deep-dive/HANDOFF.md` (original TOP-20), and **`HANDOFF-V2.md` (Stage-4 re-gauntlet dispositions + JAKE'S WALK LIST + NEW-2)**.
+Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings), `invoices-draws-deep-dive/HANDOFF.md` (original TOP-20), **`HANDOFF-V2.md` (Stage-4 re-gauntlet dispositions + JAKE'S WALK LIST + NEW-2)**, and **`new2-carry-forward-fix.md` (NEW-2 fix + class sweep)**.
+
+## ✅ NEW-2 CARRY-FORWARD FIX — SHIPPED + WALK-READY (2026-07-14). Full report: `new2-carry-forward-fix.md`; QA: `.planning/qa-runs/2026-07-14-new2-carryforward-qa-report.md`.
+**WALK-READY:** create a carry-forward draw #2 on Sample Client B → G702 line 7 = **$22,983.20** (canonical, credit applied), NOT $23,623.20 (stale). Both prior invariants + the new carry-forward invariant green; live read-only DB tie-out cent-exact.
+- **Fixed (option i, canonicalize):** `lessPreviousCertificatesForJob` sources each prior draw's current-payment-due from its CANONICAL value — snapshot for approved/locked/paid, recompute-on-read otherwise — never the stored `current_payment_due` column (`draw_submit_rpc` never refreshes it). Column is now display-cache only. Inherited by both canonical detail loaders (`_data.ts`, `/api/draws/[id]/route.ts`).
+- **Permanent test:** pure carry-forward invariant in `draw-block-b-invariant.test.ts` (8/8 green). **Live verify:** real function for Sample-B draw #2 = 2298320 cent-exact. tsc 0.
+- **Hygiene (iii):** `storedSummaryStale` badge extended to submitted draws (was draft-only).
+- **🚩 FOLLOW-UP for Jake (class sweep):** THREE owner-facing document generators still read the stale stored `current_payment_due` — `export/route.ts` (Excel G702/G703 + cover letter), `cover-letter/route.ts`, and `owner/[token]/pay-apps/[id]/page.tsx` (owner portal). They'd render draw B's stale $23,623.20. **Flagged, not repointed** (each changes a certified document produced today → needs a dedicated Rule-1 runtime-verified pass; owner-portal needs a token-scoped canonical loader). Recommended: repoint all three via `loadPayAppViewData` (membership routes) / token-scoped loader (owner portal), verifying each rendered artifact.
+- **Out-of-scope note:** one pre-existing unrelated test failure (`workflow-settings-failclosed`: `require_budget_allocation` default true-vs-false) — invoice-approval config, untouched.
 
 ## ⏸️ STAGE 4 RE-GAUNTLET — OPENERS DONE, LIVE WALK HANDED TO JAKE, ONE MONEY-LOGIC HALT (2026-07-14)
 Full write-up: `.planning/coherence/HANDOFF-V2.md`. QA: `.planning/qa-runs/2026-07-14-regauntlet-openers-qa-report.md`.

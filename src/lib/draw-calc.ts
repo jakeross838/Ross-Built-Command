@@ -376,16 +376,135 @@ export function rollupDrawTotals(args: {
   };
 }
 
+/** A prior draw as needed to resolve its CANONICAL current-payment-due for the
+ *  line-7 carry-forward — deliberately NOT the stored current_payment_due
+ *  column (NEW-2: that column is never refreshed by draw_submit_rpc). */
+type PriorDrawRow = {
+  id: string;
+  draw_number: number;
+  revision_number: number | null;
+  status: string;
+  snapshot: unknown;
+  is_final: boolean | null;
+  deposit_applied_cents: number | null;
+  period_start: string | null;
+  period_end: string | null;
+  original_contract_sum: number | null;
+  net_change_orders: number | null;
+};
+
 /**
- * G702 Line 7: sum of current_payment_due across all prior
- * locked/submitted/approved/paid draws, plus the pre-Nightwork baseline
- * from jobs.previous_certificates_total. Revisions within the same
- * draw_number collapse to the latest revision.
+ * Canonical "current payment due" of ONE prior draw, for the G702 line-7
+ * carry-forward. NEW-2 fix (canonicalize, option i): the stored
+ * `draws.current_payment_due` column is NEVER read for money here — it is never
+ * refreshed by `draw_submit_rpc`, so it drifts from what the detail/print
+ * actually render (the uncaptured-credit / deposit / adjustment terms). Instead:
+ *   • approved / locked / paid WITH a frozen snapshot → the snapshot's certified
+ *     current_payment_due (the byte-exact value the issued pay app legally
+ *     certified — the same value the detail early-returns from the snapshot);
+ *   • everything else (submitted, or issued-without-snapshot) → recompute on
+ *     read through the SAME rollupDrawTotals chain the detail/print use, so
+ *     line 7 ties out cent-exact with that prior draw's own bottom line.
+ */
+async function canonicalCurrentPaymentDueForPriorDraw(
+  d: PriorDrawRow,
+  jobId: string
+): Promise<number> {
+  if (["approved", "locked", "paid"].includes(d.status) && d.snapshot) {
+    const snap = d.snapshot as { draw?: { current_payment_due?: unknown } } | null;
+    const v = snap?.draw?.current_payment_due;
+    if (typeof v === "number") return v;
+    // Snapshot present but malformed → fall through to a from-source recompute.
+  }
+  return recomputeCurrentPaymentDueForDraw(d, jobId);
+}
+
+/**
+ * Recompute one draw's current_payment_due from source — mirrors the detail/
+ * print chain (computeDrawLines + rollupDrawTotals + deposit / adjustments /
+ * uncaptured + recursive line-7). Service-role, server-only.
  *
- * Baseline is for pre-Nightwork certificates NOT represented in the draws
- * table. If the draws table has no prior submitted draws (e.g. Dewberry
- * Draw #1 is the first Nightwork draw), the baseline carries the full
- * historical certified amount.
+ * `originalContractSum` / `netChangeOrders` are the draw's stored pass-through
+ * inputs — rollupDrawTotals only passes them into contract-sum / balance lines,
+ * NOT into current_payment_due, and the detail render feeds the same stored
+ * columns (see draw-staleness.ts), so this matches the detail exactly and the
+ * cpd is unaffected by any staleness in those two columns.
+ *
+ * Recursion terminates: every prior draw has a strictly lower draw_number.
+ */
+async function recomputeCurrentPaymentDueForDraw(
+  d: PriorDrawRow,
+  jobId: string
+): Promise<number> {
+  const supabase = createServiceRoleClient();
+  const { data: job } = await supabase
+    .from("jobs")
+    .select("deposit_percentage, retainage_percent, previous_co_completed_amount")
+    .eq("id", jobId)
+    .maybeSingle();
+  const retainagePct = Number(
+    (job as { retainage_percent?: number } | null)?.retainage_percent ?? 10
+  );
+
+  const { data: invRows } = await supabase
+    .from("invoices")
+    .select("id")
+    .eq("draw_id", d.id)
+    .is("deleted_at", null);
+  const invoiceIds = (invRows ?? []).map((i) => (i as { id: string }).id);
+
+  const { lines } = await computeDrawLines({
+    jobId,
+    drawNumber: d.draw_number,
+    excludeDrawId: d.id,
+    periodStart: d.period_start,
+    periodEnd: d.period_end,
+    drawInvoiceIds: invoiceIds,
+    retainagePercent: retainagePct,
+    isFinalDraw: !!d.is_final,
+  });
+
+  const lessPrev = await lessPreviousCertificatesForJob(jobId, d.draw_number, d.id);
+  const nonBudget = await nonBudgetLineThisPeriodForDraw(d.id);
+  const appliedAdj = await appliedAdjustmentsForDraw(d.id);
+  const { total: uncaptured } = await uncapturedLinkedInvoicesForDraw(d.id);
+
+  const totals = rollupDrawTotals({
+    originalContractSum: d.original_contract_sum ?? 0,
+    netChangeOrders: d.net_change_orders ?? 0,
+    depositPercentage: Number(
+      (job as { deposit_percentage?: number } | null)?.deposit_percentage ?? 0.1
+    ),
+    retainagePercent: retainagePct,
+    lines,
+    lessPreviousCertificates: lessPrev,
+    isFinalDraw: !!d.is_final,
+    nonBudgetLineThisPeriod: nonBudget,
+    previousCoCompletedAmount: Number(
+      (job as { previous_co_completed_amount?: number } | null)
+        ?.previous_co_completed_amount ?? 0
+    ),
+    depositAppliedCents: d.deposit_applied_cents ?? 0,
+    appliedAdjustmentsCents: appliedAdj,
+    uncapturedLinkedCents: uncaptured,
+  });
+  return totals.current_payment_due;
+}
+
+/**
+ * G702 Line 7: sum of the CANONICAL current_payment_due across all prior
+ * locked/submitted/approved/paid draws, plus the pre-Nightwork baseline from
+ * jobs.previous_certificates_total. Revisions within the same draw_number
+ * collapse to the latest revision.
+ *
+ * NEW-2 fix: each prior draw's current-payment-due comes from its canonical
+ * value (frozen snapshot for issued draws, else a from-source recompute) — NOT
+ * the stale stored draws.current_payment_due column, which draw_submit_rpc never
+ * refreshes, so line 7 could inherit a credit-/deposit-/adjustment-dropped
+ * figure while the prior draw's own detail showed the corrected one. See
+ * canonicalCurrentPaymentDueForPriorDraw.
+ *
+ * Baseline is for pre-Nightwork certificates NOT represented in the draws table.
  */
 export async function lessPreviousCertificatesForJob(
   jobId: string,
@@ -395,22 +514,31 @@ export async function lessPreviousCertificatesForJob(
   const supabase = createServiceRoleClient();
   let q = supabase
     .from("draws")
-    .select("id, draw_number, revision_number, status, current_payment_due")
+    .select(
+      "id, draw_number, revision_number, status, snapshot, is_final, deposit_applied_cents, period_start, period_end, original_contract_sum, net_change_orders"
+    )
     .eq("job_id", jobId)
     .lt("draw_number", drawNumber)
     .in("status", PRIOR_DRAW_STATUSES)
     .is("deleted_at", null);
   if (excludeDrawId) q = q.neq("id", excludeDrawId);
   const { data } = await q;
-  const byNumber = new Map<number, { revision: number; amount: number }>();
-  for (const d of data ?? []) {
-    const num = (d as { draw_number: number }).draw_number;
-    const rev = (d as { revision_number: number }).revision_number ?? 0;
-    const amt = (d as { current_payment_due: number }).current_payment_due ?? 0;
-    const cur = byNumber.get(num);
-    if (!cur || rev > cur.revision) byNumber.set(num, { revision: rev, amount: amt });
+
+  // Collapse revisions: keep the highest revision per draw_number (Rev 2
+  // replaces Rev 1 replaces Rev 0).
+  const byNumber = new Map<number, PriorDrawRow>();
+  for (const row of (data ?? []) as unknown as PriorDrawRow[]) {
+    const cur = byNumber.get(row.draw_number);
+    if (!cur || (row.revision_number ?? 0) > (cur.revision_number ?? 0)) {
+      byNumber.set(row.draw_number, row);
+    }
   }
-  const sumPriorDraws = Array.from(byNumber.values()).reduce((s, v) => s + v.amount, 0);
+
+  // Sum each prior draw's CANONICAL current-payment-due (snapshot or recompute).
+  let sumPriorDraws = 0;
+  for (const d of byNumber.values()) {
+    sumPriorDraws += await canonicalCurrentPaymentDueForPriorDraw(d, jobId);
+  }
 
   const { data: job } = await supabase
     .from("jobs")

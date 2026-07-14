@@ -134,9 +134,11 @@ export type PayAppViewData = {
   // Every invoice linked to this draw (drill-down: "Invoices in this draw" +
   // per-line expansion). Renderer-agnostic (AIA + statement both consume it).
   drawInvoices: DrawInvoice[];
-  // F6-family D3 (nwrp286 Q3): display-only signal — a DRAFT draw's stored
-  // G702 summary diverges from a from-source recompute. Separate prop (the
-  // CaldwellDraw fixture shape is locked). Always false for non-draft draws.
+  // F6-family D3 (nwrp286 Q3): display-only signal — a DRAFT or SUBMITTED draw's
+  // stored G702 summary diverges from a from-source recompute (NEW-2: submitted
+  // draws' current_payment_due column is never refreshed by draw_submit_rpc).
+  // Separate prop (the CaldwellDraw fixture shape is locked). Always false for
+  // issued draws (approved/locked/paid) — they render from the frozen snapshot.
   storedSummaryStale: boolean;
   // Billing-method fork (Phase 1). billingMethod drives which renderer the
   // page mounts. `statement` is populated ONLY for cost_plus_statement jobs.
@@ -472,16 +474,21 @@ export async function loadPayAppViewData(
     ? (rawDrawStatus as CaldwellDraw["status"])
     : "submitted"; // 'locked' renders as SUBMITTED
 
-  // F6-family D3 (nwrp286 Q3): DISPLAY-ONLY staleness signal for DRAFT draws.
-  // Compare the stored G702 summary columns against a from-source recompute.
-  // net_change_orders is recomputed from change_orders (catches a CO approved
-  // after this draft was written — the phase-relevant signal); the rest come
-  // from rollupDrawTotals (genuinely source-derived). Pass-through fields
-  // (original_contract_sum, contract_sum_to_date) are excluded — they could
-  // never flag (see draw-staleness.ts). Only computed for drafts (the only
-  // status that shows the badge) so non-draft renders skip the extra query.
+  // F6-family D3 (nwrp286 Q3): DISPLAY-ONLY staleness signal. Compare the stored
+  // G702 summary columns against a from-source recompute. net_change_orders is
+  // recomputed from change_orders (catches a CO approved after the row was
+  // written); the rest come from rollupDrawTotals (genuinely source-derived).
+  // Pass-through fields (original_contract_sum, contract_sum_to_date) are
+  // excluded — they could never flag (see draw-staleness.ts).
+  //
+  // NEW-2 hygiene: computed for DRAFT *and* SUBMITTED draws. draw_submit_rpc
+  // does not refresh the stored current_payment_due column, so a submitted
+  // draw's cached summary can drift from the recompute the detail actually
+  // renders — badge it honestly wherever it still displays. Issued draws
+  // (approved/locked/paid) render from the frozen snapshot and returned above,
+  // so they never reach here and stay non-stale by construction.
   let storedSummaryStale = false;
-  if (drawStatus === "draft") {
+  if (drawStatus === "draft" || drawStatus === "submitted") {
     const recomputedNetChangeOrders = await netChangeOrdersForJob(
       draw.job_id as string
     );

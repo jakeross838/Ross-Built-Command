@@ -165,6 +165,58 @@ test("HANDOFF #2 linkage: captured(G703) + uncaptured ≡ Σ(linked totals); a �
   assert.equal(t.current_payment_due, t0.current_payment_due + uncaptured);
 });
 
+// ── NEW-2 — carry-forward invariant ────────────────────────────────────────
+// G702 line 7 (less previous certificates) MUST sum the CANONICAL current-
+// payment-due of each prior non-void draw — the value the prior draw's own
+// detail/print render (snapshot for issued draws, else recompute) — NOT the
+// stale stored draws.current_payment_due column, which draw_submit_rpc never
+// refreshes. Pinned as pure engine algebra (same pattern as the linkage test):
+// the wiring in lessPreviousCertificatesForJob is exercised by the live fixture
+// verify, but the algebra is pinned here so a formula/definition drift fails.
+
+test("NEW-2 carry-forward: line 7 ≡ Σ canonical prior current-payment-due; a prior credit flows through, cent-exact (stale stored would be off by the credit)", () => {
+  // Draw #1 (prior) — Sample-B fixture shape: Σ this-period 2,624,800 (→ earned-
+  // less-retainage 2,362,320 at 10%) with a −$640 uncoded credit memo.
+  const draw1 = {
+    originalContractSum: 50_000_000,
+    netChangeOrders: 0,
+    depositPercentage: 0.3,
+    retainagePercent: 10,
+    lines: [line("cc-dry", 0, 2_624_800)],
+    lessPreviousCertificates: 0, // draw #1 has no priors
+    isFinalDraw: false,
+    nonBudgetLineThisPeriod: 0,
+    previousCoCompletedAmount: 0,
+    depositAppliedCents: 0,
+    appliedAdjustmentsCents: 0,
+  };
+  const draw1Canonical = rollupDrawTotals({ ...draw1, uncapturedLinkedCents: -64_000 });
+  const draw1StaleStored = rollupDrawTotals({ ...draw1, uncapturedLinkedCents: 0 });
+  assert.equal(draw1Canonical.current_payment_due, 2_298_320); // $22,983.20 — credit applied
+  assert.equal(draw1StaleStored.current_payment_due, 2_362_320); // $23,623.20 — the stale column
+  assert.equal(draw1StaleStored.current_payment_due - draw1Canonical.current_payment_due, 64_000);
+
+  // Draw #2 (carry-forward). line 7 sourced from the CANONICAL prior value.
+  const draw2 = {
+    ...draw1,
+    lines: [line("cc-dry", 2_624_800, 500_000)],
+    uncapturedLinkedCents: 0,
+  };
+  const draw2Canonical = rollupDrawTotals({
+    ...draw2,
+    lessPreviousCertificates: draw1Canonical.current_payment_due,
+  });
+  const draw2FromStale = rollupDrawTotals({
+    ...draw2,
+    lessPreviousCertificates: draw1StaleStored.current_payment_due,
+  });
+  // The invariant, stated directly: line 7 == the prior draw's canonical cpd.
+  assert.equal(draw2Canonical.less_previous_certificates, draw1Canonical.current_payment_due);
+  // Sourcing the stale stored value overstates line 7 by the credit, so it
+  // understates draw #2's payment due by exactly $640.
+  assert.equal(draw2FromStale.current_payment_due, draw2Canonical.current_payment_due - 64_000);
+});
+
 // ── runner ────────────────────────────────────────────────────────────────
 
 let failed = 0;
