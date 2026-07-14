@@ -1,8 +1,17 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-14 · **HEAD (origin/main):** `e24cf19` + this 3.2-close commit · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
+**Updated:** 2026-07-14 · **HEAD (origin/main):** `a6c7ede` + this re-gauntlet-openers commit · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
 
-Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings) and `invoices-draws-deep-dive/HANDOFF.md` (TOP-20).
+Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings), `invoices-draws-deep-dive/HANDOFF.md` (original TOP-20), and **`HANDOFF-V2.md` (Stage-4 re-gauntlet dispositions + JAKE'S WALK LIST + NEW-2)**.
+
+## ⏸️ STAGE 4 RE-GAUNTLET — OPENERS DONE, LIVE WALK HANDED TO JAKE, ONE MONEY-LOGIC HALT (2026-07-14)
+Full write-up: `.planning/coherence/HANDOFF-V2.md`. QA: `.planning/qa-runs/2026-07-14-regauntlet-openers-qa-report.md`.
+- **Openers shipped (code):** (a) adversarial diff-read of the 3.2 money-gate — **SOUND** (server authoritative + fails closed; client null-eligibility branch unreachable); **NEW-1** selection-hygiene fix applied (`useInvoiceApproval.ts` clears a quick-approved id from batch selection). (b) deleted orphaned `src/app/invoices/queue/page.tsx`. tsc exit 0.
+- **Data-safety cleared (Rule 10):** RB org (`…0001`) holds ONLY fabricated Sample Client A/B (6 invoices, 2 draws). **Fish + Drummond are absent from the DB** (audit wipe removed them) — the "all RB data is disposable" premise is literally true; the "Fish is real" memory is now stale (corrected). **No wipe performed** (unneeded + budget).
+- **Full live gauntlet NOT run** — as specified (wipe+regenerate through real Vision + all J1/J2 sub-walks + before/after shots) it is ~$300–600, 3–5× the $120 surface. Verified money-critical dispositions **browser-free** (code + DB/SQL tie-outs) and produced **JAKE'S WALK LIST** (~30 min → approved draw + printed docs) for the live confirmation.
+- **TOP-20: 18 FIXED · 1 PARTIAL (#19 labels fixed, route namespace deferred) · money BLOCKERS #1/#2/#3/#9 verified fixed** (#1 DB: 0 dup codes; #2 SQL linkage invariant cent-exact −$640 uncaptured; #3 G703 compute-on-read, `draw_line_items=0` by design; #9 deposit $5k applied).
+- **🛑 NEW-2 (money-logic HALT — NOT fixed, needs Jake):** `lessPreviousCertificatesForJob` reads the STALE stored `draws.current_payment_due` (never refreshed by `draw_submit_rpc`) for a prior draw's G702 line 7, diverging from the recompute-on-read render by the uncaptured-credit/deposit/adjustment terms. Draw B: stored $23,623.20 vs rendered $22,983.20 (−$640). A carry-forward draw #2 inherits the wrong line 7. Draft-only `storedSummaryStale` detector doesn't cover submitted draws. **Decision options:** (i) canonicalize on recompute/snapshot, (ii) refresh the stored column on submit, (iii) extend the staleness signal to submitted draws. Live-confirmable in walk step J2-7.
+- **Also open:** the full-gauntlet live walk — either Jake runs the WALK LIST, or authorize a dedicated fresh session at a higher ceiling (Rule 7: one bump max) for the wipe+regenerate+full walk.
 
 **STAGE 2 FULLY CLOSED** (incl. 2.5b live-save verified: manual invoice → PM Queue, flags [manual_entry], soft-deleted). **STAGE 3 FULLY CLOSED: 3.1/3.3/3.4/3.5/3.6/3.7/3.8/3.9 + 3.2 ONE QUEUE all SHIPPED. 3.2 completed this session (steps 2b→5): extracted `useInvoiceApproval` hook + 5 components, byte-equivalent queue rewire, absorbed Quick-Approve + multi-select + batch bar into the Bills list, retired the PM queue (redirect), all verified by a live authed batch-approve walk with DB invariants green. Full report: `.planning/coherence/3.2-one-queue-report.md`; QA: `.planning/qa-runs/2026-07-14-3.2-one-queue-qa-report.md`.**
 

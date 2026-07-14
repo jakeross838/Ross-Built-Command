@@ -190,6 +190,17 @@ export function useInvoiceApproval<T extends ApprovalRow>({
       setQuickApproveConfirmId(null);
       setTimeout(() => {
         onMutatedRef.current([inv.id], "quick_approve");
+        // Selection hygiene (3.2 re-gauntlet NEW-1): if this row was also
+        // checkbox-selected for a batch, drop it from the selection so the
+        // floating bar's count can't include a row that has already departed
+        // (count vs total mismatch), and a later hold/deny can't ship a stale
+        // id the server would only reject as "not reviewable".
+        setSelectedIds((prev) => {
+          if (!prev.has(inv.id)) return prev;
+          const next = new Set(prev);
+          next.delete(inv.id);
+          return next;
+        });
         setAnimatingOutIds((prev) => {
           const next = new Set(prev);
           next.delete(inv.id);
