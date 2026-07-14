@@ -4,6 +4,7 @@ import { tryCreateServiceRoleClient } from "@/lib/supabase/service";
 import { getCurrentMembership, getCurrentOrg } from "@/lib/org/session";
 import { getWorkflowSettings } from "@/lib/workflow-settings";
 import { renderCoverLetter, type CoverLetterContext } from "@/lib/cover-letter";
+import { loadPayAppViewData } from "@/app/financials/pay-apps/[id]/_data";
 import ExcelJS from "exceljs";
 
 export const dynamic = "force-dynamic";
@@ -120,13 +121,15 @@ export async function GET(
  return NextResponse.json({ error: "Draw not found" }, { status: 404 });
  }
 
- // ── Fetch invoices ──
- const { data: invoices } = await supabase
- .from("invoices")
- .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id")
- .eq("draw_id", params.id)
- .eq("org_id", orgId)
- .is("deleted_at", null);
+ // ── Canonical G702/G703 (NEW-2 class closure) ──
+ // The pay-app document's money comes from the SAME loader the on-screen
+ // detail/print use (snapshot for issued draws, else recompute) — the stored
+ // draws.* rollup columns feed ZERO document output. Membership-scoped; the
+ // draw above is already org-verified.
+ const view = await loadPayAppViewData(params.id);
+ if (!view) {
+ return NextResponse.json({ error: "Draw not found" }, { status: 404 });
+ }
 
  // ── Fetch budget lines ──
  const { data: fetchedBudgetLines } = await supabase
@@ -155,35 +158,30 @@ export async function GET(
  .is("deleted_at", null)
  .order("pcco_number", { ascending: true });
 
- // ── Compute G703 line items ──
- const thisPeriodByCostCode = new Map<string, number>();
- for (const inv of invoices ?? []) {
- if (inv.cost_code_id) {
- thisPeriodByCostCode.set(inv.cost_code_id, (thisPeriodByCostCode.get(inv.cost_code_id) ?? 0) + inv.total_amount);
- }
- }
-
- const g703Lines = allBudgetLines
- .map(bl => {
- const thisPeriod = thisPeriodByCostCode.get(bl.cost_code_id) ?? 0;
- const baseline = bl.previous_applications_baseline ?? 0;
- const previousApplications = baseline;
- const totalToDate = previousApplications + thisPeriod;
- const percentComplete = bl.revised_estimate > 0
- ? totalToDate / bl.revised_estimate
- : (totalToDate > 0 ? 1 : 0);
- const balanceToFinish = bl.revised_estimate - totalToDate;
+ // ── G703 line items — CANONICAL (NEW-2 class closure) ──
+ // Money columns (previous / this-period / total / % / balance) come from the
+ // canonical loader's snapshot-or-recompute lineItems — the SAME numbers the
+ // detail/print render — NOT a from-invoices re-derivation off stored baselines.
+ // Original/revised estimates stay from budget_lines; an unbudgeted invoice code
+ // (no budget line) reads revised = billed-to-date so Balance-in-Contract nets
+ // to 0, matching the detail's convention. percent_complete is already 0..1.
+ const ccById = new Map(view.costCodes.map((c) => [c.id, c]));
+ const blByCc = new Map(allBudgetLines.map((bl) => [bl.cost_code_id, bl]));
+ const g703Lines = view.lineItems
+ .map((li) => {
+ const cc = ccById.get(li.cost_code_id);
+ const bl = blByCc.get(li.cost_code_id);
  return {
- code: bl.cost_codes.code,
- description: bl.cost_codes.description,
- sort_order: bl.cost_codes.sort_order,
- original_estimate: bl.original_estimate,
- revised_estimate: bl.revised_estimate,
- previous_applications: previousApplications,
- this_period: thisPeriod,
- total_to_date: totalToDate,
- percent_complete: percentComplete,
- balance_to_finish: balanceToFinish,
+ code: cc?.code ?? "—",
+ description: cc?.description ?? "",
+ sort_order: cc?.sort_order ?? 0,
+ original_estimate: bl?.original_estimate ?? 0,
+ revised_estimate: bl?.revised_estimate ?? li.total_to_date,
+ previous_applications: li.previous_applications,
+ this_period: li.this_period,
+ total_to_date: li.total_to_date,
+ percent_complete: li.percent_complete,
+ balance_to_finish: li.balance_to_finish,
  };
  })
  .filter(r => r.original_estimate > 0 || r.revised_estimate > 0 || r.previous_applications > 0 || r.this_period > 0)
@@ -224,14 +222,15 @@ export async function GET(
  draw_number: drawNum,
  period_start: (draw as { period_start?: string | null }).period_start ?? null,
  period_end: (draw as { period_end?: string | null }).period_end ?? null,
- current_payment_due: coverDraw.current_payment_due ?? 0,
- contract_sum_to_date: coverDraw.contract_sum_to_date ?? 0,
- total_completed: coverDraw.total_completed_to_date ?? 0,
+ // Money from the canonical view (NEW-2), not the stored coverDraw columns.
+ current_payment_due: view.draw.current_payment_due,
+ contract_sum_to_date: view.draw.contract_sum_to_date,
+ total_completed: view.draw.total_completed_to_date,
  percent_complete:
- (coverDraw.contract_sum_to_date ?? 0) > 0
- ? ((coverDraw.total_completed_to_date ?? 0) / (coverDraw.contract_sum_to_date ?? 1)) * 100
+ view.draw.contract_sum_to_date > 0
+ ? (view.draw.total_completed_to_date / view.draw.contract_sum_to_date) * 100
  : 0,
- retainage: coverDraw.total_retainage ?? 0,
+ retainage: view.retainage.amount,
  };
  const coverBody =
  coverDraw.cover_letter_text && coverDraw.cover_letter_text.trim().length > 0
@@ -395,14 +394,15 @@ export async function GET(
  ws1.getCell(`B${r}`).border = THIN_BORDERS;
 
  const g702Lines: Array<{ num: string; label: string; value: number; bold?: boolean }> = [
- { num: "1.", label: "ORIGINAL CONTRACT SUM", value: draw.original_contract_sum },
- { num: "", label: " Deposit (" + ((job?.deposit_percentage ?? 0.10) * 100).toFixed(0) + "%)", value: draw.deposit_amount },
- { num: "2.", label: "NET CHANGE BY CHANGE ORDERS", value: draw.net_change_orders },
- { num: "3.", label: "CONTRACT SUM TO DATE (Line 1 + 2)", value: draw.contract_sum_to_date, bold: true },
- { num: "4.", label: "TOTAL COMPLETED AND STORED TO DATE", value: draw.total_completed_to_date },
- { num: "5.", label: "LESS PREVIOUS CERTIFICATES FOR PAYMENT", value: draw.less_previous_payments },
- { num: "6.", label: "CURRENT PAYMENT DUE", value: draw.current_payment_due, bold: true },
- { num: "7.", label: "BALANCE TO FINISH, INCLUDING RETAINAGE", value: draw.balance_to_finish },
+ // Money from the canonical view (NEW-2), not the stored draw.* columns.
+ { num: "1.", label: "ORIGINAL CONTRACT SUM", value: view.draw.original_contract_sum },
+ { num: "", label: " Deposit (" + ((job?.deposit_percentage ?? 0.10) * 100).toFixed(0) + "%)", value: view.draw.deposit_amount },
+ { num: "2.", label: "NET CHANGE BY CHANGE ORDERS", value: view.draw.net_change_orders },
+ { num: "3.", label: "CONTRACT SUM TO DATE (Line 1 + 2)", value: view.draw.contract_sum_to_date, bold: true },
+ { num: "4.", label: "TOTAL COMPLETED AND STORED TO DATE", value: view.draw.total_completed_to_date },
+ { num: "5.", label: "LESS PREVIOUS CERTIFICATES FOR PAYMENT", value: view.draw.less_previous_payments },
+ { num: "6.", label: "CURRENT PAYMENT DUE", value: view.draw.current_payment_due, bold: true },
+ { num: "7.", label: "BALANCE TO FINISH, INCLUDING RETAINAGE", value: view.draw.balance_to_finish },
  ];
 
  r = 17;
@@ -789,7 +789,7 @@ export async function GET(
  });
 
  r = 5;
- let runningContract = draw.original_contract_sum;
+ let runningContract = view.draw.original_contract_sum;
  for (const co of cos) {
  const coAmt = co.total_with_fee ?? 0;
  runningContract += coAmt;

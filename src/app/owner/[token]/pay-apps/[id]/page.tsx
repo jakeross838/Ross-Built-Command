@@ -33,6 +33,7 @@ import {
   assertDrawBelongsToToken,
 } from "@/lib/owner-portal/token";
 import { recordOwnerPortalRequest } from "@/lib/owner-portal/rate-limit";
+import { canonicalG702ForDraw } from "@/lib/draw-calc";
 import OwnerDrawView from "@/components/prototypes/OwnerDrawView";
 import type { CaldwellDraw } from "@/app/design-system/_fixtures/drummond/types";
 import AcknowledgePayAppButton from "./AcknowledgePayAppButton";
@@ -126,19 +127,36 @@ export default async function OwnerPayAppPage({
     .maybeSingle();
 
   const typedDrawRow = drawRow as unknown as DbDrawRow;
-  const draw = mapDbDrawToCaldwell(typedDrawRow);
+  const drawStored = mapDbDrawToCaldwell(typedDrawRow);
+  // NEW-2 class closure: the owner sees the CANONICAL G702 figures (snapshot for
+  // issued draws, else recompute) — never the stale stored draws.* rollup
+  // columns, which draw_submit_rpc leaves unrefreshed. The draw is already
+  // token-validated above (assertDrawBelongsToToken + scoped fetch), so reading
+  // its canonical totals here is authorized.
+  const g702 = await canonicalG702ForDraw(params.id);
+  const draw: CaldwellDraw = g702
+    ? {
+        ...drawStored,
+        original_contract_sum: g702.original_contract_sum,
+        net_change_orders: g702.net_change_orders,
+        contract_sum_to_date: g702.contract_sum_to_date,
+        total_completed_to_date: g702.total_completed_to_date,
+        less_previous_payments: g702.less_previous_payments,
+        current_payment_due: g702.current_payment_due,
+        balance_to_finish: g702.balance_to_finish,
+        deposit_amount: g702.deposit_amount,
+      }
+    : drawStored;
   const jobMeta = (jobRow as unknown as { id: string; name: string } | null) ?? null;
   // BLOCK B pt2 — owner sees the deposit credit applied to this pay app.
-  // pool = deposit on file; applied = this pay app's credit. appliedToDate /
-  // remaining are not shown on the owner summary (single-draw scope here).
+  // pool = deposit on file (canonical); applied = this pay app's credit (a stored
+  // user input, not a rollup cache). appliedToDate / remaining single-draw scope.
+  const depositPool = draw.deposit_amount ?? 0;
   const deposit = {
-    pool: typedDrawRow.deposit_amount ?? 0,
+    pool: depositPool,
     applied: typedDrawRow.deposit_applied_cents ?? 0,
     appliedToDate: typedDrawRow.deposit_applied_cents ?? 0,
-    remaining: Math.max(
-      0,
-      (typedDrawRow.deposit_amount ?? 0) - (typedDrawRow.deposit_applied_cents ?? 0),
-    ),
+    remaining: Math.max(0, depositPool - (typedDrawRow.deposit_applied_cents ?? 0)),
   };
 
   const isAcknowledgedStatusTerminal =

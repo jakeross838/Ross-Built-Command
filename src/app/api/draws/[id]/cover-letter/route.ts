@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentMembership } from "@/lib/org/session";
 import { getWorkflowSettings } from "@/lib/workflow-settings";
 import { renderCoverLetter, type CoverLetterContext } from "@/lib/cover-letter";
+import { canonicalG702ForDraw, type CanonicalG702 } from "@/lib/draw-calc";
 import { logActivity } from "@/lib/activity-log";
 
 export const dynamic = "force-dynamic";
@@ -38,8 +39,6 @@ async function loadDraw(
     .from("draws")
     .select(
       `id, job_id, draw_number, period_start, period_end, cover_letter_text,
-       original_contract_sum, contract_sum_to_date, total_completed_to_date,
-       current_payment_due, total_retainage,
        jobs:job_id (id, name, address, client:clients(id, full_name))`
     )
     .eq("id", id)
@@ -54,11 +53,6 @@ async function loadDraw(
     period_start: string | null;
     period_end: string | null;
     cover_letter_text: string | null;
-    original_contract_sum: number;
-    contract_sum_to_date: number;
-    total_completed_to_date: number;
-    current_payment_due: number;
-    total_retainage: number;
     jobs: {
       id: string;
       name: string | null;
@@ -68,9 +62,15 @@ async function loadDraw(
   };
 }
 
-function buildContext(draw: Awaited<ReturnType<typeof loadDraw>>): CoverLetterContext {
-  const contract = draw?.contract_sum_to_date ?? 0;
-  const completed = draw?.total_completed_to_date ?? 0;
+function buildContext(
+  draw: Awaited<ReturnType<typeof loadDraw>>,
+  g702: CanonicalG702 | null
+): CoverLetterContext {
+  // NEW-2 class closure: money comes from the CANONICAL G702 (snapshot for
+  // issued draws, else recompute), NOT the stale stored draws.* rollup columns.
+  // Non-money fields (names, periods, draw #) stay on the draw row.
+  const contract = g702?.contract_sum_to_date ?? 0;
+  const completed = g702?.total_completed_to_date ?? 0;
   // F1-Wave-B Slice-1 B-1a-bis: normalize embed shape (PostgREST may return
   // single object or array). Preserves owner_name === clients.full_name AIA contract.
   const rawClient = draw?.jobs?.client as { full_name?: string } | { full_name?: string }[] | null | undefined;
@@ -82,11 +82,11 @@ function buildContext(draw: Awaited<ReturnType<typeof loadDraw>>): CoverLetterCo
     draw_number: draw?.draw_number ?? 0,
     period_start: draw?.period_start ?? null,
     period_end: draw?.period_end ?? null,
-    current_payment_due: draw?.current_payment_due ?? 0,
+    current_payment_due: g702?.current_payment_due ?? 0,
     contract_sum_to_date: contract,
     total_completed: completed,
     percent_complete: contract > 0 ? (completed / contract) * 100 : 0,
-    retainage: draw?.total_retainage ?? 0,
+    retainage: g702?.total_retainage ?? 0,
   };
 }
 
@@ -107,7 +107,9 @@ export async function GET(
 
     const settings = await getWorkflowSettings(orgId);
     const template = settings.cover_letter_template;
-    const ctx = buildContext(draw);
+    // loadDraw org-validated this draw above → safe to read canonical G702.
+    const g702 = await canonicalG702ForDraw(params.id);
+    const ctx = buildContext(draw, g702);
     const generated = !draw.cover_letter_text;
     const body = generated ? renderCoverLetter(template, ctx) : draw.cover_letter_text!;
     return NextResponse.json({
@@ -185,7 +187,8 @@ export async function POST(
     if (!draw) return NextResponse.json({ error: "Draw not found" }, { status: 404 });
 
     const settings = await getWorkflowSettings(orgId);
-    const ctx = buildContext(draw);
+    const g702 = await canonicalG702ForDraw(params.id);
+    const ctx = buildContext(draw, g702);
     const body = renderCoverLetter(settings.cover_letter_template, ctx);
 
     await supabase

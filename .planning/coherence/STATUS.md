@@ -9,8 +9,16 @@ Chat transfer is unreliable — this file is the durable handoff. Read alongside
 - **Fixed (option i, canonicalize):** `lessPreviousCertificatesForJob` sources each prior draw's current-payment-due from its CANONICAL value — snapshot for approved/locked/paid, recompute-on-read otherwise — never the stored `current_payment_due` column (`draw_submit_rpc` never refreshes it). Column is now display-cache only. Inherited by both canonical detail loaders (`_data.ts`, `/api/draws/[id]/route.ts`).
 - **Permanent test:** pure carry-forward invariant in `draw-block-b-invariant.test.ts` (8/8 green). **Live verify:** real function for Sample-B draw #2 = 2298320 cent-exact. tsc 0.
 - **Hygiene (iii):** `storedSummaryStale` badge extended to submitted draws (was draft-only).
-- **🚩 FOLLOW-UP for Jake (class sweep):** THREE owner-facing document generators still read the stale stored `current_payment_due` — `export/route.ts` (Excel G702/G703 + cover letter), `cover-letter/route.ts`, and `owner/[token]/pay-apps/[id]/page.tsx` (owner portal). They'd render draw B's stale $23,623.20. **Flagged, not repointed** (each changes a certified document produced today → needs a dedicated Rule-1 runtime-verified pass; owner-portal needs a token-scoped canonical loader). Recommended: repoint all three via `loadPayAppViewData` (membership routes) / token-scoped loader (owner portal), verifying each rendered artifact.
 - **Out-of-scope note:** one pre-existing unrelated test failure (`workflow-settings-failclosed`: `require_budget_allocation` default true-vs-false) — invoice-approval config, untouched.
+
+## ✅ NEW-2 CLASS CLOSED — 3 document generators repointed to canonical (2026-07-14, PASS 2). Report: `new2-carry-forward-fix.md` (PASS 2 section).
+The stored `draws.current_payment_due` (+ rollup siblings) now feeds **ZERO document math**. All four readers canonical.
+- **New shared helper** `draw-calc.ts` `canonicalG702ForDraw(drawId)` (snapshot for issued draws, else recompute; service-role, callers pre-authorize).
+- **`export/route.ts`** (Excel G702 lines 1–7 + G703 + cover ctx + PCCO) → `loadPayAppViewData` (`view.draw.*` / `view.lineItems` / `view.retainage`). **`cover-letter/route.ts`** + **`owner/[token]/pay-apps/[id]`** → `canonicalG702ForDraw`.
+- **Stale test fixed:** `workflow-settings-failclosed` now asserts `require_budget_allocation` default **`false`** per migration **00112** (onboarding-cliff). tsc 0; full suite green.
+- **Verified canonical ($22,983.20, not stale $23,623.20):** `canonicalG702ForDraw(draw B)` read-only script (real code) + the detail-page render of the same `loadPayAppViewData` `view` (incl. the 3-line G703 the export now reads).
+- **⚠️ Blocked (environment):** the 3 CHANGED routes' rendered output (Excel/cover-letter/owner-portal screenshots) — Jake's dev `.next` has a missing chunk (`4894.js`, likely from session-1's authorized `:3100` kill on the shared `.next`); changed routes can't recompile; not restarted per never-kill + Jake's active walk. Reload each on a clean `.next` (restart when free) → each shows $22,983.20. Code verified four other ways.
+- **🚩 Still flagged (out-of-class, pre-existing):** `job-phase-contract-type.test.ts` 2/17 red (jobs/new + OnboardWizard contract_type) — untouched by this pass; needs the contract_type-policy owner to judge stale-test-vs-regression.
 
 ## ⏸️ STAGE 4 RE-GAUNTLET — OPENERS DONE, LIVE WALK HANDED TO JAKE, ONE MONEY-LOGIC HALT (2026-07-14)
 Full write-up: `.planning/coherence/HANDOFF-V2.md`. QA: `.planning/qa-runs/2026-07-14-regauntlet-openers-qa-report.md`.

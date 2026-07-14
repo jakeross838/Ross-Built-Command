@@ -416,26 +416,25 @@ async function canonicalCurrentPaymentDueForPriorDraw(
     if (typeof v === "number") return v;
     // Snapshot present but malformed → fall through to a from-source recompute.
   }
-  return recomputeCurrentPaymentDueForDraw(d, jobId);
+  return (await recomputeTotalsForDraw(d, jobId)).current_payment_due;
 }
 
 /**
- * Recompute one draw's current_payment_due from source — mirrors the detail/
- * print chain (computeDrawLines + rollupDrawTotals + deposit / adjustments /
+ * Recompute one draw's FULL G702 totals from source — mirrors the detail/print
+ * chain (computeDrawLines + rollupDrawTotals + deposit / adjustments /
  * uncaptured + recursive line-7). Service-role, server-only.
  *
  * `originalContractSum` / `netChangeOrders` are the draw's stored pass-through
  * inputs — rollupDrawTotals only passes them into contract-sum / balance lines,
  * NOT into current_payment_due, and the detail render feeds the same stored
- * columns (see draw-staleness.ts), so this matches the detail exactly and the
- * cpd is unaffected by any staleness in those two columns.
+ * columns (see draw-staleness.ts), so this matches the detail exactly.
  *
  * Recursion terminates: every prior draw has a strictly lower draw_number.
  */
-async function recomputeCurrentPaymentDueForDraw(
+async function recomputeTotalsForDraw(
   d: PriorDrawRow,
   jobId: string
-): Promise<number> {
+): Promise<DrawTotals> {
   const supabase = createServiceRoleClient();
   const { data: job } = await supabase
     .from("jobs")
@@ -488,7 +487,7 @@ async function recomputeCurrentPaymentDueForDraw(
     appliedAdjustmentsCents: appliedAdj,
     uncapturedLinkedCents: uncaptured,
   });
-  return totals.current_payment_due;
+  return totals;
 }
 
 /**
@@ -549,6 +548,87 @@ export async function lessPreviousCertificatesForJob(
     ?.previous_certificates_total ?? 0;
 
   return sumPriorDraws + baseline;
+}
+
+/** The G702 header figures a document generator needs, in cents. */
+export type CanonicalG702 = {
+  original_contract_sum: number;
+  net_change_orders: number;
+  contract_sum_to_date: number;
+  total_completed_to_date: number;
+  total_retainage: number;
+  /** G702 line 7 — "less previous certificates" (a.k.a. less_previous_payments). */
+  less_previous_payments: number;
+  current_payment_due: number;
+  balance_to_finish: number;
+  deposit_amount: number;
+};
+
+/**
+ * Canonical G702 header totals for ONE draw — the SAME numbers the pay-app
+ * detail/print render: a frozen snapshot for issued (approved/locked/paid)
+ * draws, else a from-source recompute. NEW-2 class closure: document generators
+ * that can't call the membership-scoped loadPayAppViewData (the token-scoped
+ * owner portal) or want a lighter path (the cover-letter route) call this so the
+ * stored draws.current_payment_due column (+ its rollup siblings) feeds ZERO
+ * document output — it is a display cache only.
+ *
+ * Service-role + keyed by drawId: the CALLER MUST have already authorized access
+ * (membership org-scope OR a validated owner token). Returns null if the draw is
+ * missing/deleted.
+ */
+export async function canonicalG702ForDraw(
+  drawId: string
+): Promise<CanonicalG702 | null> {
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase
+    .from("draws")
+    .select(
+      "id, job_id, draw_number, revision_number, status, snapshot, is_final, deposit_applied_cents, period_start, period_end, original_contract_sum, net_change_orders"
+    )
+    .eq("id", drawId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!data) return null;
+  const d = data as unknown as PriorDrawRow & { job_id: string };
+
+  // Issued draw with a frozen snapshot → the certified figures verbatim (the
+  // detail early-returns the same). total_retainage lives at snapshot.retainage.
+  if (["approved", "locked", "paid"].includes(d.status) && d.snapshot) {
+    const snap = d.snapshot as {
+      draw?: Record<string, unknown>;
+      retainage?: { amount?: unknown };
+    } | null;
+    const sd = snap?.draw;
+    if (sd && typeof sd.current_payment_due === "number") {
+      const num = (v: unknown) => (typeof v === "number" ? v : 0);
+      return {
+        original_contract_sum: num(sd.original_contract_sum),
+        net_change_orders: num(sd.net_change_orders),
+        contract_sum_to_date: num(sd.contract_sum_to_date),
+        total_completed_to_date: num(sd.total_completed_to_date),
+        total_retainage: num(snap?.retainage?.amount),
+        less_previous_payments: num(sd.less_previous_payments),
+        current_payment_due: sd.current_payment_due,
+        balance_to_finish: num(sd.balance_to_finish),
+        deposit_amount: num(sd.deposit_amount),
+      };
+    }
+    // Snapshot malformed → fall through to a from-source recompute.
+  }
+
+  const t = await recomputeTotalsForDraw(d, d.job_id);
+  return {
+    original_contract_sum: t.original_contract_sum,
+    net_change_orders: t.net_change_orders,
+    contract_sum_to_date: t.contract_sum_to_date,
+    total_completed_to_date: t.total_completed_to_date,
+    total_retainage: t.total_retainage,
+    less_previous_payments: t.less_previous_payments,
+    current_payment_due: t.current_payment_due,
+    balance_to_finish: t.balance_to_finish,
+    deposit_amount: t.deposit_amount,
+  };
 }
 
 /**

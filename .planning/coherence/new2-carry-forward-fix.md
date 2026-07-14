@@ -43,3 +43,33 @@ Each reads `draw.current_payment_due` (+ `contract_sum_to_date` / `total_complet
 
 ## Follow-up for Jake
 Repoint the **3 flagged document generators** to canonical in one dedicated pass **with Rule-1 runtime verification** (generate draw B's Excel + cover letter + owner-portal view → confirm line 6/8 = $22,983.20, not $23,623.20). Owner-portal needs a token-scoped canonical loader (small refactor). This is money-on-owner-documents — verify each rendered artifact, don't ship by construction.
+
+---
+
+# PASS 2 — the 3 document generators repointed (class CLOSED)
+
+**Date:** 2026-07-14 · Ceiling $80. The stored `draws.current_payment_due` (+ rollup siblings) now feeds ZERO document math.
+
+## Repoints
+| Generator | Auth | How | Verified |
+|-----------|------|-----|----------|
+| `export/route.ts` (Excel G702 lines 1–7 + G703 + cover-letter ctx + PCCO running-contract) | membership | `loadPayAppViewData(id)` → `view.draw.*` (G702), `view.lineItems`+`view.costCodes` (G703, estimates still from budget_lines), `view.retainage.amount` | **detail-render** (same `view`) |
+| `cover-letter/route.ts` (GET + POST ctx) | membership | new shared `canonicalG702ForDraw(id)` → G702 figures | **script** |
+| `owner/[token]/pay-apps/[id]/page.tsx` (owner portal) | **token** | `canonicalG702ForDraw(id)` overrides the CaldwellDraw money fields (draw is token-validated first) | **script** |
+
+New shared helper: `draw-calc.ts` `canonicalG702ForDraw(drawId)` — snapshot for issued draws, else recompute (generalized the NEW-2 recompute helper to return full `DrawTotals`). Service-role + keyed by drawId; **callers pre-authorize** (membership OR validated owner token). Used by the two paths that can't call the membership-scoped `loadPayAppViewData`.
+
+## Final inventory — all FOUR readers canonical
+1. `lessPreviousCertificatesForJob` (line-7 math) — canonical (PASS 1). ✅
+2. `export/route.ts` (Excel doc) — canonical via `loadPayAppViewData`. ✅
+3. `cover-letter/route.ts` (cover doc) — canonical via `canonicalG702ForDraw`. ✅
+4. `owner/[token]/pay-apps/[id]` (owner portal) — canonical via `canonicalG702ForDraw`. ✅
+Detail loaders (`_data.ts`, `/api/draws/[id]`) were already canonical. List views remain display-only (cache; badged by `storedSummaryStale`, now incl. submitted).
+
+## Verification
+- **tsc exit 0**; **full suite green** (17 files — incl. the fixed `workflow-settings-failclosed` + draw invariants 8/8). Stale test updated: `require_budget_allocation` default `false` per **migration 00112** (onboarding-cliff fix).
+- **`canonicalG702ForDraw(draw B)` (read-only script, real code, live DB) → `current_payment_due = $22,983.20`** canonical (NOT the stale $23,623.20). Full G702 set correct (completed $26,248, retainage $2,624.80, deposit $150k).
+- **Detail page render → $22,983.20** + −$640 credit in Adjustments + the exact 3-line G703 the export now reads from the same `view` object (loadPayAppViewData path = the export's data source).
+
+## ⚠️ Blocked (environment, not code): rendered-artifact screenshots
+The three CHANGED routes' own rendered output (Excel cells / cover-letter body / owner-portal screen) could **not** be rendered: Jake's long-running dev `.next` has a **missing webpack chunk** (`4894.js`) — a page-load failure in Next internals (`requirePage → _document.js`), NOT route logic. The **unchanged** detail page renders fine (cached chunks); the three routes I changed force a recompile that hits the corrupt cache. Not restarted per **never-kill** + Jake's active parallel walk (the corruption likely traces to session-1's authorized `:3100` kill on the shared `.next`). **Recommendation:** on a clean `.next` (restart when the server is free), reload the export / cover-letter / owner-portal for draw B → each shows **$22,983.20**. Code correctness is otherwise verified four ways (tsc, suite, script, detail-render of the shared `view`); only the rendered screenshot is outstanding.

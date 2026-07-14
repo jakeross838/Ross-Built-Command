@@ -13,9 +13,10 @@
  *   - default (legacy)  → returns code-default fallback (all other
  *                                  callers keep pre-F2A-2 behavior)
  *
- * Also pins DEFAULT_WORKFLOW_SETTINGS.require_budget_allocation === true
- * (F2A-3: new orgs start gated; migration 00109 is the column-default
- * half of the same change).
+ * Also pins the code-default of require_budget_allocation. Migration 00112
+ * (onboarding-cliff fix) reverted it from TRUE (00109) back to FALSE — a new
+ * org has no budget lines, so the allocation gate would be unsatisfiable on its
+ * first invoice. require_co_budget_allocation stays TRUE (migration 00111).
  */
 import {
   getWorkflowSettings,
@@ -58,10 +59,15 @@ async function main() {
   }
   check("legacy call falls back to defaults (no throw)", fellBack);
 
-  // 3. F2A-3 code-default pin.
+  // 3. Code-default pin. Migration 00112 (onboarding-cliff fix) reverted the
+  // new-org / fallback default from TRUE (00109's F2A-3 posture) back to FALSE:
+  // a brand-new org has ZERO budget lines, so the allocation gate would be
+  // unsatisfiable on its first invoice (approval 422s with no path forward).
+  // FALSE matches what Ross Built runs; the gate stays opt-in per-org once
+  // budgets exist.
   check(
-    "DEFAULT_WORKFLOW_SETTINGS.require_budget_allocation === true",
-    DEFAULT_WORKFLOW_SETTINGS.require_budget_allocation === true
+    "DEFAULT_WORKFLOW_SETTINGS.require_budget_allocation === false (migration 00112)",
+    DEFAULT_WORKFLOW_SETTINGS.require_budget_allocation === false
   );
 
   // F6-family (nwrp286): CO-side gate code-default pin (new-org/fallback = gated).
