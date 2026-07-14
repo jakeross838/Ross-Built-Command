@@ -1,15 +1,18 @@
 // src/app/financials/bills/queue/page.tsx
 //
-// REAL-LOGIC re-mount per Stage 1.5c Plan 4 (iter-2 architect W-5).
-// Bills review queue — the canonical surface for what the prior nav
-// labeled the "Invoices queue". Plan 1 308-redirects /invoices/queue
-// to here. Re-export preserves the existing component verbatim.
-//
-// iter-2 mechanical #10 verification: page-level auth-check grep
-// (the three canonical patterns documented in plan SUMMARY) has zero
-// matches in source; this re-export has zero by construction. Auth
-// preserved verbatim — all auth via API routes invoked client-side.
-//
-// Bills terminology grep check satisfied by this header comment.
+// 3.2 ONE QUEUE — RETIRED. The standalone PM review queue folded into the Bills
+// list (/financials/bills), which now carries Quick-Approve + multi-select +
+// the floating batch bar via the shared useInvoiceApproval hook + components
+// (byte-equivalent eligibility, same endpoints). This route now redirects to
+// the list, preset to the PM Review sub-view (closest equivalent to the old
+// queue). Parity was confirmed before retiring (see
+// .planning/coherence/3.2-one-queue-report.md). The former re-export of
+// @/app/invoices/queue/page is gone; that component file is now orphaned dead
+// code (unreachable — next.config 308-redirects /invoices/queue here first),
+// safe to delete in a later cleanup.
 
-export { default } from "@/app/invoices/queue/page";
+import { redirect } from "next/navigation";
+
+export default function RetiredBillsQueuePage() {
+  redirect("/financials/bills?review=pm");
+}

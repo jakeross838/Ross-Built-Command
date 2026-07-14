@@ -1,16 +1,23 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { formatCents, daysAgo, formatDate } from "@/lib/utils/format";
+import { daysAgo, formatDate } from "@/lib/utils/format";
 import FinancialViewTabs from "@/components/financial-view-tabs";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
 import { SkeletonList } from "@/components/loading-skeleton";
 import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
-import NwButton from "@/components/nw/Button";
-import { Textarea } from "@/components/ui/textarea";
 import { rowClickIntent } from "@/lib/utils/row-nav";
+// 3.2 ONE QUEUE — the PM approval machinery (Quick-Approve + batch
+// approve/hold/deny + selection) now lives in one shared hook + component set,
+// consumed identically here and on the folded-in Bills list.
+import { useInvoiceApproval } from "@/components/invoices/useInvoiceApproval";
+import QuickApproveControl from "@/components/invoices/QuickApproveControl";
+import BatchActionBar from "@/components/invoices/BatchActionBar";
+import BatchNoteModal from "@/components/invoices/BatchNoteModal";
+import BatchApproveConfirmModal from "@/components/invoices/BatchApproveConfirmModal";
+import ApprovalToast from "@/components/invoices/ApprovalToast";
 
 function confidenceVariant(score: number): BadgeVariant {
  if (score >= 0.85) return "success";
@@ -134,33 +141,16 @@ export default function QueuePage() {
  const [sortKey, setSortKey] = useState<SortKey>("waiting");
  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
- // Batch selection
- const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
- const [batchProcessing, setBatchProcessing] = useState(false);
- const [showHoldNoteModal, setShowHoldNoteModal] = useState(false);
- const [holdNote, setHoldNote] = useState("");
- const [showDenyNoteModal, setShowDenyNoteModal] = useState(false);
- const [denyNote, setDenyNote] = useState("");
- const [showApproveConfirm, setShowApproveConfirm] = useState(false);
- const [approvalEligible, setApprovalEligible] = useState<QueueInvoice[]>([]);
- const [approvalExcluded, setApprovalExcluded] = useState<Array<{ invoice: QueueInvoice; reasons: string[] }>>([]);
- const selectAllRef = useRef<HTMLInputElement>(null);
+ // Approval selection / batch / quick-approve / toast state now lives in the
+ // shared useInvoiceApproval hook (mounted below, after `filtered`).
 
  // Workflow settings (null while loading — UI gates off this)
  const [workflowSettings, setWorkflowSettings] = useState<WorkflowSettingsClient | null>(null);
 
- // Line items allocation map (id -> { hasAnyBudgetLine, hasAllBudgetLines, hasAnyPO, hasAllPOs })
+ // Line items allocation map (id -> { hasAllBudgetLines, hasAllPOs, lineCount })
  const [lineItemSummary, setLineItemSummary] = useState<
  Map<string, { hasAllBudgetLines: boolean; hasAllPOs: boolean; lineCount: number }>
  >(new Map());
-
- // Toast feedback for batch actions
- const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-
- // Quick Approve — inline confirmation state per invoice
- const [quickApproveConfirmId, setQuickApproveConfirmId] = useState<string | null>(null);
- const [quickApproveProcessingId, setQuickApproveProcessingId] = useState<string | null>(null);
- const [animatingOutIds, setAnimatingOutIds] = useState<Set<string>>(new Set());
 
  useEffect(() => {
  async function fetchData() {
@@ -303,93 +293,9 @@ export default function QueuePage() {
 
  const batchEnabled = workflowSettings?.batch_approval_enabled ?? false;
  const quickApproveEnabled = workflowSettings?.quick_approve_enabled ?? false;
- const quickApproveThreshold = (workflowSettings?.quick_approve_min_confidence ?? 95) / 100;
-
- const getApprovalBlockers = useCallback(
- (inv: QueueInvoice): string[] => {
- if (!workflowSettings) return [];
- const reasons: string[] = [];
- if (!inv.job_id) reasons.push("No job assigned");
- if (!inv.cost_code_id) reasons.push("No cost code assigned");
- if (workflowSettings.require_invoice_date && !inv.invoice_date) {
- reasons.push("Missing invoice date");
- }
- if (
- workflowSettings.duplicate_detection_enabled &&
- inv.is_potential_duplicate &&
- !inv.duplicate_dismissed_at
- ) {
- reasons.push("Flagged as duplicate — review individually");
- }
- if (workflowSettings.require_budget_allocation) {
- const s = lineItemSummary.get(inv.id);
- if (!s || s.lineCount === 0 || !s.hasAllBudgetLines) {
- reasons.push("Not fully allocated to budget lines");
- }
- }
- if (workflowSettings.require_po_linkage) {
- const s = lineItemSummary.get(inv.id);
- const headerPO = !!inv.po_id;
- if (!headerPO && (!s || !s.hasAllPOs)) {
- reasons.push("No PO linked");
- }
- }
- return reasons;
- },
- [workflowSettings, lineItemSummary]
- );
-
- // Quick Approve eligibility: requires confidence threshold met, no blockers,
- // and invoice in a reviewable state.
- const isQuickApproveEligible = useCallback(
- (inv: QueueInvoice): boolean => {
- if (!workflowSettings?.quick_approve_enabled) return false;
- if (inv.confidence_score < quickApproveThreshold) return false;
- if (inv.status !== "pm_review" && inv.status !== "ai_processed") return false;
- const blockers = getApprovalBlockers(inv);
- if (blockers.length > 0) return false;
- return true;
- },
- [workflowSettings, quickApproveThreshold, getApprovalBlockers]
- );
-
- const handleQuickApprove = useCallback(
- async (inv: QueueInvoice) => {
- setQuickApproveProcessingId(inv.id);
- try {
- const res = await fetch(`/api/invoices/${inv.id}/action`, {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ action: "approve", note: "Quick approve" }),
- });
- if (!res.ok) {
- const err = await res.json().catch(() => ({}));
- setToast({ kind: "err", text: err.error ?? "Quick approve failed" });
- setTimeout(() => setToast(null), 4500);
- return;
- }
- // Animate card out, then remove from list.
- setAnimatingOutIds((prev) => new Set(prev).add(inv.id));
- setQuickApproveConfirmId(null);
- setTimeout(() => {
- setInvoices((prev) => prev.filter((i) => i.id !== inv.id));
- setAnimatingOutIds((prev) => {
- const next = new Set(prev);
- next.delete(inv.id);
- return next;
- });
- }, 300);
- setToast({
- kind: "ok",
- text: `Approved ${inv.vendor_name_raw ?? "invoice"} · ${formatCents(inv.total_amount)}`,
- });
- setTimeout(() => setToast(null), 3500);
- } finally {
- setQuickApproveProcessingId(null);
- }
- },
- []
- );
+ // Eligibility (getApprovalBlockers / isQuickApproveEligible) + the quick /
+ // batch mutation handlers now live in the shared useInvoiceApproval hook,
+ // delegating to the tested approval-eligibility module.
 
  // Unique job names for dropdown
  const jobNames = useMemo(() => {
@@ -582,154 +488,53 @@ export default function QueuePage() {
  setDateEnd("");
  };
 
- // Clear selection when filters change
- useEffect(() => {
- setSelectedIds(new Set());
- }, [search, jobFilter, pmFilter, confidenceFilter, statusFilter, amountRange, dateStart, dateEnd]);
-
- // Update indeterminate state on select-all checkbox
- useEffect(() => {
- if (selectAllRef.current) {
- const allSelected = filtered.length > 0 && filtered.every((inv) => selectedIds.has(inv.id));
- const someSelected = filtered.some((inv) => selectedIds.has(inv.id));
- selectAllRef.current.indeterminate = someSelected && !allSelected;
- }
- }, [selectedIds, filtered]);
-
- const toggleSelectAll = useCallback(() => {
- const allFilteredIds = filtered.map((inv) => inv.id);
- const allSelected = allFilteredIds.every((id) => selectedIds.has(id));
- if (allSelected) {
- setSelectedIds(new Set());
- } else {
- setSelectedIds(new Set(allFilteredIds));
- }
- }, [filtered, selectedIds]);
-
- const toggleSelect = useCallback((id: string) => {
- setSelectedIds((prev) => {
- const next = new Set(prev);
- if (next.has(id)) {
- next.delete(id);
- } else {
- next.add(id);
- }
- return next;
+ // Selection / batch / quick-approve / toast machinery — the shared hook,
+ // mounted after `filtered` so it acts on the visible set. `onMutated` REMOVES
+ // the mutated rows from this queue's list (byte-equivalent to the
+ // pre-extraction optimistic filter). `filterKey` reproduces the old
+ // clear-selection-on-filter-change effect deps.
+ const filterKey = `${search}|${jobFilter}|${pmFilter}|${confidenceFilter}|${statusFilter}|${amountRange}|${dateStart}|${dateEnd}`;
+ const {
+  selectedIds,
+  selectAllRef,
+  toggleSelect,
+  toggleSelectAll,
+  clearSelection,
+  selectedTotalCents,
+  isQuickEligible,
+  quickApproveConfirmId,
+  quickApproveProcessingId,
+  animatingOutIds,
+  startQuickApprove,
+  cancelQuickApprove,
+  confirmQuickApprove,
+  showApproveConfirm,
+  approvalEligible,
+  approvalExcluded,
+  openBatchApprove,
+  closeBatchApprove,
+  confirmBatchApprove,
+  showHoldModal,
+  holdNote,
+  openHold,
+  closeHold,
+  setHoldNote,
+  confirmHold,
+  showDenyModal,
+  denyNote,
+  openDeny,
+  closeDeny,
+  setDenyNote,
+  confirmDeny,
+  batchProcessing,
+  toast,
+ } = useInvoiceApproval<QueueInvoice>({
+  invoices: filtered,
+  workflowSettings,
+  lineItemSummary,
+  filterKey,
+  onMutated: (ids) => setInvoices((prev) => prev.filter((inv) => !ids.includes(inv.id))),
  });
- }, []);
-
- // Step 1 of batch approve: open the confirmation modal with eligibility split.
- const handleBatchApprove = useCallback(() => {
- const selected = filtered.filter((inv) => selectedIds.has(inv.id));
- const eligible: QueueInvoice[] = [];
- const excluded: Array<{ invoice: QueueInvoice; reasons: string[] }> = [];
- for (const inv of selected) {
- const reasons = getApprovalBlockers(inv);
- if (reasons.length === 0) eligible.push(inv);
- else excluded.push({ invoice: inv, reasons });
- }
- setApprovalEligible(eligible);
- setApprovalExcluded(excluded);
- setShowApproveConfirm(true);
- }, [filtered, selectedIds, getApprovalBlockers]);
-
- // Step 2: commit the approval for the eligible subset.
- const confirmBatchApprove = useCallback(async () => {
- if (approvalEligible.length === 0) {
- setShowApproveConfirm(false);
- return;
- }
- setBatchProcessing(true);
- try {
- const res = await fetch("/api/invoices/batch-action", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({
- action: "approve",
- invoice_ids: approvalEligible.map((i) => i.id),
- }),
- });
- if (res.ok) {
- const result = await res.json();
- const successSet = new Set(result.success as string[]);
- setInvoices((prev) => prev.filter((inv) => !successSet.has(inv.id)));
- setSelectedIds(new Set());
- setToast({
- kind: "ok",
- text: `Approved ${result.success.length} invoice${result.success.length !== 1 ? "s" : ""}`,
- });
- setTimeout(() => setToast(null), 3500);
- } else {
- const err = await res.json().catch(() => ({}));
- setToast({ kind: "err", text: err.error ?? "Batch approve failed" });
- setTimeout(() => setToast(null), 4500);
- }
- } finally {
- setBatchProcessing(false);
- setShowApproveConfirm(false);
- }
- }, [approvalEligible]);
-
- const handleBatchHold = useCallback(async () => {
- if (!holdNote.trim()) return;
- setBatchProcessing(true);
- setShowHoldNoteModal(false);
- try {
- const res = await fetch("/api/invoices/batch-action", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ action: "hold", invoice_ids: Array.from(selectedIds), note: holdNote.trim() }),
- });
- if (res.ok) {
- const result = await res.json();
- const successSet = new Set(result.success as string[]);
- setInvoices((prev) => prev.filter((inv) => !successSet.has(inv.id)));
- setSelectedIds(new Set());
- setHoldNote("");
- setToast({
- kind: "ok",
- text: `Held ${result.success.length} invoice${result.success.length !== 1 ? "s" : ""}`,
- });
- setTimeout(() => setToast(null), 3500);
- }
- } finally {
- setBatchProcessing(false);
- }
- }, [selectedIds, holdNote]);
-
- const handleBatchDeny = useCallback(async () => {
- if (!denyNote.trim()) return;
- setBatchProcessing(true);
- setShowDenyNoteModal(false);
- try {
- const res = await fetch("/api/invoices/batch-action", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ action: "deny", invoice_ids: Array.from(selectedIds), note: denyNote.trim() }),
- });
- if (res.ok) {
- const result = await res.json();
- const successSet = new Set(result.success as string[]);
- setInvoices((prev) => prev.filter((inv) => !successSet.has(inv.id)));
- setSelectedIds(new Set());
- setDenyNote("");
- setToast({
- kind: "ok",
- text: `Denied ${result.success.length} invoice${result.success.length !== 1 ? "s" : ""}`,
- });
- setTimeout(() => setToast(null), 3500);
- }
- } finally {
- setBatchProcessing(false);
- }
- }, [selectedIds, denyNote]);
-
- // Selected total for batch bar.
- const selectedTotalCents = useMemo(() => {
- return filtered
- .filter((inv) => selectedIds.has(inv.id))
- .reduce((sum, inv) => sum + (inv.total_amount ?? 0), 0);
- }, [filtered, selectedIds]);
 
  return (
  <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
@@ -1089,59 +894,16 @@ export default function QueuePage() {
  <div className="mt-2"><NwBadge variant="warning" size="sm">Duplicate?</NwBadge></div>
  )}
  {/* Quick Approve — mobile card */}
- {isQuickApproveEligible(inv) && (
- <div className="mt-3 pt-3 border-t border-[var(--border-default)]/60">
- {quickApproveConfirmId === inv.id ? (
- <div
- className="flex items-center justify-between gap-2"
- onClick={(e) => e.stopPropagation()}
- >
- <span className="text-xs text-[color:var(--text-secondary)] truncate">
- Approve {inv.vendor_name_raw ?? "invoice"} {formatCents(inv.total_amount)}
- {inv.jobs?.name ? ` to ${inv.jobs.name}` : ""}?
- </span>
- <div className="flex gap-2 shrink-0">
- <NwButton
- variant="ghost"
- size="sm"
- onClick={(e) => {
- e.stopPropagation();
- setQuickApproveConfirmId(null);
- }}
- disabled={quickApproveProcessingId === inv.id}
- aria-label="Cancel quick approve"
- >
- &#10007;
- </NwButton>
- <NwButton
- variant="primary"
- size="sm"
- onClick={(e) => {
- e.stopPropagation();
- handleQuickApprove(inv);
- }}
- disabled={quickApproveProcessingId === inv.id}
- loading={quickApproveProcessingId === inv.id}
- aria-label="Confirm quick approve"
- >
- {quickApproveProcessingId === inv.id ? "" : "\u2713 Yes"}
- </NwButton>
- </div>
- </div>
- ) : (
- <NwButton
- variant="primary"
- size="md"
- className="w-full"
- onClick={(e) => {
- e.stopPropagation();
- setQuickApproveConfirmId(inv.id);
- }}
- >
- Quick Approve
- </NwButton>
- )}
- </div>
+ {isQuickEligible(inv) && (
+ <QuickApproveControl
+  inv={inv}
+  variant="card"
+  confirming={quickApproveConfirmId === inv.id}
+  processing={quickApproveProcessingId === inv.id}
+  onStartConfirm={() => startQuickApprove(inv.id)}
+  onCancel={cancelQuickApprove}
+  onConfirm={() => confirmQuickApprove(inv)}
+ />
  )}
  </div>
  ))}
@@ -1320,40 +1082,17 @@ export default function QueuePage() {
  </td>
  {quickApproveEnabled && (
  <td className="py-4 px-3 w-40" onClick={(e) => e.stopPropagation()}>
- {isQuickApproveEligible(inv) ? (
- quickApproveConfirmId === inv.id ? (
- <div className="flex gap-1 items-center justify-end">
- <NwButton
- variant="ghost"
- size="sm"
- onClick={() => setQuickApproveConfirmId(null)}
- disabled={quickApproveProcessingId === inv.id}
- aria-label="Cancel quick approve"
- >
- &#10007;
- </NwButton>
- <NwButton
- variant="primary"
- size="sm"
- onClick={() => handleQuickApprove(inv)}
- disabled={quickApproveProcessingId === inv.id}
- loading={quickApproveProcessingId === inv.id}
- aria-label="Confirm quick approve"
- >
- {quickApproveProcessingId === inv.id ? "" : "\u2713 Yes"}
- </NwButton>
- </div>
- ) : (
- <NwButton
- variant="primary"
- size="sm"
- className="w-full"
- onClick={() => setQuickApproveConfirmId(inv.id)}
- >
- Quick Approve
- </NwButton>
- )
- ) : null}
+  {isQuickEligible(inv) ? (
+  <QuickApproveControl
+   inv={inv}
+   variant="row"
+   confirming={quickApproveConfirmId === inv.id}
+   processing={quickApproveProcessingId === inv.id}
+   onStartConfirm={() => startQuickApprove(inv.id)}
+   onCancel={cancelQuickApprove}
+   onConfirm={() => confirmQuickApprove(inv)}
+  />
+  ) : null}
  </td>
  )}
  </tr>
@@ -1367,220 +1106,52 @@ export default function QueuePage() {
  )}
  {/* Floating batch action bar */}
  {batchEnabled && selectedIds.size > 0 && (
- <div className="fixed bottom-0 left-0 right-0 z-50 bg-[rgba(91,134,153,0.1)] backdrop-blur-sm border-t border-[var(--border-default)] px-4 py-3 animate-fade-up">
- <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
- <div className="flex items-baseline justify-between sm:justify-start gap-3">
- <span className="text-sm text-[color:var(--text-primary)] font-medium">
- {selectedIds.size} selected
- </span>
- <span className="text-xs text-[color:var(--text-secondary)]">
- Total: <span className="text-[color:var(--text-primary)] font-mono font-medium tabular-nums">{formatCents(selectedTotalCents)}</span>
- </span>
- <button
- onClick={() => setSelectedIds(new Set())}
- className="sm:hidden text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] underline underline-offset-2"
- >
- Clear
- </button>
- </div>
- <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-2">
- <div className="hidden sm:inline-flex">
- <NwButton variant="ghost" size="md" onClick={() => setSelectedIds(new Set())}>
- Clear Selection
- </NwButton>
- </div>
- <NwButton
- variant="secondary"
- size="md"
- onClick={() => { setHoldNote(""); setShowHoldNoteModal(true); }}
- disabled={batchProcessing}
- >
- <span className="sm:hidden">Hold</span>
- <span className="hidden sm:inline">Hold All</span>
- </NwButton>
- <NwButton
- variant="danger"
- size="md"
- onClick={() => { setDenyNote(""); setShowDenyNoteModal(true); }}
- disabled={batchProcessing}
- >
- <span className="sm:hidden">Deny</span>
- <span className="hidden sm:inline">Deny All</span>
- </NwButton>
- <NwButton
- variant="primary"
- size="md"
- onClick={handleBatchApprove}
- disabled={batchProcessing}
- loading={batchProcessing}
- >
- <span className="sm:hidden">Approve</span>
- <span className="hidden sm:inline">Approve All</span>
- </NwButton>
- </div>
- </div>
- </div>
+ <BatchActionBar
+  count={selectedIds.size}
+  totalCents={selectedTotalCents}
+  processing={batchProcessing}
+  onClearSelection={clearSelection}
+  onHold={openHold}
+  onDeny={openDeny}
+  onApprove={openBatchApprove}
+ />
  )}
 
  {/* Toast */}
- {toast && (
- <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[70] animate-fade-up">
- <div className={`px-5 py-3 border shadow-lg text-sm font-medium ${toast.kind === "ok" ? "bg-[var(--nw-success)] text-nw-white-sand border-[rgba(74,138,111,0.5)]" : "bg-[var(--nw-danger)] text-nw-white-sand border-[rgba(176,85,78,0.5)]"}`}>
- {toast.text}
- </div>
- </div>
- )}
+ <ApprovalToast toast={toast} />
 
- {/* Hold Note Modal */}
- {showHoldNoteModal && (
- <div className="fixed inset-0 z-[60] flex items-center justify-center bg-nw-slate-deep/60 backdrop-blur-sm px-4">
- <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-md animate-fade-up">
- <h3 className="font-display text-lg text-[color:var(--text-primary)] mb-1">Batch Hold</h3>
- <p className="text-sm text-[color:var(--text-secondary)] mb-4">
- Hold {selectedIds.size} invoice{selectedIds.size !== 1 ? "s" : ""}. Add a note explaining why.
- </p>
- <Textarea
- value={holdNote}
- onChange={(e) => setHoldNote(e.target.value)}
- placeholder="Add a note (required)..."
- className="resize-none"
- minRows={4}
- autoFocus
+ {/* Batch Hold / Deny note modals */}
+ <BatchNoteModal
+  open={showHoldModal}
+  variant="hold"
+  count={selectedIds.size}
+  note={holdNote}
+  processing={batchProcessing}
+  onNoteChange={setHoldNote}
+  onCancel={closeHold}
+  onConfirm={confirmHold}
  />
- <div className="flex gap-2 mt-4">
- <button
- onClick={() => setShowHoldNoteModal(false)}
- className="flex-1 px-4 py-2.5 text-sm text-[color:var(--text-secondary)] border border-[var(--border-default)] hover:text-[color:var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
- >
- Cancel
- </button>
- <button
- onClick={handleBatchHold}
- disabled={!holdNote.trim() || batchProcessing}
- className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--nw-warn)] text-[color:var(--bg-page)] hover:bg-[rgba(201,138,59,0.85)] transition-colors disabled:opacity-50"
- >
- Hold
- </button>
- </div>
- </div>
- </div>
- )}
 
- {/* Deny Note Modal */}
- {showDenyNoteModal && (
- <div className="fixed inset-0 z-[60] flex items-center justify-center bg-nw-slate-deep/60 backdrop-blur-sm px-4">
- <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-md animate-fade-up">
- <h3 className="font-display text-lg text-[color:var(--text-primary)] mb-1">Batch Deny</h3>
- <p className="text-sm text-[color:var(--text-secondary)] mb-4">
- Deny {selectedIds.size} invoice{selectedIds.size !== 1 ? "s" : ""}. A reason is required and will apply to each.
- </p>
- <Textarea
- value={denyNote}
- onChange={(e) => setDenyNote(e.target.value)}
- placeholder="Reason for denial (required)..."
- className="resize-none"
- minRows={4}
- autoFocus
+ <BatchNoteModal
+  open={showDenyModal}
+  variant="deny"
+  count={selectedIds.size}
+  note={denyNote}
+  processing={batchProcessing}
+  onNoteChange={setDenyNote}
+  onCancel={closeDeny}
+  onConfirm={confirmDeny}
  />
- <div className="flex gap-2 mt-4">
- <button
- onClick={() => setShowDenyNoteModal(false)}
- className="flex-1 px-4 py-2.5 text-sm text-[color:var(--text-secondary)] border border-[var(--border-default)] hover:text-[color:var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
- >
- Cancel
- </button>
- <button
- onClick={handleBatchDeny}
- disabled={!denyNote.trim() || batchProcessing}
- className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--nw-danger)] text-nw-white-sand hover:bg-[var(--nw-danger)]/90 transition-colors disabled:opacity-50"
- >
- Deny
- </button>
- </div>
- </div>
- </div>
- )}
 
  {/* Approve Confirmation Modal */}
- {showApproveConfirm && (
- <div className="fixed inset-0 z-[60] flex items-center justify-center bg-nw-slate-deep/60 backdrop-blur-sm px-4">
- <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-xl animate-fade-up">
- <h3 className="font-display text-lg text-[color:var(--text-primary)] mb-1">
- {approvalExcluded.length === 0
- ? `Approve ${approvalEligible.length} invoice${approvalEligible.length !== 1 ? "s" : ""}?`
- : `${approvalEligible.length} of ${approvalEligible.length + approvalExcluded.length} invoices can be batch approved`}
- </h3>
- <p className="text-sm text-[color:var(--text-secondary)] mb-4">
- {approvalEligible.length > 0 && (
- <>Total: <span className="text-[color:var(--text-primary)] font-mono font-medium tabular-nums">{formatCents(approvalEligible.reduce((s, i) => s + i.total_amount, 0))}</span></>
- )}
- </p>
-
- {approvalEligible.length > 0 && (
- <div className="mb-4">
- <div className="text-[11px] tracking-[0.08em] uppercase text-[color:var(--text-secondary)] mb-2">Will be approved</div>
- <div className="max-h-48 overflow-y-auto space-y-1.5">
- {approvalEligible.map((inv) => (
- <div key={inv.id} className="flex items-center justify-between px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-default)] text-sm">
- <div className="min-w-0 truncate">
- <span className="text-[color:var(--text-primary)]">{inv.vendor_name_raw ?? "Unknown"}</span>
- {inv.jobs?.name && (
- <span className="ml-2 text-[color:var(--text-secondary)] text-xs">{inv.jobs.name}</span>
- )}
- </div>
- <span className="text-[color:var(--text-primary)] font-mono tabular-nums ml-2 shrink-0">{formatCents(inv.total_amount)}</span>
- </div>
- ))}
- </div>
- </div>
- )}
-
- {approvalExcluded.length > 0 && (
- <div className="mb-4">
- <div className="text-[11px] tracking-[0.08em] uppercase text-[color:var(--nw-danger)] mb-2">
- Excluded from batch ({approvalExcluded.length})
- </div>
- <div className="max-h-48 overflow-y-auto space-y-1.5">
- {approvalExcluded.map(({ invoice, reasons }) => (
- <div key={invoice.id} className="px-3 py-2 bg-[rgba(176,85,78,0.12)] border border-[rgba(176,85,78,0.35)] text-sm">
- <div className="flex items-center justify-between gap-2">
- <span className="text-[color:var(--text-primary)] truncate">{invoice.vendor_name_raw ?? "Unknown"}</span>
- <span className="text-[color:var(--text-secondary)] font-mono tabular-nums text-xs shrink-0">{formatCents(invoice.total_amount)}</span>
- </div>
- <div className="text-xs text-[color:var(--nw-danger)] mt-1">
- {reasons.join(" · ")}
- </div>
- </div>
- ))}
- </div>
- <p className="text-xs text-[color:var(--text-secondary)] mt-2">
- Open these invoices individually to fix the issues, then try again.
- </p>
- </div>
- )}
-
- <div className="flex gap-2 mt-4">
- <button
- onClick={() => setShowApproveConfirm(false)}
- className="flex-1 px-4 py-2.5 text-sm text-[color:var(--text-secondary)] border border-[var(--border-default)] hover:text-[color:var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
- >
- Cancel
- </button>
- <button
- onClick={confirmBatchApprove}
- disabled={approvalEligible.length === 0 || batchProcessing}
- className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--nw-success)] text-nw-white-sand hover:bg-[var(--nw-success)]/90 transition-colors disabled:opacity-50"
- >
- {batchProcessing
- ? "Processing..."
- : approvalEligible.length > 0
- ? `Approve ${approvalEligible.length} invoice${approvalEligible.length !== 1 ? "s" : ""}`
- : "Nothing to approve"}
- </button>
- </div>
- </div>
- </div>
- )}
+ <BatchApproveConfirmModal
+  open={showApproveConfirm}
+  eligible={approvalEligible}
+  excluded={approvalExcluded}
+  processing={batchProcessing}
+  onCancel={closeBatchApprove}
+  onConfirm={confirmBatchApprove}
+ />
  </main>
  );
 }

@@ -12,6 +12,28 @@ import NwBadge, { type BadgeVariant } from "@/components/nw/Badge";
 import NwMoney from "@/components/nw/Money";
 import NwButton from "@/components/nw/Button";
 import { rowClickIntent } from "@/lib/utils/row-nav";
+// 3.2 ONE QUEUE — the PM approval machinery folded in from the retired PM
+// Queue, driven by the same shared hook + components + tested eligibility
+// module. Only surfaces on the To Review (PM) stage for pm_review/ai_processed
+// rows; the server (batch-action / action routes) is the real gate.
+import { useInvoiceApproval } from "@/components/invoices/useInvoiceApproval";
+import type { ApprovalWorkflowSettings } from "@/lib/invoices/approval-eligibility";
+import QuickApproveControl from "@/components/invoices/QuickApproveControl";
+import BatchActionBar from "@/components/invoices/BatchActionBar";
+import BatchNoteModal from "@/components/invoices/BatchNoteModal";
+import BatchApproveConfirmModal from "@/components/invoices/BatchApproveConfirmModal";
+import ApprovalToast from "@/components/invoices/ApprovalToast";
+
+/** Full workflow settings the list needs: the module-shaped eligibility fields
+ * plus the batch kill-switch (which the module doesn't read). */
+type ListWorkflowSettings = ApprovalWorkflowSettings & { batch_approval_enabled: boolean };
+
+/** Statuses on which PM Quick-Approve / batch approve are offered (STATUS 3b:
+ * "quick/batch only on pm_review/ai_processed"). Aligns with the server's
+ * REVIEWABLE happy-path so the client preview never over-promises. */
+function isActionableStatus(status: string): boolean {
+  return status === "pm_review" || status === "ai_processed";
+}
 
 function invoiceBadgeVariant(status: string): BadgeVariant {
  if (["pm_approved", "qa_approved", "pushed_to_qb", "in_draw", "paid", "approved", "complete"].includes(status)) return "success";
@@ -47,6 +69,16 @@ interface Invoice {
  assigned_pm: { id: string; full_name: string } | null;
  /** Set by client after fetching per-invoice line-item splits. */
  line_item_cost_codes?: string[];
+ // 3.2 approval-eligibility fields (returned by /api/invoices/list step-1 field
+ // parity). Optional so the MINIMAL fallback shape (which omits po_id /
+ // is_potential_duplicate / duplicate_dismissed_at) stays assignable; the
+ // eligibility gates treat missing fields as falsy, matching the queue.
+ job_id: string | null;
+ cost_code_id: string | null;
+ po_id?: string | null;
+ is_potential_duplicate?: boolean | null;
+ duplicate_dismissed_at?: string | null;
+ line_item_summary?: { hasAllBudgetLines: boolean; hasAllPOs: boolean; lineCount: number };
 }
 
 function isUnknownVendor(inv: Pick<Invoice, "vendor_id" | "vendor_name_raw">): boolean {
@@ -136,6 +168,9 @@ export default function AllInvoicesPage() {
  // actual data counts, not a stored onboarding flag.
  const [setupCounts, setSetupCounts] = useState<{ costCodes: number; jobs: number }>({ costCodes: 0, jobs: 0 });
  const [loading, setLoading] = useState(true);
+ // 3.2 workflow settings — gates the folded-in Quick-Approve / batch machinery
+ // (batch_approval_enabled + quick_approve_enabled + the eligibility gates).
+ const [workflowSettings, setWorkflowSettings] = useState<ListWorkflowSettings | null>(null);
  // 3.1 ONE DOOR — a single upload surface hosts Upload / Manual / Import. The
  // ?action=import deep-link opens that door in import mode (no separate modal).
  const [uploadOpen, setUploadOpen] = useState(
@@ -154,7 +189,12 @@ export default function AllInvoicesPage() {
  // editing pending Jake's call on whether to restore it as a view.)
  const [activeTab] = useState<"all" | "payment">("all");
  const [stageTab, setStageTab] = useState<StageTab>("to_review");
- const [reviewSub, setReviewSub] = useState<"all" | "pm" | "qa">("all");
+ // 3.2 retire — the old PM Queue URL redirects here with ?review=pm so the
+ // landing view is the PM Review sub-view (closest equivalent to the queue).
+ const [reviewSub, setReviewSub] = useState<"all" | "pm" | "qa">(() => {
+ const r = searchParams.get("review");
+ return r === "pm" || r === "qa" ? r : "all";
+ });
 
  // Inline editing for payment tracking
  const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
@@ -195,6 +235,37 @@ export default function AllInvoicesPage() {
  .then((r) => (r.ok ? r.json() : null))
  .then((s) => { if (s) setSetupCounts({ costCodes: s.costCodes ?? 0, jobs: s.jobs ?? 0 }); })
  .catch(() => {});
+ // Workflow settings gate the folded-in approval machinery. Fire-and-forget
+ // (never blocks the list render); on any failure fall back to the same
+ // permissive RB-style defaults the PM Queue used.
+ const RB_DEFAULT_SETTINGS: ListWorkflowSettings = {
+ batch_approval_enabled: true,
+ quick_approve_enabled: true,
+ quick_approve_min_confidence: 95,
+ require_invoice_date: true,
+ require_budget_allocation: false,
+ require_po_linkage: false,
+ duplicate_detection_enabled: true,
+ };
+ fetch("/api/workflow-settings")
+ .then((r) => (r.ok ? r.json() : null))
+ .then((d) => {
+ const s = d?.settings;
+ setWorkflowSettings(
+ s
+ ? {
+ batch_approval_enabled: s.batch_approval_enabled,
+ quick_approve_enabled: s.quick_approve_enabled,
+ quick_approve_min_confidence: s.quick_approve_min_confidence,
+ require_invoice_date: s.require_invoice_date,
+ require_budget_allocation: s.require_budget_allocation,
+ require_po_linkage: s.require_po_linkage,
+ duplicate_detection_enabled: s.duplicate_detection_enabled,
+ }
+ : RB_DEFAULT_SETTINGS,
+ );
+ })
+ .catch(() => setWorkflowSettings(RB_DEFAULT_SETTINGS));
  // Invoices + PM dropdown, loaded SERVER-SIDE via /api/invoices/list.
  // Root-cause fix for the ~15s hang: the previous client-side supabase-js
  // load blocked on getSession()/auth-init, which can strand and never
@@ -326,6 +397,81 @@ export default function AllInvoicesPage() {
  return sortDir === "asc" ? cmp : -cmp;
  });
  }, [invoices, stageTab, reviewSub, search, selectedJobId, pmFilter, confidenceFilter, statusFilters, amountRange, dateStart, dateEnd, sortKey, sortDir]);
+
+ // ── 3.2 approval machinery (folded-in PM Queue) ──────────────────────────
+ // Only the To Review (PM) stage offers approval; the QA sub-view is
+ // accounting's, and Needs Attention / Ready for Draw aren't PM-approvable.
+ const showApprovalUI = stageTab === "to_review" && reviewSub !== "qa";
+ const batchEnabled = showApprovalUI && (workflowSettings?.batch_approval_enabled ?? false);
+ const quickApproveEnabled = showApprovalUI && (workflowSettings?.quick_approve_enabled ?? false);
+
+ // The actionable subset of the visible rows (pm_review / ai_processed) — the
+ // hook selects / batches / counts only these.
+ const actionableInvoices = useMemo(
+ () => (showApprovalUI ? filtered.filter((inv) => isActionableStatus(inv.status)) : []),
+ [showApprovalUI, filtered],
+ );
+
+ // Per-invoice budget-line / PO coverage keyed by id (from the list route's
+ // step-1 line_item_summary) — feeds the eligibility gates without a client
+ // query, keeping the list on its server-route load path (auth-strand rule).
+ const lineItemSummary = useMemo(() => {
+ const m = new Map<string, { hasAllBudgetLines: boolean; hasAllPOs: boolean; lineCount: number }>();
+ for (const inv of invoices) {
+ if (inv.line_item_summary) m.set(inv.id, inv.line_item_summary);
+ }
+ return m;
+ }, [invoices]);
+
+ const approvalFilterKey = `${stageTab}|${reviewSub}|${search}|${selectedJobId ?? ""}|${pmFilter}|${confidenceFilter}|${Array.from(statusFilters).sort().join(",")}|${amountRange}|${dateStart}|${dateEnd}`;
+
+ const {
+  selectedIds,
+  selectAllRef,
+  toggleSelect,
+  toggleSelectAll,
+  clearSelection,
+  selectedTotalCents,
+  isQuickEligible,
+  quickApproveConfirmId,
+  quickApproveProcessingId,
+  animatingOutIds,
+  startQuickApprove,
+  cancelQuickApprove,
+  confirmQuickApprove,
+  showApproveConfirm,
+  approvalEligible,
+  approvalExcluded,
+  openBatchApprove,
+  closeBatchApprove,
+  confirmBatchApprove,
+  showHoldModal,
+  holdNote,
+  openHold,
+  closeHold,
+  setHoldNote,
+  confirmHold,
+  showDenyModal,
+  denyNote,
+  openDeny,
+  closeDeny,
+  setDenyNote,
+  confirmDeny,
+  batchProcessing,
+  toast,
+ } = useInvoiceApproval<Invoice>({
+  invoices: actionableInvoices,
+  workflowSettings,
+  lineItemSummary,
+  filterKey: approvalFilterKey,
+  // The list is a permanent multi-stage view — advance the mutated row's
+  // status in place (it moves to the correct stage tab / count) rather than
+  // dropping it entirely as the transient PM Queue did.
+  onMutated: (ids, action) => {
+   const target = action === "hold" ? "pm_held" : action === "deny" ? "pm_denied" : "qa_review";
+   setInvoices((prev) => prev.map((inv) => (ids.includes(inv.id) ? { ...inv, status: target } : inv)));
+  },
+ });
 
  const toggleSort = (key: SortKey) => {
  if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -634,11 +780,23 @@ export default function AllInvoicesPage() {
  )}
 
  {filtered.length > 0 && (
- <div className="overflow-x-auto border border-[var(--border-default)] animate-fade-up">
+ <div className={`overflow-x-auto border border-[var(--border-default)] animate-fade-up ${selectedIds.size > 0 ? "mb-20" : ""}`}>
  <table className="w-full min-w-[1350px] text-sm">
  <thead>
  <tr className="bg-[var(--bg-subtle)] text-left">
- <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors sticky left-0 bg-[var(--bg-subtle)] z-10" onClick={() => toggleSort("vendor")}>
+ {batchEnabled && (
+ <th className="py-3 px-3 w-10 sticky left-0 bg-[var(--bg-subtle)] z-10">
+ <input
+ ref={selectAllRef}
+ type="checkbox"
+ checked={actionableInvoices.length > 0 && actionableInvoices.every((inv) => selectedIds.has(inv.id))}
+ onChange={toggleSelectAll}
+ className="w-4 h-4 accent-[var(--nw-stone-blue)] cursor-pointer"
+ aria-label="Select all actionable invoices"
+ />
+ </th>
+ )}
+ <th className={`py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em] cursor-pointer select-none hover:text-[var(--text-accent)] transition-colors sticky ${batchEnabled ? "left-10" : "left-0"} bg-[var(--bg-subtle)] z-10`} onClick={() => toggleSort("vendor")}>
  Vendor<SortArrow active={sortKey === "vendor"} dir={sortDir} />
  </th>
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Inv #</th>
@@ -660,19 +818,33 @@ export default function AllInvoicesPage() {
  Days Out<SortArrow active={sortKey === "aging"} dir={sortDir} />
  </th>
  <th className="py-3 px-4 text-[10px] text-[var(--text-tertiary)] font-mono font-medium uppercase tracking-[0.14em]">Payment</th>
+ {quickApproveEnabled && <th className="py-3 px-4 w-40" />}
  </tr>
  </thead>
  <tbody>
  {filtered.map((inv) => (
  <tr key={inv.id}
  onClick={(e) => { if (rowClickIntent(e, `/invoices/${inv.id}`) === "nav") router.push(`/invoices/${inv.id}`); }}
- className="group border-t border-[var(--border-default)] hover:bg-[var(--bg-muted)] transition-colors cursor-pointer">
+ className={`group border-t border-[var(--border-default)] hover:bg-[var(--bg-muted)] transition-colors cursor-pointer ${selectedIds.has(inv.id) ? "bg-[rgba(91,134,153,0.08)]" : ""} ${animatingOutIds.has(inv.id) ? "opacity-0" : ""}`}>
+ {batchEnabled && (
+ <td className="py-3 px-3 w-10 sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-muted)] z-[1]" onClick={(e) => e.stopPropagation()}>
+ {isActionableStatus(inv.status) ? (
+ <input
+ type="checkbox"
+ checked={selectedIds.has(inv.id)}
+ onChange={() => toggleSelect(inv.id)}
+ className="w-4 h-4 accent-[var(--nw-stone-blue)] cursor-pointer"
+ aria-label="Select invoice for batch action"
+ />
+ ) : null}
+ </td>
+ )}
  {/* Row semantics (audit 3.5): the whole row opens the invoice
  (mouse). Vendor is plain text — no longer the overloaded open
  target. Keyboard / screen-reader / Cmd-click open semantics live
  on the real <Link> in the Inv # cell below; the <tr> keeps its
  implicit `row` role rather than masquerading as a link. */}
- <td className="py-3 px-4 text-[var(--text-primary)] font-medium sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-muted)] z-[1]">
+ <td className={`py-3 px-4 text-[var(--text-primary)] font-medium sticky ${batchEnabled ? "left-10" : "left-0"} bg-[var(--bg-card)] group-hover:bg-[var(--bg-muted)] z-[1]`}>
  <span className="inline-flex items-center gap-2">
  {inv.vendor_name_raw ?? "Unknown"}
  {inv.document_type === "receipt" && (
@@ -776,6 +948,21 @@ export default function AllInvoicesPage() {
  })()}
  </td>
  <td className="py-3 px-4 text-[var(--text-secondary)] text-xs">{formatDate(inv.payment_date)}</td>
+ {quickApproveEnabled && (
+ <td className="py-3 px-4 w-40" onClick={(e) => e.stopPropagation()}>
+ {isQuickEligible(inv) ? (
+ <QuickApproveControl
+ inv={inv}
+ variant="row"
+ confirming={quickApproveConfirmId === inv.id}
+ processing={quickApproveProcessingId === inv.id}
+ onStartConfirm={() => startQuickApprove(inv.id)}
+ onCancel={cancelQuickApprove}
+ onConfirm={() => confirmQuickApprove(inv)}
+ />
+ ) : null}
+ </td>
+ )}
  </tr>
  ))}
  </tbody>
@@ -882,6 +1069,48 @@ export default function AllInvoicesPage() {
  </>
  )}
  </main>
+ {/* 3.2 folded-in approval machinery — floating batch bar + note/confirm
+ modals + toast, driven by the shared useInvoiceApproval hook. */}
+ {batchEnabled && selectedIds.size > 0 && (
+ <BatchActionBar
+ count={selectedIds.size}
+ totalCents={selectedTotalCents}
+ processing={batchProcessing}
+ onClearSelection={clearSelection}
+ onHold={openHold}
+ onDeny={openDeny}
+ onApprove={openBatchApprove}
+ />
+ )}
+ <BatchNoteModal
+ open={showHoldModal}
+ variant="hold"
+ count={selectedIds.size}
+ note={holdNote}
+ processing={batchProcessing}
+ onNoteChange={setHoldNote}
+ onCancel={closeHold}
+ onConfirm={confirmHold}
+ />
+ <BatchNoteModal
+ open={showDenyModal}
+ variant="deny"
+ count={selectedIds.size}
+ note={denyNote}
+ processing={batchProcessing}
+ onNoteChange={setDenyNote}
+ onCancel={closeDeny}
+ onConfirm={confirmDeny}
+ />
+ <BatchApproveConfirmModal
+ open={showApproveConfirm}
+ eligible={approvalEligible}
+ excluded={approvalExcluded}
+ processing={batchProcessing}
+ onCancel={closeBatchApprove}
+ onConfirm={confirmBatchApprove}
+ />
+ <ApprovalToast toast={toast} />
  <InvoiceUploadModal
  open={uploadOpen}
  initialMode={uploadMode}

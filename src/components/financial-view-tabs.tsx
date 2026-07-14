@@ -13,13 +13,14 @@ export type FinancialView =
 
 // Gate-2 strip (2026-07): Payments / Aging / Liens tabs removed — their targets
 // (/financials/{payments,aging,lien-releases}, via the /invoices/* + aging-report
-// redirects) are now 404'd by the extended FINANCIALS_F1_VIEWS gate. Kept:
-// Invoices / Queue / QA / Draws. The FinancialView type retains the removed keys
-// so any stripped page's `active` prop still typechecks (those pages no longer
-// render — middleware 404). Un-hide = re-add the entries.
+// redirects) are now 404'd by the extended FINANCIALS_F1_VIEWS gate.
+// 3.2 ONE QUEUE (2026-07): the "Queue" tab removed — the PM review queue folded
+// into the Invoices list (which carries Quick-Approve + batch via the shared
+// hook) and /financials/bills/queue now redirects there. Kept: Invoices / QA.
+// The FinancialView type retains the removed keys so any stripped/orphaned
+// page's `active` prop still typechecks. Un-hide = re-add the entries.
 const TABS: { key: FinancialView; label: string; href: string }[] = [
   { key: "invoices", label: "Invoices", href: "/invoices" },
-  { key: "queue", label: "Queue", href: "/invoices/queue" },
   { key: "qa", label: "QA", href: "/invoices/qa" },
 ];
 
