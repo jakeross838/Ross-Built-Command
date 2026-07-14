@@ -835,7 +835,10 @@ export async function GET(
  // ── Generate buffer and return ──
  const buffer = await wb.xlsx.writeBuffer();
  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
- const filename = `${jobName}_Pay_App_${drawNum}_${dateStr}.xlsx`;
+ // Content-Disposition is a ByteString (latin1) — sanitize non-ASCII (e.g. the
+ // em-dash in "Sample Client B — 456 Demo Ave") so the header never throws.
+ // Pre-existing bug surfaced by the NEW-2 export verify; not draw math.
+ const filename = `${jobName}_Pay_App_${drawNum}_${dateStr}.xlsx`.replace(/[^\x20-\x7E]/g, "-");
 
  return new NextResponse(buffer as ArrayBuffer, {
  status: 200,

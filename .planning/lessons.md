@@ -513,3 +513,9 @@ The May-28 interaction-bug truth table varied deploy (source) × env-var (config
 **Reinforcement going forward:** For any autonomous chain whose terminal step is a live production financial mutation: (1) the chain stops at the dry-run, surfaces the dry-run reconciliation + the exact apply command, and awaits an explicit apply-go — the prior "in sequence" authorization does not carry through the apply; (2) if any intermediate step requires authoring Jake/Andrew-reserved financial data, the chain halts for that input regardless of upstream authorization. Note this is not a carelessness finding — the nwrp290 run was careful (dry-run, cent-exact verification, residue cleanup, and it caught its own gap). It is about WHERE the human checkpoint sits on live financial writes. Feeds the next PIPELINE-TIERING-REVIEW + a proposed CLAUDE.md Workflow-posture rule.
 
 ---
+
+### Lesson 12 — parallel dev servers must never share a `.next` build dir; force-killing one corrupts the other (captured 2026-07-14, NEW-2 doc-gen pass)
+
+The `.next` corruption that blocked the NEW-2 document-render verifications (`Cannot find module './4894.js'` 500s on every changed-route recompile) traces to session 1's Jake-authorized `Stop-Process -Force` on a leftover `:3100` dev server sharing the default `.next` cache with `:3000` — the never-kill rule's exact failure mode. Fix + rule: a second/parallel Next dev server gets its OWN build dir (e.g. `NEXT_DIST_DIR` / a distinct `distDir`), never the shared `.next`; and prefer a terminal-owned restart over a force-kill whenever a shared build cache is involved. (A `rm -rf .next` + clean restart cleared it.)
+
+---
