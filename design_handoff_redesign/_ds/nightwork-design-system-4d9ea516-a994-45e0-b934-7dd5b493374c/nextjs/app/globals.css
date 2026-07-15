@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Slate palette (also exposed as Tailwind colors) */
+    --slate-tile:   #3B5864;
+    --slate-deep:   #1A2830;
+    --slate-deeper: #132028;
+    --stone-blue:   #5B8699;
+    --gulf-blue:    #4E7A8C;
+    --oceanside:    #CBD8DB;
+    --white-sand:   #F7F5EC;
+    --nw-warn:      #C98A3B;
+    --nw-success:   #4A8A6F;
+    --nw-danger:    #B0554E;
+
+    /* Borders & surfaces */
+    --bd:      rgba(59,88,100,0.15);
+    --bd-soft: rgba(59,88,100,0.08);
+    --bd-str:  rgba(59,88,100,0.30);
+
+    /* Easing — use everywhere */
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+    /* shadcn HSL bridges (lets shadcn components match the Slate palette) */
+    --background: 50 50% 95%;        /* white-sand */
+    --foreground: 198 27% 31%;       /* slate-tile */
+    --primary: 197 30% 14%;          /* slate-deep */
+    --primary-foreground: 50 50% 95%;
+    --secondary: 198 25% 48%;        /* stone-blue */
+    --secondary-foreground: 50 50% 95%;
+    --border: 198 27% 31% / 0.15;
+    --ring: 198 25% 48%;
+    --muted: 50 50% 92%;
+    --muted-foreground: 198 18% 50%;
+    --radius: 0;
+  }
+
+  * @apply border-[color:var(--bd)]; box-sizing: border-box; }
+  html, body { margin: 0; background: var(--white-sand); color: var(--slate-tile); }
+  body { font-family: var(--font-inter), system-ui, sans-serif; -webkit-font-smoothing: antialiased; opacity: 0; animation: bootIn 0.5s cubic-bezier(0.22,1,0.36,1) 0.05s forwards; }
+  @keyframes bootIn { to { opacity: 1; } }
+  @keyframes pulse-dot { 0%, 100% { opacity: 1; transform: translateY(-50%) scale(1); } 50% { opacity: 0.5; transform: translateY(-50%) scale(1.4); } }
+
+  /* Selection */
+  ::selection { background: var(--stone-blue); color: var(--white-sand); }
+
+  /* Money / numerics class */
+  .tabular { font-variant-numeric: tabular-nums; font-family: var(--font-mono), monospace; }
+}

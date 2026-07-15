@@ -1,0 +1,46 @@
+# Design handoff — import inventory & provenance
+
+**Source:** Claude Design project **"Construction Invoice Redesign"** — `https://claude.ai/design/p/3be86e57-60da-4e42-8fb1-398525ca8fd8` (owner: Jake).
+**Imported:** 2026-07-15 via the `DesignSync` MCP (`/design-login` scope).
+**This pass implements ONLY screen 02 (Invoice Review).** The rest is imported for reference/future propagation.
+
+The two BINDING artifacts required by the handoff task are both present in `README.md`:
+- **(a) Label → status map** — `## Label → status map` section.
+- **(b) Allocation grid — Excel interaction spec** — `## Allocation grid — Excel interaction spec` section.
+
+## Full project inventory
+
+| Project path | Kind | Mirrored to git here? | Note |
+|---|---|---|---|
+| `README.md` | spec | ✅ yes | The binding handoff spec (both binding artifacts). |
+| `02 Invoice Review.dc.html` | frame | ✅ yes | **The reference screen** — this pass's target. |
+| `02 Variations.dc.html` | frame | ✅ yes | Design-exploration variants (Budget/PO-remain column studies). Canonical = `02 Invoice Review`. |
+| `Nav.dc.html` | frame | ✅ yes | Shared top nav (imported by 02 via `<dc-import name="Nav">`). |
+| `support.js` | runtime | ✅ yes | dc-runtime (loads React/ReactDOM/Babel from unpkg). Needed to render locally. |
+| `_ds/…/colors_and_type.css` | tokens | ✅ yes | Slate palette + type + component classes. |
+| `_ds/…/nextjs/app/globals.css` | tokens | ✅ yes | Tailwind base + shadcn HSL bridges. |
+| `_ds/…/_ds_bundle.js` | runtime | ✅ yes | DS component bundle + DCLogic. Needed to render locally. |
+| `01 Invoices.dc.html` | frame | ⛔ not yet | Queue/landing. In claude.ai project; pull on demand for propagation. |
+| `03 Upload Invoice.dc.html` | frame | ⛔ not yet | Upload modal (3 modes). |
+| `04 Draws.dc.html` | frame | ⛔ not yet | Draw list. |
+| `05 Draw Wizard.dc.html` | frame | ⛔ not yet | Create-draw wizard (G703 grid). |
+| `06 Draw Detail.dc.html` | frame | ⛔ not yet | Pay app G702/G703. |
+| `07 Job.dc.html` | frame | ⛔ not yet | Job overview + new-job drawer. |
+| `08 Cost Codes.dc.html` | frame | ⛔ not yet | Settings › cost codes. |
+| `* -print-*.dc.html` (×8) | print frames | ⛔ not yet | Print-CSS variants of each screen. |
+| `_ds/…/README.md`, `_adherence.oxlintrc.json`, `_ds_manifest.json` | DS meta | ⛔ not yet | Design-system metadata. |
+| `uploads/nw design pages/1–8.PNG` | screenshots | ⛔ cannot (cap) | Rendered page screenshots. `get_file` caps at 256 KiB → larger PNGs truncate to a corrupt image. Not mirrorable via DesignSync read. |
+| `uploads/draw-*.png` | screenshot | ⛔ cannot (cap) | Same 256 KiB-cap limitation. |
+
+## Why the invoice-review set only (this pass)
+
+The handoff task scopes this pass to **one screen** ("prove it, then we decide propagation") under a tight budget ("bank-don't-squeeze"). The full binding spec (`README.md`) + everything needed to render, audit, and build **screen 02** is mirrored to git and durable. The other 7 screens + print variants + DS metadata serve **future** propagation passes (explicitly out of scope now) and remain in the durable claude.ai project — pull on demand with `DesignSync get_file`. The PNG screenshots are un-mirrorable via the DesignSync read path (256 KiB cap truncates them); the `.dc.html` frames are the authoritative source and render faithfully.
+
+## Local render
+
+`support.js` + `_ds_bundle.js` load React 18.3.1 / ReactDOM / Babel from `unpkg.com`, so any `.dc.html` renders in a real browser. The dc extension refuses `file://`; serve the dir over localhost instead:
+
+```
+node <scratchpad>/handoff-server.js "<repo>/design_handoff_redesign" 4600
+# → http://localhost:4600/02%20Invoice%20Review.dc.html
+```

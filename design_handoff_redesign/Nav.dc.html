@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/nightwork-design-system-4d9ea516-a994-45e0-b934-7dd5b493374c/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/nightwork-design-system-4d9ea516-a994-45e0-b934-7dd5b493374c/nextjs/app/globals.css">
+  <script src="_ds/nightwork-design-system-4d9ea516-a994-45e0-b934-7dd5b493374c/_ds_bundle.js"></script>
+  <style>
+    :root { --font-body: "Space Grotesk", system-ui, sans-serif; }
+    body { font-family: "Space Grotesk", system-ui, sans-serif; }
+  </style>
+</helmet>
+<nav style="height:60px;background:var(--nw-slate-deep);display:flex;align-items:stretch;gap:26px;padding:0 32px;position:sticky;top:0;z-index:50">
+  <a href="01 Invoices.dc.html" style="display:flex;align-items:center;gap:12px;text-decoration:none">
+    <span style="font-family:var(--font-display);font-weight:600;font-size:18px;letter-spacing:-0.03em;color:var(--nw-white-sand)">nightwork</span>
+    <svg width="44" height="3" viewBox="0 0 44 3"><defs><linearGradient id="navbeam" x1="0" x2="1"><stop offset="0" stop-color="#5B8699"></stop><stop offset="1" stop-color="#F7F5EC" stop-opacity="0"></stop></linearGradient></defs><rect width="44" height="1" y="1" fill="url(#navbeam)"></rect></svg>
+  </a>
+  <span style="align-self:center;width:1px;height:20px;background:rgba(247,245,236,0.14)"></span>
+  <span style="align-self:center;font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;color:rgba(247,245,236,0.45);text-transform:uppercase">Ross Built</span>
+  <div style="display:flex;align-items:stretch;gap:2px;flex:1;margin-left:6px">
+    <a href="01 Invoices.dc.html" style="display:flex;align-items:center;padding:0 14px;font-size:13px;text-decoration:none;color:{{ invColor }};border-bottom:2px solid {{ invLine }};margin-bottom:-1px">Invoices</a>
+    <a href="#" style="display:flex;align-items:center;padding:0 14px;font-size:13px;text-decoration:none;color:{{ piColor }};border-bottom:2px solid {{ piLine }};margin-bottom:-1px">Price Intelligence</a>
+    <a href="04 Draws.dc.html" style="display:flex;align-items:center;padding:0 14px;font-size:13px;text-decoration:none;color:{{ drawColor }};border-bottom:2px solid {{ drawLine }};margin-bottom:-1px">Draws</a>
+  </div>
+  <div style="display:flex;align-items:center;gap:18px">
+    <a href="07 Job.dc.html#new" style="text-decoration:none;background:var(--nw-stone-blue);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;padding:8px 14px" style-hover="background:var(--nw-gulf-blue)">+ New job</a>
+    <button title="Notifications" style="position:relative;background:none;border:none;cursor:pointer;padding:4px;display:flex">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(247,245,236,0.6)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"></path></svg>
+      <span style="position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:999px;background:var(--nw-warn)"></span>
+    </button>
+    <a href="08 Cost Codes.dc.html" title="Settings" style="display:flex;padding:4px;text-decoration:none">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="{{ setColor }}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+    </a>
+    <span title="Jake Ross · Owner" style="width:28px;height:28px;border-radius:999px;background:var(--nw-stone-blue);color:var(--nw-white-sand);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:600;cursor:pointer">JR</span>
+  </div>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1920, &quot;height&quot;: 60}, &quot;active&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;invoices&quot;, &quot;pi&quot;, &quot;draws&quot;, &quot;settings&quot;, &quot;&quot;], &quot;default&quot;: &quot;invoices&quot;, &quot;tsType&quot;: &quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const active = this.props.active ?? "";
+    const on = "var(--nw-white-sand)", off = "rgba(247,245,236,0.6)";
+    const line = "var(--nw-stone-blue)", none = "transparent";
+    return {
+      invColor: active === "invoices" ? on : off,
+      invLine: active === "invoices" ? line : none,
+      piColor: active === "pi" ? on : off,
+      piLine: active === "pi" ? line : none,
+      drawColor: active === "draws" ? on : off,
+      drawLine: active === "draws" ? line : none,
+      setColor: active === "settings" ? on : "rgba(247,245,236,0.6)",
+    };
+  }
+}
+</script>
+</body>
+</html>

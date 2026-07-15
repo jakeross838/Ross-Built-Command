@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/nightwork-design-system-4d9ea516-a994-45e0-b934-7dd5b493374c/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/nightwork-design-system-4d9ea516-a994-45e0-b934-7dd5b493374c/nextjs/app/globals.css">
+  <script src="_ds/nightwork-design-system-4d9ea516-a994-45e0-b934-7dd5b493374c/_ds_bundle.js"></script>
+  <style>
+    :root { --font-body: "Space Grotesk", system-ui, sans-serif; }
+    body { font-family: "Space Grotesk", system-ui, sans-serif; }
+    a { color: var(--nw-gulf-blue); } a:hover { color: var(--nw-stone-blue); }
+    div[data-alloc] .remact { opacity: 0; transition: opacity 0.15s; }
+    div[data-alloc]:hover .remact { opacity: 1; }
+    div[data-alloc]:hover .editact { opacity: 1; }
+    div[data-alloc] .editact { opacity: 0; transition: opacity 0.15s; }
+  </style>
+</helmet>
+<section style="padding:48px;display:flex;flex-direction:column;gap:24px;border-bottom:1px solid var(--border-default)">
+  <div style="max-width:900px">
+    <div class="eyebrow" style="margin-bottom:8px">Turn 3 · 2B × 1C — spreadsheet with Budget remain + PO remain columns</div>
+    <div style="font-size:13px;color:var(--text-secondary)">Two fixed columns right of Amount. When several lines on this invoice draw the same PO, PO remain is net of all of them and carries an ×N marker — both 15-410 lines below draw PO RB-2026-041. A line draws at most one PO; billing across two POs means splitting the line. Live — edit any cell, click a code to search.</div>
+  </div>
+  <div id="3a" style="width:820px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">3A</span>
+      <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Spreadsheet allocation with Remaining</span>
+    </div>
+    <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:22px 24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span class="eyebrow" style="font-size:10px">Cost code allocation</span>
+        <button onClick="{{ addG }}" style="background:none;border:none;cursor:pointer;font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--nw-gulf-blue)">+ Add allocation</button>
+      </div>
+      <div style="border:1px solid var(--border-default)">
+        <div style="display:grid;grid-template-columns:1fr 180px 105px 112px 112px 30px;background:rgba(59,88,100,0.04);border-bottom:1px solid var(--border-default)">
+          <span class="eyebrow" style="font-size:8.5px;padding:8px 10px">Description</span>
+          <span class="eyebrow" style="font-size:8.5px;padding:8px 10px;border-left:1px solid var(--border-subtle)">Cost code</span>
+          <span class="eyebrow" style="font-size:8.5px;padding:8px 10px;border-left:1px solid var(--border-subtle);text-align:right">Amount</span>
+          <span class="eyebrow" style="font-size:8.5px;padding:8px 10px;border-left:1px solid var(--border-subtle);text-align:right">Budget remain</span>
+          <span class="eyebrow" style="font-size:8.5px;padding:8px 10px;border-left:1px solid var(--border-subtle);text-align:right">PO remain</span>
+          <span style="border-left:1px solid var(--border-subtle)"></span>
+        </div>
+        <sc-for list="{{ rows3 }}" as="r" hint-placeholder-count="4">
+          <div data-alloc style="display:grid;grid-template-columns:1fr 180px 105px 112px 112px 30px;border-bottom:1px solid var(--border-subtle)" style-hover="background:rgba(91,134,153,0.04)">
+            <input value="{{ r.desc }}" onChange="{{ r.setDesc }}" placeholder="Line item description" style="border:none;background:transparent;padding:10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary);width:100%;box-sizing:border-box" style-focus="outline:none;box-shadow:inset 0 0 0 1px var(--nw-stone-blue)">
+            <div style="position:relative;border-left:1px solid var(--border-subtle)">
+              <button onClick="{{ r.cbToggle }}" style="width:100%;height:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:transparent;border:none;cursor:pointer;padding:10px;font-family:var(--font-mono);font-size:11px;color:{{ r.codeColor }};text-align:left" style-hover="background:rgba(91,134,153,0.06)">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.codeLabel }}</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+              </button>
+              <sc-if value="{{ r.cbOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:40px;left:-1px;z-index:50;width:340px;background:#FFFFFF;border:1px solid var(--border-default);box-shadow:0 8px 24px -12px rgba(26,40,48,0.3)">
+                  <div style="padding:10px;border-bottom:1px solid var(--border-subtle)">
+                    <input value="{{ cbQuery }}" onChange="{{ setCbQuery }}" placeholder="Search code or name…" autoFocus style="width:100%;box-sizing:border-box;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary)" style-focus="border-color:var(--nw-stone-blue);outline:none">
+                  </div>
+                  <div style="max-height:230px;overflow-y:auto;padding:4px 0">
+                    <sc-for list="{{ cbResults }}" as="o" hint-placeholder-count="5">
+                      <button onClick="{{ o.pick }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:{{ o.bg }};border:none;cursor:pointer;padding:8px 12px;font-size:13px;color:var(--text-primary)" style-hover="background:rgba(91,134,153,0.08)"><span><span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">{{ o.code }}</span> {{ o.name }}</span><span style="display:inline-flex;align-items:center;gap:6px"><sc-if value="{{ o.hasPo }}" hint-placeholder-val="{{ false }}"><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.08em;color:var(--nw-gulf-blue);border:1px solid rgba(91,134,153,0.35);padding:1px 4px">PO</span></sc-if><span class="tabular" style="font-size:10px;color:{{ o.remColor }}">{{ o.remText }}</span></span></button>
+                    </sc-for>
+                    <sc-if value="{{ cbEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:12px;font-size:12.5px;color:var(--text-tertiary)">No matching cost code</div></sc-if>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+            <input value="{{ r.amt }}" onChange="{{ r.setAmt }}" style="border:none;border-left:1px solid var(--border-subtle);background:transparent;padding:10px;font-family:var(--font-mono);font-size:12px;text-align:right;color:var(--text-primary);width:100%;box-sizing:border-box" style-focus="outline:none;box-shadow:inset 0 0 0 1px var(--nw-stone-blue)">
+            <span style="display:flex;align-items:center;justify-content:flex-end;padding:6px 10px;border-left:1px solid var(--border-subtle)"><span class="tabular" style="font-size:11px;color:{{ r.remBudColor }}">{{ r.remBud }}</span></span>
+            <span style="display:flex;align-items:center;justify-content:flex-end;padding:6px 10px;border-left:1px solid var(--border-subtle)"><span class="tabular" style="font-size:11px;color:{{ r.remPoColor }}">{{ r.remPo }}</span><span style="font-family:var(--font-mono);font-size:8.5px;color:var(--text-muted);margin-left:4px">{{ r.remPoMark }}</span></span>
+            <button onClick="{{ r.remove }}" title="Remove" class="remact" style="border:none;border-left:1px solid var(--border-subtle);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(59,88,100,0.4)" stroke-width="1.5" stroke-linecap="round"><path d="M6 18L18 6M6 6l12 12"></path></svg></button>
+          </div>
+        </sc-for>
+        <div style="display:grid;grid-template-columns:1fr 180px 105px 112px 112px 30px;background:rgba(59,88,100,0.04)">
+          <span class="eyebrow" style="font-size:9px;padding:10px">Allocated · of $18,600.00</span>
+          <span style="border-left:1px solid var(--border-subtle);display:flex;align-items:center;padding:0 10px"><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:{{ balColorG }}">{{ balTextG }}</span></span>
+          <span class="tabular" style="border-left:1px solid var(--border-subtle);padding:10px;font-size:12.5px;font-weight:600;text-align:right">{{ totG }}</span>
+          <span style="border-left:1px solid var(--border-subtle)"></span>
+          <span style="border-left:1px solid var(--border-subtle)"></span>
+          <span style="border-left:1px solid var(--border-subtle)"></span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--text-muted);text-transform:uppercase">Budget remain = budget − billed − committed · PO remain = open PO − invoiced − all lines on this invoice drawing it (×N) · — = no PO · one line draws one PO, split a line to bill across two</div>
+    </div>
+  </div>
+</section>
+<section style="padding:48px;display:flex;flex-direction:column;gap:28px;border-bottom:1px solid var(--border-default)">
+  <div style="max-width:900px">
+    <div class="eyebrow" style="margin-bottom:8px">Turn 2 · Budget remaining per line · AI placement · Approval placement</div>
+    <div style="font-size:13px;color:var(--text-secondary)">2a–2c: three ways to show what remains of a cost code's budget per line — open matched POs read as committed costs, and PO-matched lines draw the PO down instead of uncommitted budget (2c is live — click rows, search codes, edit the amount). 2d–2e: two homes for the approval actions with AI extraction tucked away.</div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+    <div id="2a" style="width:620px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">2A</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Budget meter under every row</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">always visible · most glanceable, most ink</span>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:22px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span class="eyebrow" style="font-size:10px">Cost code allocation</span>
+          <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--nw-gulf-blue)">+ Add allocation</span>
+        </div>
+        <div style="padding:11px 8px;border-bottom:1px solid var(--border-subtle)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:7px">
+            <span style="flex:1;font-size:13px;color:var(--text-primary)">Rough plumbing, phase 3 — labor</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">15-410</span>
+            <span class="tabular" style="font-size:12.5px;width:96px;text-align:right">$12,400.00</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="flex:1;height:3px;background:var(--border-subtle);display:flex"><div style="width:57.5%;height:3px;background:var(--nw-stone-blue)"></div><div style="width:10%;height:3px;background:var(--nw-oceanside)"></div></div>
+            <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--text-tertiary)">BUDGET $160,000 · BILLED $92,000 · COMMITTED $16,000 · $52,000 REMAIN</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--nw-gulf-blue);border:1px solid rgba(91,134,153,0.35);padding:2px 6px">PO RB-2026-041 · OPEN</span>
+            <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--text-tertiary)">THIS LINE DRAWS THE PO → $3,600 OF PO REMAINS</span>
+          </div>
+        </div>
+        <div style="padding:11px 8px;border-bottom:1px solid var(--border-subtle)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:7px">
+            <span style="flex:1;font-size:13px;color:var(--text-primary)">Fixture set — rough valve install</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">15-420</span>
+            <span class="tabular" style="font-size:12.5px;width:96px;text-align:right">$3,800.00</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="flex:1;height:2px;background:var(--border-subtle)"><div style="width:73%;height:2px;background:var(--nw-stone-blue)"></div></div>
+            <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--text-tertiary)">BUDGET $48,000 · $13,000 REMAIN AFTER THIS</span>
+          </div>
+        </div>
+        <div style="padding:11px 8px;border-bottom:1px solid var(--border-subtle)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:7px">
+            <span style="flex:1;font-size:13px;color:var(--text-primary)">Permit fee pass-through</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">01-500</span>
+            <span class="tabular" style="font-size:12.5px;width:96px;text-align:right">$850.00</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="flex:1;height:2px;background:var(--border-subtle)"><div style="width:89%;height:2px;background:var(--nw-warn)"></div></div>
+            <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--nw-warn)">BUDGET $12,000 · $1,350 REMAIN AFTER THIS · 89% USED</span>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-default)">
+          <span class="eyebrow" style="font-size:9px">Allocated</span>
+          <span class="tabular" style="font-size:13px;font-weight:600">$17,050.00 / $18,600.00</span>
+        </div>
+      </div>
+    </div>
+    <div id="2b" style="width:620px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">2B</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">"Budget left" column</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">one number per row · compact, scannable</span>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:22px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="eyebrow" style="font-size:10px">Cost code allocation</span>
+          <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--nw-gulf-blue)">+ Add allocation</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 64px 110px 96px;gap:12px;padding-bottom:6px;border-bottom:1px solid var(--border-default)">
+          <span class="eyebrow" style="font-size:8.5px">Description</span>
+          <span class="eyebrow" style="font-size:8.5px">Code</span>
+          <span class="eyebrow" style="font-size:8.5px;text-align:right">Remaining</span>
+          <span class="eyebrow" style="font-size:8.5px;text-align:right">Amount</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 64px 110px 96px;gap:12px;padding:11px 0;border-bottom:1px solid var(--border-subtle);align-items:center">
+          <span style="font-size:13px">Rough plumbing, phase 3 — labor</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">15-410</span>
+          <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px"><span class="tabular" style="font-size:11px;color:var(--text-tertiary)">$52,000</span><span class="tabular" style="font-size:8.5px;color:var(--nw-gulf-blue)">PO $3,600</span></span>
+          <span class="tabular" style="font-size:12.5px;text-align:right">$12,400.00</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 64px 110px 96px;gap:12px;padding:11px 0;border-bottom:1px solid var(--border-subtle);align-items:center">
+          <span style="font-size:13px">Fixture set — rough valve install</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">15-420</span>
+          <span class="tabular" style="font-size:11px;text-align:right;color:var(--text-tertiary)">$13,000</span>
+          <span class="tabular" style="font-size:12.5px;text-align:right">$3,800.00</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 64px 110px 96px;gap:12px;padding:11px 0;border-bottom:1px solid var(--border-subtle);align-items:center">
+          <span style="font-size:13px">Permit fee pass-through</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">01-500</span>
+          <span class="tabular" style="font-size:11px;text-align:right;color:var(--nw-warn)">$1,350 ⚠</span>
+          <span class="tabular" style="font-size:12.5px;text-align:right">$850.00</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-default)">
+          <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.08em;color:var(--text-muted);text-transform:uppercase">Remaining = budget − billed − committed (open POs) · PO-matched lines draw the PO</span>
+          <span class="tabular" style="font-size:13px;font-weight:600">$17,050.00 / $18,600.00</span>
+        </div>
+      </div>
+    </div>
+    <div id="2c" style="width:620px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">2C</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Budget peek in the editor + combobox</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">read rows stay clean · live — try it</span>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:22px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="eyebrow" style="font-size:10px">Cost code allocation</span>
+          <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--nw-gulf-blue)">+ Add allocation</span>
+        </div>
+        <sc-if value="{{ e2Reading }}" hint-placeholder-val="{{ false }}">
+          <div data-alloc onClick="{{ e2Start }}" style="display:flex;align-items:center;gap:12px;padding:11px 8px;border-bottom:1px solid var(--border-subtle);cursor:pointer" style-hover="background:rgba(91,134,153,0.04)">
+            <span style="flex:1;font-size:13px;color:var(--text-primary)">{{ e2DescText }}</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">{{ e2Code }}</span>
+            <span class="tabular" style="font-size:12.5px;width:96px;text-align:right">{{ e2AmtText }}</span>
+            <svg class="editact" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z"></path></svg>
+          </div>
+        </sc-if>
+        <sc-if value="{{ e2Editing }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid var(--nw-stone-blue);padding:14px;margin:4px 0;background:rgba(91,134,153,0.03)">
+            <input value="{{ e2Desc }}" onChange="{{ e2SetDesc }}" placeholder="Line item description" style="width:100%;box-sizing:border-box;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary);margin-bottom:10px" style-focus="border-color:var(--nw-stone-blue);outline:none">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="position:relative;width:250px">
+                <button onClick="{{ cb2Toggle }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:#FFFFFF;border:1px solid var(--border-default);cursor:pointer;padding:8px 10px;font-family:var(--font-mono);font-size:11px;color:var(--text-primary);text-align:left" style-hover="border-color:var(--nw-stone-blue)">
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e2CodeLabel }}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                </button>
+                <sc-if value="{{ cb2Open }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:37px;left:0;z-index:50;width:340px;background:#FFFFFF;border:1px solid var(--border-default);box-shadow:0 8px 24px -12px rgba(26,40,48,0.3)">
+                    <div style="padding:10px;border-bottom:1px solid var(--border-subtle)">
+                      <input value="{{ q2 }}" onChange="{{ setQ2 }}" placeholder="Search code or name…" autoFocus style="width:100%;box-sizing:border-box;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary)" style-focus="border-color:var(--nw-stone-blue);outline:none">
+                    </div>
+                    <div style="max-height:230px;overflow-y:auto;padding:4px 0">
+                      <sc-for list="{{ cb2Results }}" as="o" hint-placeholder-count="4">
+                        <button onClick="{{ o.pick }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:transparent;border:none;cursor:pointer;padding:8px 12px;font-size:13px;color:var(--text-primary)" style-hover="background:rgba(91,134,153,0.08)"><span><span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">{{ o.code }}</span> {{ o.name }}</span><span style="display:inline-flex;align-items:center;gap:6px"><sc-if value="{{ o.hasPo }}" hint-placeholder-val="{{ false }}"><span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.08em;color:var(--nw-gulf-blue);border:1px solid rgba(91,134,153,0.35);padding:1px 4px">PO</span></sc-if><span class="tabular" style="font-size:10px;color:{{ o.remColor }}">{{ o.remText }}</span></span></button>
+                      </sc-for>
+                      <sc-if value="{{ cb2Empty }}" hint-placeholder-val="{{ false }}"><div style="padding:12px;font-size:12.5px;color:var(--text-tertiary)">No matching cost code</div></sc-if>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+              <span style="flex:1"></span>
+              <input value="{{ e2Amt }}" onChange="{{ e2SetAmt }}" style="width:104px;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 9px;font-family:var(--font-mono);font-size:12px;text-align:right;color:var(--text-primary);box-sizing:border-box" style-focus="border-color:var(--nw-stone-blue);outline:none">
+              <button onClick="{{ e2Done }}" class="btn btn-primary" style="padding:8px 14px;font-size:10px">Done</button>
+            </div>
+            <div style="margin-top:12px;padding:10px 12px;background:#FFFFFF;border:1px solid var(--border-subtle)">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:7px">
+                <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--text-tertiary);text-transform:uppercase">{{ b2Line }}</span>
+                <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:{{ b2LeftColor }};text-transform:uppercase;white-space:nowrap">{{ b2Right }}</span>
+              </div>
+              <div style="height:3px;background:var(--border-subtle);display:flex"><div style="width:{{ b2BilledW }};height:3px;background:{{ b2BarColor }};transition:width 0.15s"></div><div style="width:{{ b2CommW }};height:3px;background:var(--nw-oceanside);transition:width 0.15s"></div></div>
+              <sc-if value="{{ b2HasPo }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;margin-bottom:7px">
+                  <span style="display:inline-flex;align-items:center;gap:6px"><span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--nw-gulf-blue);border:1px solid rgba(91,134,153,0.35);padding:1px 5px">PO OPEN</span><span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:var(--text-tertiary);text-transform:uppercase">{{ b2PoLine }}</span></span>
+                  <span style="font-family:var(--font-mono);font-size:8.5px;letter-spacing:0.1em;color:{{ b2PoColor }};text-transform:uppercase;white-space:nowrap">{{ b2PoRight }}</span>
+                </div>
+                <div style="height:3px;background:var(--border-subtle)"><div style="width:{{ b2PoW }};height:3px;background:var(--nw-gulf-blue);transition:width 0.15s"></div></div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+        <div data-alloc style="display:flex;align-items:center;gap:12px;padding:11px 8px;border-bottom:1px solid var(--border-subtle)">
+          <span style="flex:1;font-size:13px;color:var(--text-primary)">Fixture set — rough valve install</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">15-420</span>
+          <span class="tabular" style="font-size:12.5px;width:96px;text-align:right">$3,800.00</span>
+        </div>
+        <div data-alloc style="display:flex;align-items:center;gap:12px;padding:11px 8px;border-bottom:1px solid var(--border-subtle)">
+          <span style="flex:1;font-size:13px;color:var(--text-primary)">Permit fee pass-through</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">01-500</span>
+          <span class="tabular" style="font-size:12.5px;width:96px;text-align:right">$850.00</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-default)">
+          <span class="eyebrow" style="font-size:9px">Allocated</span>
+          <span class="tabular" style="font-size:13px;font-weight:600">{{ tot2 }} / $18,600.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;margin-bottom:40px">
+    <div id="2d" style="width:880px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">2D</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Actions in a sticky footer bar</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">approve is the last thing you reach · AI status lives quietly in the footer</span>
+      </div>
+      <div style="border:1px solid var(--border-default);background:var(--nw-white-sand);box-shadow:0 8px 24px -12px rgba(26,40,48,0.2)">
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--nw-slate-deep)">
+          <span style="font-family:var(--font-display);font-weight:600;font-size:15px;letter-spacing:-0.02em;color:var(--nw-white-sand)">Harborline Plumbing</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:rgba(247,245,236,0.45)">#4410</span>
+          <span class="pill pill-accent">Final review</span>
+          <span style="flex:1"></span>
+          <span style="font-family:var(--font-mono);font-size:9px;color:rgba(247,245,236,0.5)">‹ 2 / 3 ›</span>
+          <span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:rgba(247,245,236,0.4);border:1px solid rgba(247,245,236,0.25);padding:2px 5px">ESC</span>
+        </div>
+        <div style="display:flex;gap:16px;padding:16px 18px;height:300px">
+          <div style="flex:1.05;background:rgba(59,88,100,0.05);border:1px solid var(--border-default);display:flex;align-items:center;justify-content:center"><span class="eyebrow">Source document</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+            <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:14px">
+              <div style="display:flex;gap:24px;margin-bottom:10px"><span class="tabular" style="font-family:var(--font-display);font-weight:600;font-size:18px">$18,600.00</span><span class="tabular" style="font-family:var(--font-display);font-weight:600;font-size:18px;color:var(--nw-warn)">$16,740.00</span></div>
+              <div style="height:8px;background:var(--border-subtle);margin-bottom:6px;width:80%"></div>
+              <div style="height:8px;background:var(--border-subtle);width:65%"></div>
+            </div>
+            <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:14px;flex:1">
+              <div class="eyebrow" style="font-size:9px;margin-bottom:8px">Cost code allocation</div>
+              <div style="height:8px;background:var(--border-subtle);margin-bottom:6px"></div>
+              <div style="height:8px;background:var(--border-subtle);margin-bottom:6px;width:88%"></div>
+              <div style="height:8px;background:var(--border-subtle);width:70%"></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;padding:12px 18px;background:var(--nw-slate-deep)">
+          <button style="display:inline-flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:rgba(247,245,236,0.55);text-transform:uppercase"><span style="width:5px;height:5px;background:var(--nw-stone-blue)"></span>AI · 9 fields · 94% · 2 flags<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg></button>
+          <span style="flex:1"></span>
+          <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--nw-success)">✓ BALANCED</span>
+          <button style="background:transparent;border:1px solid rgba(247,245,236,0.25);color:var(--nw-white-sand);cursor:pointer;padding:9px 14px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase">Return to PM</button>
+          <button class="btn btn-accent" style="padding:9px 16px;font-size:10px">Approve</button>
+        </div>
+      </div>
+    </div>
+    <div id="2e" style="width:880px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">2E</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Approval card with readiness checklist</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">top of the rail · AI shrinks to one checklist line</span>
+      </div>
+      <div style="border:1px solid var(--border-default);background:var(--nw-white-sand);box-shadow:0 8px 24px -12px rgba(26,40,48,0.2)">
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--nw-slate-deep)">
+          <span style="font-family:var(--font-display);font-weight:600;font-size:15px;letter-spacing:-0.02em;color:var(--nw-white-sand)">Harborline Plumbing</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:rgba(247,245,236,0.45)">#4410</span>
+          <span class="pill pill-accent">Final review</span>
+          <span style="flex:1"></span>
+          <span style="font-family:var(--font-mono);font-size:9px;color:rgba(247,245,236,0.5)">‹ 2 / 3 ›</span>
+          <span style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:rgba(247,245,236,0.4);border:1px solid rgba(247,245,236,0.25);padding:2px 5px">ESC</span>
+        </div>
+        <div style="display:flex;gap:16px;padding:16px 18px;height:340px">
+          <div style="flex:1.05;background:rgba(59,88,100,0.05);border:1px solid var(--border-default);display:flex;align-items:center;justify-content:center"><span class="eyebrow">Source document</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+            <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <span class="eyebrow" style="font-size:10px">Ready to approve?</span>
+                <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--nw-warn)">1 ITEM OPEN</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
+                <div style="display:flex;align-items:center;gap:9px;font-size:12.5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nw-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"></path></svg>Allocations balanced — $18,600.00</div>
+                <div style="display:flex;align-items:center;gap:9px;font-size:12.5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nw-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"></path></svg>QuickBooks vendor matched</div>
+                <div style="display:flex;align-items:center;gap:9px;font-size:12.5px"><span style="color:var(--nw-warn)">⚠</span>1 extraction flag open <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.08em;color:var(--nw-gulf-blue);cursor:pointer">AI · 94% · REVIEW →</span></div>
+              </div>
+              <button class="btn btn-primary" style="width:100%;margin-bottom:8px">Approve for draw</button>
+              <div style="text-align:center"><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--text-tertiary);text-transform:uppercase;cursor:pointer">Return to PM instead</span></div>
+            </div>
+            <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:14px;flex:1">
+              <div style="display:flex;gap:24px;margin-bottom:10px"><span class="tabular" style="font-family:var(--font-display);font-weight:600;font-size:18px">$18,600.00</span><span class="tabular" style="font-family:var(--font-display);font-weight:600;font-size:18px;color:var(--nw-warn)">$16,740.00</span></div>
+              <div style="height:8px;background:var(--border-subtle);margin-bottom:6px;width:80%"></div>
+              <div style="height:8px;background:var(--border-subtle);width:65%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section style="padding:48px;display:flex;flex-direction:column;gap:28px">
+  <div style="max-width:900px">
+    <div class="eyebrow" style="margin-bottom:8px">Invoice review · Allocation editor · 4 directions</div>
+    <div style="font-size:13px;color:var(--text-secondary)">Same data in each. All cost-code dropdowns are searchable comboboxes — type to filter, full labels, panels overlay and never clip. Pick by badge id.</div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+
+    <div id="1a" style="width:620px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">1A</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Inline table — quiet fields</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">borderless until hover · closest to current</span>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:22px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="eyebrow" style="font-size:10px">Cost code allocation</span>
+          <button onClick="{{ addA }}" style="background:none;border:none;cursor:pointer;font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--nw-gulf-blue)">+ Add allocation</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 200px 104px 18px;gap:8px;padding-bottom:6px">
+          <span class="eyebrow" style="font-size:8.5px">Description</span>
+          <span class="eyebrow" style="font-size:8.5px">Cost code</span>
+          <span class="eyebrow" style="font-size:8.5px;text-align:right">Amount</span>
+          <span></span>
+        </div>
+        <sc-for list="{{ rowsA }}" as="r" hint-placeholder-count="4">
+          <div data-alloc style="display:grid;grid-template-columns:1fr 200px 104px 18px;gap:8px;padding:2px 0;border-bottom:1px solid var(--border-subtle);align-items:center">
+            <input value="{{ r.desc }}" onChange="{{ r.setDesc }}" placeholder="Line item description" style="border:1px solid transparent;background:transparent;padding:8px 9px;font-family:var(--font-body);font-size:13px;color:var(--text-primary);width:100%;box-sizing:border-box" style-hover="border-color:var(--border-default);background:#FFFFFF" style-focus="border-color:var(--nw-stone-blue);background:#FFFFFF;outline:none">
+            <div style="position:relative">
+              <button onClick="{{ r.cbToggle }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:transparent;border:1px solid transparent;cursor:pointer;padding:8px 9px;font-family:var(--font-mono);font-size:11px;color:{{ r.codeColor }};text-align:left" style-hover="border-color:var(--border-default);background:#FFFFFF">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.codeLabel }}</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+              </button>
+              <sc-if value="{{ r.cbOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:38px;left:0;z-index:50;width:300px;background:#FFFFFF;border:1px solid var(--border-default);box-shadow:0 8px 24px -12px rgba(26,40,48,0.3)">
+                  <div style="padding:10px;border-bottom:1px solid var(--border-subtle)">
+                    <input value="{{ cbQuery }}" onChange="{{ setCbQuery }}" placeholder="Search code or name…" autoFocus style="width:100%;box-sizing:border-box;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary)" style-focus="border-color:var(--nw-stone-blue);outline:none">
+                  </div>
+                  <div style="max-height:230px;overflow-y:auto;padding:4px 0">
+                    <sc-for list="{{ cbResults }}" as="o" hint-placeholder-count="5">
+                      <button onClick="{{ o.pick }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:{{ o.bg }};border:none;cursor:pointer;padding:8px 12px;font-size:13px;color:var(--text-primary)" style-hover="background:rgba(91,134,153,0.08)"><span><span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">{{ o.code }}</span> {{ o.name }}</span><sc-if value="{{ o.current }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nw-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"></path></svg></sc-if></button>
+                    </sc-for>
+                    <sc-if value="{{ cbEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:12px;font-size:12.5px;color:var(--text-tertiary)">No matching cost code</div></sc-if>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+            <input value="{{ r.amt }}" onChange="{{ r.setAmt }}" style="border:1px solid transparent;background:transparent;padding:8px 9px;font-family:var(--font-mono);font-size:12px;text-align:right;color:var(--text-primary);width:100%;box-sizing:border-box" style-hover="border-color:var(--border-default);background:#FFFFFF" style-focus="border-color:var(--nw-stone-blue);background:#FFFFFF;outline:none">
+            <button onClick="{{ r.remove }}" title="Remove" class="remact" style="background:none;border:none;cursor:pointer;padding:2px;display:flex;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(59,88,100,0.4)" stroke-width="1.5" stroke-linecap="round"><path d="M6 18L18 6M6 6l12 12"></path></svg></button>
+          </div>
+        </sc-for>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-default)">
+          <span class="eyebrow" style="font-size:9px">Allocated</span>
+          <span style="display:inline-flex;align-items:center;gap:12px"><span class="tabular" style="font-size:13px;font-weight:600">{{ totA }} / $18,600.00</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:{{ balColorA }}">{{ balTextA }}</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b" style="width:620px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">1B</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Line-item cards</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">roomy · title first, code + amount below</span>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:22px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span class="eyebrow" style="font-size:10px">Cost code allocation</span>
+          <button onClick="{{ addB }}" style="background:none;border:none;cursor:pointer;font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--nw-gulf-blue)">+ Add allocation</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <sc-for list="{{ rowsB }}" as="r" hint-placeholder-count="4">
+            <div data-alloc style="border:1px solid var(--border-default);padding:12px 14px;position:relative" style-hover="border-color:var(--border-strong)">
+              <button onClick="{{ r.remove }}" title="Remove" class="remact" style="position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;padding:2px;display:flex"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(59,88,100,0.4)" stroke-width="1.5" stroke-linecap="round"><path d="M6 18L18 6M6 6l12 12"></path></svg></button>
+              <input value="{{ r.desc }}" onChange="{{ r.setDesc }}" placeholder="Line item description" style="width:calc(100% - 28px);border:none;background:transparent;padding:0 0 10px;font-family:var(--font-body);font-size:13.5px;font-weight:500;color:var(--text-primary);box-sizing:border-box" style-focus="outline:none">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="position:relative;flex:1;max-width:300px">
+                  <button onClick="{{ r.cbToggle }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:rgba(91,134,153,0.06);border:1px solid var(--border-default);cursor:pointer;padding:7px 10px;font-family:var(--font-mono);font-size:11px;color:{{ r.codeColor }};text-align:left" style-hover="border-color:var(--nw-stone-blue)">
+                    <span>{{ r.codeLabel }}</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                  </button>
+                  <sc-if value="{{ r.cbOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;top:36px;left:0;z-index:50;width:300px;background:#FFFFFF;border:1px solid var(--border-default);box-shadow:0 8px 24px -12px rgba(26,40,48,0.3)">
+                      <div style="padding:10px;border-bottom:1px solid var(--border-subtle)">
+                        <input value="{{ cbQuery }}" onChange="{{ setCbQuery }}" placeholder="Search code or name…" autoFocus style="width:100%;box-sizing:border-box;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary)" style-focus="border-color:var(--nw-stone-blue);outline:none">
+                      </div>
+                      <div style="max-height:230px;overflow-y:auto;padding:4px 0">
+                        <sc-for list="{{ cbResults }}" as="o" hint-placeholder-count="5">
+                          <button onClick="{{ o.pick }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:{{ o.bg }};border:none;cursor:pointer;padding:8px 12px;font-size:13px;color:var(--text-primary)" style-hover="background:rgba(91,134,153,0.08)"><span><span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">{{ o.code }}</span> {{ o.name }}</span><sc-if value="{{ o.current }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nw-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"></path></svg></sc-if></button>
+                        </sc-for>
+                        <sc-if value="{{ cbEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:12px;font-size:12.5px;color:var(--text-tertiary)">No matching cost code</div></sc-if>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+                <span style="flex:1"></span>
+                <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-tertiary)">$</span>
+                <input value="{{ r.amt }}" onChange="{{ r.setAmt }}" style="width:110px;border:1px solid var(--border-default);background:#FFFFFF;padding:7px 9px;font-family:var(--font-mono);font-size:12px;text-align:right;color:var(--text-primary);box-sizing:border-box" style-focus="border-color:var(--nw-stone-blue);outline:none">
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-default)">
+          <span class="eyebrow" style="font-size:9px">Allocated</span>
+          <span style="display:inline-flex;align-items:center;gap:12px"><span class="tabular" style="font-size:13px;font-weight:600">{{ totB }} / $18,600.00</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:{{ balColorB }}">{{ balTextB }}</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="1c" style="width:620px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">1C</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Spreadsheet grid</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">visible cell rules · total row inside the grid</span>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:22px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span class="eyebrow" style="font-size:10px">Cost code allocation</span>
+          <button onClick="{{ addC }}" style="background:none;border:none;cursor:pointer;font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--nw-gulf-blue)">+ Add allocation</button>
+        </div>
+        <div style="border:1px solid var(--border-default)">
+          <div style="display:grid;grid-template-columns:1fr 200px 120px 30px;background:rgba(59,88,100,0.04);border-bottom:1px solid var(--border-default)">
+            <span class="eyebrow" style="font-size:8.5px;padding:8px 10px">Description</span>
+            <span class="eyebrow" style="font-size:8.5px;padding:8px 10px;border-left:1px solid var(--border-subtle)">Cost code</span>
+            <span class="eyebrow" style="font-size:8.5px;padding:8px 10px;border-left:1px solid var(--border-subtle);text-align:right">Amount</span>
+            <span style="border-left:1px solid var(--border-subtle)"></span>
+          </div>
+          <sc-for list="{{ rowsC }}" as="r" hint-placeholder-count="4">
+            <div data-alloc style="display:grid;grid-template-columns:1fr 200px 120px 30px;border-bottom:1px solid var(--border-subtle)" style-hover="background:rgba(91,134,153,0.04)">
+              <input value="{{ r.desc }}" onChange="{{ r.setDesc }}" placeholder="Line item description" style="border:none;background:transparent;padding:9px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary);width:100%;box-sizing:border-box" style-focus="outline:none;box-shadow:inset 0 0 0 1px var(--nw-stone-blue)">
+              <div style="position:relative;border-left:1px solid var(--border-subtle)">
+                <button onClick="{{ r.cbToggle }}" style="width:100%;height:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:transparent;border:none;cursor:pointer;padding:9px 10px;font-family:var(--font-mono);font-size:11px;color:{{ r.codeColor }};text-align:left" style-hover="background:rgba(91,134,153,0.06)">
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.codeLabel }}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                </button>
+                <sc-if value="{{ r.cbOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:38px;left:-1px;z-index:50;width:300px;background:#FFFFFF;border:1px solid var(--border-default);box-shadow:0 8px 24px -12px rgba(26,40,48,0.3)">
+                    <div style="padding:10px;border-bottom:1px solid var(--border-subtle)">
+                      <input value="{{ cbQuery }}" onChange="{{ setCbQuery }}" placeholder="Search code or name…" autoFocus style="width:100%;box-sizing:border-box;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary)" style-focus="border-color:var(--nw-stone-blue);outline:none">
+                    </div>
+                    <div style="max-height:230px;overflow-y:auto;padding:4px 0">
+                      <sc-for list="{{ cbResults }}" as="o" hint-placeholder-count="5">
+                        <button onClick="{{ o.pick }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:{{ o.bg }};border:none;cursor:pointer;padding:8px 12px;font-size:13px;color:var(--text-primary)" style-hover="background:rgba(91,134,153,0.08)"><span><span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">{{ o.code }}</span> {{ o.name }}</span><sc-if value="{{ o.current }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nw-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"></path></svg></sc-if></button>
+                      </sc-for>
+                      <sc-if value="{{ cbEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:12px;font-size:12.5px;color:var(--text-tertiary)">No matching cost code</div></sc-if>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+              <input value="{{ r.amt }}" onChange="{{ r.setAmt }}" style="border:none;border-left:1px solid var(--border-subtle);background:transparent;padding:9px 10px;font-family:var(--font-mono);font-size:12px;text-align:right;color:var(--text-primary);width:100%;box-sizing:border-box" style-focus="outline:none;box-shadow:inset 0 0 0 1px var(--nw-stone-blue)">
+              <button onClick="{{ r.remove }}" title="Remove" class="remact" style="border:none;border-left:1px solid var(--border-subtle);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(59,88,100,0.4)" stroke-width="1.5" stroke-linecap="round"><path d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+          </sc-for>
+          <div style="display:grid;grid-template-columns:1fr 200px 120px 30px;background:rgba(59,88,100,0.04)">
+            <span class="eyebrow" style="font-size:9px;padding:10px">Allocated · of $18,600.00</span>
+            <span style="border-left:1px solid var(--border-subtle);display:flex;align-items:center;padding:0 10px"><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:{{ balColorC }}">{{ balTextC }}</span></span>
+            <span class="tabular" style="border-left:1px solid var(--border-subtle);padding:10px;font-size:12.5px;font-weight:600;text-align:right">{{ totC }}</span>
+            <span style="border-left:1px solid var(--border-subtle)"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1d" style="width:620px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="background:var(--nw-slate-deep);color:var(--nw-white-sand);font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;padding:3px 7px">1D</span>
+        <span style="font-family:var(--font-display);font-size:14px;font-weight:500">Click-to-edit rows</span>
+        <span style="font-size:12px;color:var(--text-tertiary)">calm read view · row expands into an editor</span>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid var(--border-default);padding:22px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="eyebrow" style="font-size:10px">Cost code allocation</span>
+          <button onClick="{{ addD }}" style="background:none;border:none;cursor:pointer;font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--nw-gulf-blue)">+ Add allocation</button>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <sc-for list="{{ rowsD }}" as="r" hint-placeholder-count="4">
+            <sc-if value="{{ r.reading }}" hint-placeholder-val="{{ true }}">
+              <div data-alloc onClick="{{ r.startEdit }}" style="display:flex;align-items:center;gap:12px;padding:11px 8px;border-bottom:1px solid var(--border-subtle);cursor:pointer" style-hover="background:rgba(91,134,153,0.04)">
+                <span style="flex:1;font-size:13px;color:var(--text-primary)">{{ r.descText }}</span>
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">{{ r.code }}</span>
+                <span class="tabular" style="font-size:12.5px;width:96px;text-align:right">{{ r.amtText }}</span>
+                <svg class="editact" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z"></path></svg>
+              </div>
+            </sc-if>
+            <sc-if value="{{ r.editing }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid var(--nw-stone-blue);padding:14px;margin:4px 0;background:rgba(91,134,153,0.03)">
+                <input value="{{ r.desc }}" onChange="{{ r.setDesc }}" placeholder="Line item description" style="width:100%;box-sizing:border-box;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary);margin-bottom:10px" style-focus="border-color:var(--nw-stone-blue);outline:none">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="position:relative;width:280px">
+                    <button onClick="{{ r.cbToggle }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:#FFFFFF;border:1px solid var(--border-default);cursor:pointer;padding:8px 10px;font-family:var(--font-mono);font-size:11px;color:{{ r.codeColor }};text-align:left" style-hover="border-color:var(--nw-stone-blue)">
+                      <span>{{ r.codeLabel }}</span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                    </button>
+                    <sc-if value="{{ r.cbOpen }}" hint-placeholder-val="{{ false }}">
+                      <div style="position:absolute;top:37px;left:0;z-index:50;width:300px;background:#FFFFFF;border:1px solid var(--border-default);box-shadow:0 8px 24px -12px rgba(26,40,48,0.3)">
+                        <div style="padding:10px;border-bottom:1px solid var(--border-subtle)">
+                          <input value="{{ cbQuery }}" onChange="{{ setCbQuery }}" placeholder="Search code or name…" autoFocus style="width:100%;box-sizing:border-box;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 10px;font-family:var(--font-body);font-size:13px;color:var(--text-primary)" style-focus="border-color:var(--nw-stone-blue);outline:none">
+                        </div>
+                        <div style="max-height:230px;overflow-y:auto;padding:4px 0">
+                          <sc-for list="{{ cbResults }}" as="o" hint-placeholder-count="5">
+                            <button onClick="{{ o.pick }}" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:{{ o.bg }};border:none;cursor:pointer;padding:8px 12px;font-size:13px;color:var(--text-primary)" style-hover="background:rgba(91,134,153,0.08)"><span><span style="font-family:var(--font-mono);font-size:11px;color:var(--nw-gulf-blue);font-weight:600">{{ o.code }}</span> {{ o.name }}</span><sc-if value="{{ o.current }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nw-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"></path></svg></sc-if></button>
+                          </sc-for>
+                          <sc-if value="{{ cbEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:12px;font-size:12.5px;color:var(--text-tertiary)">No matching cost code</div></sc-if>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                  <span style="flex:1"></span>
+                  <input value="{{ r.amt }}" onChange="{{ r.setAmt }}" style="width:110px;border:1px solid var(--border-default);background:#FFFFFF;padding:8px 9px;font-family:var(--font-mono);font-size:12px;text-align:right;color:var(--text-primary);box-sizing:border-box" style-focus="border-color:var(--nw-stone-blue);outline:none">
+                  <button onClick="{{ r.remove }}" title="Remove" style="background:none;border:1px solid var(--border-default);cursor:pointer;padding:8px;display:flex" style-hover="border-color:var(--nw-danger)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nw-danger)" stroke-width="1.5" stroke-linecap="round"><path d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                  <button onClick="{{ r.doneEdit }}" class="btn btn-primary" style="padding:8px 14px;font-size:10px">Done</button>
+                </div>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-default)">
+          <span class="eyebrow" style="font-size:9px">Allocated</span>
+          <span style="display:inline-flex;align-items:center;gap:12px"><span class="tabular" style="font-size:13px;font-weight:600">{{ totD }} / $18,600.00</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:{{ balColorD }}">{{ balTextD }}</span></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1400, &quot;height&quot;: 1200}}">
+class Component extends DCLogic {
+  CODES = [
+    { c: "01-500", n: "Permits & fees" }, { c: "03-300", n: "Cast-in-place concrete" },
+    { c: "06-400", n: "Architectural millwork" }, { c: "09-260", n: "Gypsum board assemblies" },
+    { c: "09-310", n: "Tile & stone (CO)" }, { c: "15-410", n: "Rough plumbing" },
+    { c: "15-420", n: "Fixtures" }, { c: "15-720", n: "Air handling units" },
+  ];
+  mkInit() {
+    return [
+      { desc: "Rough plumbing, phase 3 — labor", code: "15-410", amt: "12,400.00" },
+      { desc: "Materials — copper, PEX, fittings", code: "15-410", amt: "1,550.00" },
+      { desc: "Fixture set — rough valve install", code: "15-420", amt: "3,800.00" },
+      { desc: "Permit fee pass-through", code: "01-500", amt: "850.00" },
+    ];
+  }
+  state = { rows: { a: this.mkInit(), b: this.mkInit(), c: this.mkInit(), d: this.mkInit(), g: this.mkInit() }, cb: null, q: "", dEdit: null,
+    e2: { desc: "Rough plumbing, phase 3 — labor", code: "15-410", amt: "12,400.00" }, edit2: true, cb2: false, q2: "" };
+  BUDGETS = { "01-500": { s: 12000, b: 9800 }, "03-300": { s: 340000, b: 306000 }, "06-400": { s: 410000, b: 198000 }, "09-260": { s: 148000, b: 74400 }, "09-310": { s: 42300, b: 0 }, "15-410": { s: 160000, b: 92000 }, "15-420": { s: 48000, b: 31200 }, "15-720": { s: 180000, b: 64500 } };
+  POS = { "15-410": { num: "RB-2026-041", total: 24000, inv: 8000 }, "06-400": { num: "RB-2026-038", total: 60000, inv: 41500 } };
+  fmt0(n) { return "$" + Math.round(n).toLocaleString("en-US"); }
+  name(code) { const f = this.CODES.find(x => x.c === code); return f ? f.n : ""; }
+  parse(s) { const n = Number(String(s).replace(/[^0-9.-]/g, "")); return isNaN(n) ? 0 : n; }
+  fmt(n) { return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  upd(v, i, patch) { this.setState(s => ({ rows: { ...s.rows, [v]: s.rows[v].map((x, j) => j === i ? { ...x, ...patch } : x) } })); }
+  remFor(code, amtStr, rows) {
+    if (!code) return { bud: "—", budColor: "var(--text-muted)", po: "—", poColor: "var(--text-muted)", poMark: "" };
+    const amt = this.parse(amtStr);
+    const b = this.BUDGETS[code] || { s: 0, b: 0 };
+    const p = this.POS[code];
+    const committed = p ? p.total - p.inv : 0;
+    const remain = b.s - b.b - committed - (p ? 0 : amt);
+    const usedPct = b.s ? ((b.b + committed + (p ? 0 : amt)) / b.s) * 100 : 0;
+    const out = {
+      bud: this.fmt0(remain),
+      budColor: usedPct >= 95 ? "var(--nw-danger)" : usedPct >= 85 ? "var(--nw-warn)" : "var(--text-secondary)",
+      po: "—", poColor: "var(--text-muted)", poMark: "",
+    };
+    if (p) {
+      const shared = (rows || []).filter(x => this.POS[x.code] && this.POS[x.code].num === p.num);
+      const drawn = shared.reduce((a, x) => a + this.parse(x.amt), 0);
+      const pr = p.total - p.inv - drawn;
+      out.po = pr < 0 ? "over " + this.fmt0(-pr) : this.fmt0(pr);
+      out.poColor = pr < 0 ? "var(--nw-danger)" : pr <= p.total * 0.1 ? "var(--nw-warn)" : "var(--nw-gulf-blue)";
+      out.poMark = shared.length > 1 ? "×" + shared.length : "";
+    }
+    return out;
+  }
+  mkRows(v) {
+    const cb = this.state.cb;
+    return this.state.rows[v].map((r, i) => {
+      const rem = this.remFor(r.code, r.amt, this.state.rows[v]);
+      return {
+      remBud: rem.bud, remBudColor: rem.budColor, remPo: rem.po, remPoColor: rem.poColor, remPoMark: rem.poMark,
+      desc: r.desc, amt: r.amt, code: r.code,
+      descText: r.desc || "Untitled line item",
+      amtText: r.amt.startsWith("$") ? r.amt : "$" + r.amt,
+      codeLabel: r.code ? r.code + " · " + this.name(r.code) : "Select cost code",
+      codeColor: r.code ? "var(--text-primary)" : "var(--text-tertiary)",
+      cbOpen: !!cb && cb.v === v && cb.i === i,
+      cbToggle: () => this.setState(s => ({ cb: s.cb && s.cb.v === v && s.cb.i === i ? null : { v, i }, q: "" })),
+      setDesc: (e) => this.upd(v, i, { desc: e.target.value }),
+      setAmt: (e) => this.upd(v, i, { amt: e.target.value }),
+      remove: () => this.setState(s => ({ rows: { ...s.rows, [v]: s.rows[v].filter((x, j) => j !== i) }, cb: null, dEdit: v === "d" ? null : s.dEdit })),
+      reading: v !== "d" ? undefined : this.state.dEdit !== i,
+      editing: v !== "d" ? undefined : this.state.dEdit === i,
+      startEdit: () => this.setState({ dEdit: i }),
+      doneEdit: () => this.setState({ dEdit: null, cb: null }),
+      };
+    });
+  }
+  bal(v) {
+    const total = this.state.rows[v].reduce((a, r) => a + this.parse(r.amt), 0);
+    const diff = Math.round((18600 - total) * 100) / 100;
+    return {
+      tot: this.fmt(total),
+      text: diff === 0 ? "✓ BALANCED" : diff > 0 ? this.fmt(diff) + " UNALLOCATED" : this.fmt(-diff) + " OVER-ALLOCATED",
+      color: diff === 0 ? "var(--nw-success)" : diff > 0 ? "var(--nw-warn)" : "var(--nw-danger)",
+    };
+  }
+  turn2Vals() {
+    const { e2, edit2, cb2, q2 } = this.state;
+    const amt = this.parse(e2.amt);
+    const bud = this.BUDGETS[e2.code] || { s: 0, b: 0 };
+    const po = this.POS[e2.code];
+    const committed = po ? po.total - po.inv : 0;
+    const remain = bud.s - bud.b - committed - (po ? 0 : amt);
+    const usedPct = bud.s ? Math.min(100, Math.round(((bud.b + committed + (po ? 0 : amt)) / bud.s) * 100)) : 0;
+    const barColor = usedPct >= 95 ? "var(--nw-danger)" : usedPct >= 85 ? "var(--nw-warn)" : "var(--nw-stone-blue)";
+    const poRemain = po ? po.total - po.inv - amt : 0;
+    const results2 = this.CODES.filter(o => (o.c + " " + o.n).toLowerCase().includes(q2.toLowerCase()));
+    return {
+      e2Reading: !edit2, e2Editing: edit2,
+      e2Start: () => this.setState({ edit2: true, cb2: false, q2: "" }),
+      e2Done: () => this.setState({ edit2: false, cb2: false }),
+      e2Desc: e2.desc, e2DescText: e2.desc || "Untitled line item",
+      e2Amt: e2.amt, e2AmtText: "$" + e2.amt, e2Code: e2.code,
+      e2CodeLabel: e2.code ? e2.code + " · " + this.name(e2.code) : "Select cost code",
+      e2SetDesc: (e) => this.setState(s => ({ e2: { ...s.e2, desc: e.target.value } })),
+      e2SetAmt: (e) => this.setState(s => ({ e2: { ...s.e2, amt: e.target.value } })),
+      cb2Open: cb2,
+      cb2Toggle: () => this.setState(s => ({ cb2: !s.cb2, q2: "" })),
+      q2: q2, setQ2: (e) => this.setState({ q2: e.target.value }),
+      cb2Results: results2.map(o => {
+        const ob = this.BUDGETS[o.c], op = this.POS[o.c];
+        const oCommitted = op ? op.total - op.inv : 0;
+        const oRemain = ob.s - ob.b - oCommitted, oPct = ((ob.b + oCommitted) / ob.s) * 100;
+        return {
+          code: o.c, name: o.n, hasPo: !!op,
+          remText: this.fmt0(oRemain) + " remain",
+          remColor: oPct >= 95 ? "var(--nw-danger)" : oPct >= 85 ? "var(--nw-warn)" : "var(--text-tertiary)",
+          pick: () => this.setState(s => ({ e2: { ...s.e2, code: o.c }, cb2: false, q2: "" })),
+        };
+      }),
+      cb2Empty: results2.length === 0,
+      b2Line: "Budget " + (e2.code || "—") + " · sched " + this.fmt0(bud.s) + " · billed " + this.fmt0(bud.b) + (committed ? " · committed " + this.fmt0(committed) : ""),
+      b2Right: usedPct + "% used · " + this.fmt0(remain) + " uncommitted remain",
+      b2LeftColor: barColor === "var(--nw-stone-blue)" ? "var(--text-tertiary)" : barColor,
+      b2BilledW: (bud.s ? Math.min(100, Math.round(((bud.b + (po ? 0 : amt)) / bud.s) * 100)) : 0) + "%",
+      b2CommW: (bud.s ? Math.min(100, Math.round((committed / bud.s) * 100)) : 0) + "%",
+      b2BarColor: barColor,
+      b2HasPo: !!po,
+      b2PoLine: po ? po.num + " · total " + this.fmt0(po.total) + " · invoiced " + this.fmt0(po.inv) + " · this line −$" + amt.toLocaleString("en-US") : "",
+      b2PoRight: po ? (poRemain < 0 ? this.fmt0(-poRemain) + " over PO" : this.fmt0(poRemain) + " of PO remain") : "",
+      b2PoColor: po ? (poRemain < 0 ? "var(--nw-danger)" : poRemain <= po.total * 0.1 ? "var(--nw-warn)" : "var(--text-tertiary)") : "var(--text-tertiary)",
+      b2PoW: po ? Math.min(100, Math.round(((po.inv + amt) / po.total) * 100)) + "%" : "0%",
+      tot2: this.fmt(amt + 3800 + 850),
+    };
+  }
+  renderVals() {
+    const cb = this.state.cb, q = this.state.q.toLowerCase();
+    const results = !cb ? [] : this.CODES.filter(o => (o.c + " " + o.n).toLowerCase().includes(q));
+    const a = this.bal("a"), b = this.bal("b"), c = this.bal("c"), d = this.bal("d"), g = this.bal("g");
+    const add = (v) => () => this.setState(s => ({ rows: { ...s.rows, [v]: [...s.rows[v], { desc: "", code: "", amt: "0.00" }] }, dEdit: v === "d" ? s.rows[v].length : s.dEdit }));
+    return {
+      rowsA: this.mkRows("a"), rowsB: this.mkRows("b"), rowsC: this.mkRows("c"), rowsD: this.mkRows("d"), rows3: this.mkRows("g"),
+      addA: add("a"), addB: add("b"), addC: add("c"), addD: add("d"), addG: add("g"),
+      cbQuery: this.state.q,
+      setCbQuery: (e) => this.setState({ q: e.target.value }),
+      cbResults: results.map(o => {
+        const ob = this.BUDGETS[o.c], op = this.POS[o.c];
+        const oCommitted = op ? op.total - op.inv : 0;
+        const oRemain = ob ? ob.s - ob.b - oCommitted : 0;
+        const oPct = ob ? ((ob.b + oCommitted) / ob.s) * 100 : 0;
+        return {
+        code: o.c, name: o.n, hasPo: !!op,
+        remText: this.fmt0(oRemain) + " remain",
+        remColor: oPct >= 95 ? "var(--nw-danger)" : oPct >= 85 ? "var(--nw-warn)" : "var(--text-tertiary)",
+        current: !!cb && this.state.rows[cb.v][cb.i] && this.state.rows[cb.v][cb.i].code === o.c,
+        bg: !!cb && this.state.rows[cb.v][cb.i] && this.state.rows[cb.v][cb.i].code === o.c ? "rgba(91,134,153,0.08)" : "transparent",
+        pick: () => { this.upd(cb.v, cb.i, { code: o.c }); this.setState({ cb: null, q: "" }); },
+        };
+      }),
+      cbEmpty: !!cb && results.length === 0,
+      ...this.turn2Vals(),
+      totA: a.tot, balTextA: a.text, balColorA: a.color,
+      totB: b.tot, balTextB: b.text, balColorB: b.color,
+      totC: c.tot, balTextC: c.text, balColorC: c.color,
+      totD: d.tot, balTextD: d.text, balColorD: d.color,
+      totG: g.tot, balTextG: g.text, balColorG: g.color,
+    };
+  }
+}
+</script>
+</body>
+</html>
