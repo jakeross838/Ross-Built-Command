@@ -1,7 +1,7 @@
 /*
  * Review-screen redesign — SCOPED styles (Stage-1 + Stage-2).
  *
- * Everything is nested under `.nw-review-redesign` so this is a scoped variant
+ * Everything is nested under `.nw-redesign` so this is a scoped variant
  * on the invoice-review screen only, NOT a global rewrite (firewall F3). Global
  * adoption of the grid + modal patterns is the propagation decision, after Jake
  * approves this live. Values use design tokens (var(--nw-*)) + rgba() literals
@@ -10,7 +10,7 @@
  * The mockup overrides body type to Space Grotesk on these screens
  * (design_handoff_redesign/README.md "Type"). Scoped here, not globally.
  */
-.nw-review-redesign {
+.nw-redesign {
   --font-body: "Space Grotesk", system-ui, sans-serif;
   font-family: "Space Grotesk", system-ui, sans-serif;
 }
@@ -148,21 +148,21 @@
 }
 
 /* ── SpreadsheetGrid (Excel-pure) ─────────────────────────────────────── */
-.nw-review-redesign .nw-grid {
+.nw-redesign .nw-grid {
   border: 1px solid var(--border-default);
   background: var(--bg-card);
 }
-.nw-review-redesign .nw-grid-head,
-.nw-review-redesign .nw-grid-row,
-.nw-review-redesign .nw-grid-foot {
+.nw-redesign .nw-grid-head,
+.nw-redesign .nw-grid-row,
+.nw-redesign .nw-grid-foot {
   display: grid;
   align-items: stretch;
 }
-.nw-review-redesign .nw-grid-head {
+.nw-redesign .nw-grid-head {
   background: var(--bg-subtle);
   border-bottom: 1px solid var(--border-default);
 }
-.nw-review-redesign .nw-grid-eyebrow {
+.nw-redesign .nw-grid-eyebrow {
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.12em;
@@ -170,12 +170,12 @@
   color: var(--text-tertiary);
   padding: 10px 12px;
 }
-.nw-review-redesign .nw-grid-row {
+.nw-redesign .nw-grid-row {
   border-bottom: 1px solid var(--border-subtle);
 }
-.nw-review-redesign .nw-grid-row:hover { background: rgba(91, 134, 153, 0.04); }
-.nw-review-redesign .nw-grid-row:hover .nw-grid-remove { opacity: 1; }
-.nw-review-redesign .nw-grid-cell {
+.nw-redesign .nw-grid-row:hover { background: rgba(91, 134, 153, 0.04); }
+.nw-redesign .nw-grid-row:hover .nw-grid-remove { opacity: 1; }
+.nw-redesign .nw-grid-cell {
   padding: 0;
   min-height: 40px;
   display: flex;
@@ -183,27 +183,27 @@
   border-right: 1px solid var(--border-subtle);
   position: relative;
 }
-.nw-review-redesign .nw-grid-cell:last-of-type { border-right: none; }
-.nw-review-redesign .nw-grid-cell.is-active {
+.nw-redesign .nw-grid-cell:last-of-type { border-right: none; }
+.nw-redesign .nw-grid-cell.is-active {
   box-shadow: inset 0 0 0 1px var(--nw-stone-blue);
   z-index: 1;
 }
-.nw-review-redesign .nw-grid-cell.is-invalid {
+.nw-redesign .nw-grid-cell.is-invalid {
   box-shadow: inset 0 0 0 1px rgba(176, 85, 78, 0.55);
 }
-.nw-review-redesign .nw-grid-value {
+.nw-redesign .nw-grid-value {
   padding: 0 12px;
   width: 100%;
   font-size: 13px;
   color: var(--text-primary);
 }
-.nw-review-redesign .nw-grid-cell.is-num .nw-grid-value,
-.nw-review-redesign .nw-grid-cell.is-num .nw-grid-input {
+.nw-redesign .nw-grid-cell.is-num .nw-grid-value,
+.nw-redesign .nw-grid-cell.is-num .nw-grid-input {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
-.nw-review-redesign .nw-grid-input {
+.nw-redesign .nw-grid-input {
   width: 100%;
   height: 100%;
   min-height: 40px;
@@ -216,12 +216,12 @@
   color: var(--text-primary);
   box-sizing: border-box;
 }
-.nw-review-redesign .nw-grid-rowact {
+.nw-redesign .nw-grid-rowact {
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.nw-review-redesign .nw-grid-remove {
+.nw-redesign .nw-grid-remove {
   opacity: 0;
   transition: opacity 0.15s;
   background: none;
@@ -232,19 +232,19 @@
   padding: 4px;
   line-height: 1;
 }
-.nw-review-redesign .nw-grid-remove:hover { color: var(--nw-danger); }
-.nw-review-redesign .nw-grid-foot {
+.nw-redesign .nw-grid-remove:hover { color: var(--nw-danger); }
+.nw-redesign .nw-grid-foot {
   border-top: 2px solid var(--border-strong);
   background: var(--bg-subtle);
 }
-.nw-review-redesign .nw-grid-foot .nw-foot-inner {
+.nw-redesign .nw-grid-foot .nw-foot-inner {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
 }
-.nw-review-redesign .nw-grid-foot .nw-foot-label {
+.nw-redesign .nw-grid-foot .nw-foot-label {
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.12em;
@@ -253,8 +253,8 @@
 }
 
 /* The cost-code combobox cell must never be clipped. */
-.nw-review-redesign .nw-grid-cell .cost-code-combobox,
-.nw-review-redesign .nw-grid-cell [data-combobox] { width: 100%; }
+.nw-redesign .nw-grid-cell .cost-code-combobox,
+.nw-redesign .nw-grid-cell [data-combobox] { width: 100%; }
 
 /* ── Balance-impact strip ─────────────────────────────────────────────── */
 .nw-impact-strip { display: flex; flex-direction: column; }

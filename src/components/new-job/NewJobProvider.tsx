@@ -1,10 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
-import NewJobSlideOver from "./NewJobSlideOver";
+import NewJobModal from "./NewJobModal";
 
-// Global New Job slide-over host. Mounted once in the root layout so the
-// "＋ NEW JOB" nav button (or any surface) can open it from anywhere.
+// Global New Job host. Mounted once in the root layout so the "＋ NEW JOB" nav
+// button (or any surface) can open it from anywhere. Container is the centered
+// PopModal (one overlay language) — the slide-over was retired for this surface.
 
 interface NewJobApi {
   open: () => void;
@@ -24,7 +25,7 @@ export function NewJobProvider({ children }: { children: ReactNode }) {
   return (
     <NewJobContext.Provider value={{ open }}>
       {children}
-      <NewJobSlideOver open={isOpen} onClose={close} />
+      <NewJobModal open={isOpen} onClose={close} />
     </NewJobContext.Provider>
   );
 }

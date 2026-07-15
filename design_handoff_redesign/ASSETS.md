@@ -44,3 +44,7 @@ The handoff task scopes this pass to **one screen** ("prove it, then we decide p
 node <scratchpad>/handoff-server.js "<repo>/design_handoff_redesign" 4600
 # → http://localhost:4600/02%20Invoice%20Review.dc.html
 ```
+
+## Adjudicated mockup deltas (mockup ↔ reality, ruled by Jake)
+
+- **Screen 7 (`07 Job.dc.html`) new-job DRAWER is SUPERSEDED — job creation uses the centered `PopModal`, not a side drawer** (Jake live ruling, 2026-07-15). The app has ONE overlay language and it is centered (upload + review + new-job are all centered `PopModal`); the slide-over is retired for the job-creation surface. The mockup's `07` drawer render is a stale container choice — the fields/reduction it implies still apply, but the container does not. Surface #2 of the new design language uses the shared `.nw-redesign` token scope. See `src/components/new-job/NewJobModal.tsx`.

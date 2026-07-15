@@ -8,7 +8,7 @@ import { formatCents, formatDollars, formatStatus, formatDate, statusBadgeOutlin
 import AppShell from "@/components/app-shell";
 import InvoiceFilePreview from "@/components/invoice-file-preview";
 import AllocationGrid, { type AllocationGridHandle } from "@/components/invoices/AllocationGrid";
-import "./review-redesign.css";
+import "@/app/nw-redesign.css";
 import NwButton from "@/components/nw/Button";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import OverflowMenu, { type OverflowMenuItem } from "@/components/nw/OverflowMenu";

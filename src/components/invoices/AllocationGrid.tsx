@@ -210,7 +210,7 @@ const AllocationGrid = forwardRef<
   }
 
   return (
-    <div className="nw-review-redesign flex flex-col gap-4">
+    <div className="nw-redesign flex flex-col gap-4">
       {locked && (
         <div className="text-[11px] text-[color:var(--nw-warn)] border border-[rgba(201,138,59,0.35)] bg-[rgba(201,138,59,0.08)] px-2 py-1">
           Cannot edit: this invoice is on a submitted draw.

@@ -1,8 +1,15 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-15 · **HEAD (origin/main):** `a3d43b5` + design-handoff import + this Stage-2 review-redesign commit · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
+**Updated:** 2026-07-15 · **HEAD (origin/main):** Stage-2 review-redesign `5100efc` + this New-Job surface-#2 commit · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
 
 Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings), `invoices-draws-deep-dive/HANDOFF.md` (original TOP-20), **`HANDOFF-V2.md` (Stage-4 re-gauntlet dispositions + JAKE'S WALK LIST + NEW-2)**, and **`new2-carry-forward-fix.md` (NEW-2 fix + class sweep)**.
+
+## ✅ NEW JOB — REDUCE + RE-CONTAINER (redesign surface #2, 2026-07-15). QA: `.planning/qa-runs/2026-07-15-new-job-modal-reduce-recontainer-qa-report.md`.
+Job-creation surface reduced to TWO required fields (Name + Client, create-in-place) with silent org-settings defaults + one helper line; contract-type/billing/PM/deposit/fee/retainage all default silently (editable later in Job Settings; PM unassigned). Container switched slide-over → centered `PopModal` (one overlay language — Jake ruling; mockup screen-7 drawer superseded, recorded in `design_handoff_redesign/ASSETS.md`). MORE DETAILS ▾ absorbs contract type, billing method, address, contract amount, date.
+- **Files:** `NewJobSlideOver.tsx` → `NewJobModal.tsx` (`git mv` + rewrite) · `NewJobProvider.tsx` mounts it · first-draw setup card (`draws/new/page.tsx`) gained a `Prints: {document} · change in Job Settings` line · test `job-phase-contract-type.test.ts` repointed.
+- **Token promotion:** `.nw-review-redesign` → shared `.nw-redesign`; CSS moved `invoices/[id]/review-redesign.css` → `src/app/nw-redesign.css` (review-modal chrome `.nw-review-*` classes preserved for Stage 1). This is surface #2 of the new design language.
+- **Verified:** tsc 0; full suite green; live authed click-path (fixture soft-deleted) — centered modal → create-in-place client → CREATE → rail insert → silent defaults (DB) → first-draw card fires + Prints line renders. Catch-nets: Job Settings edit selects (read-confirmed), first-draw card (live).
+- **Note for the Stage-1 review-modal chrome session:** the shared class is now `.nw-redesign` (not `.nw-review-redesign`); the `.nw-review-overlay/-panel/-header/-footer/...` chrome classes are still in `src/app/nw-redesign.css`.
 
 ## ✅ REVIEW-SCREEN REDESIGN — STAGE 2 SHIPPED (2026-07-15). Modal chrome (Stage 1) = NEXT FRESH SESSION.
 Design handoff imported from the claude.ai Design project "Construction Invoice Redesign" (`3be86e57-60da-4e42-8fb1-398525ca8fd8`) → durable in git at `design_handoff_redesign/` (README.md carries both binding artifacts: label→status map + Excel-grid interaction spec; render locally via `node <scratch>/handoff-server.js design_handoff_redesign 4600`). QA: `.planning/qa-runs/2026-07-15-stage2-allocation-grid-balance-strip-qa-report.md`.

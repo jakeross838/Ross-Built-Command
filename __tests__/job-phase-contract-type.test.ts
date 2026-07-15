@@ -18,7 +18,7 @@
  *
  * UPDATE 2026-07-14 (NEW-2 doc-gen pass): the two UI assertions were relocated
  * to current deliberate policy. Per 3.4 (ONE NEW-JOB) /jobs/new is now a
- * redirect to the New-Job slide-over; per 2.4 contract_type (payment model) and
+ * redirect to the New-Job modal; per 2.4 contract_type (payment model) and
  * billing_method (draw doc) are two SEPARATE fields, and OnboardWizard.tsx is
  * gone (contract_type is per-job, not org-onboarding). The new-job form +
  * default now live in NewJobSlideOver.tsx, whose quick-create contract_type
@@ -38,8 +38,8 @@ const JOBS_API = "src/app/api/jobs/route.ts";
 const JOBS_NEW_PAGE = "src/app/jobs/new/page.tsx";
 const JOBS_ID_PAGE = "src/app/jobs/[id]/page.tsx";
 // 2.4 + 3.4: /jobs/new is now a redirect and OnboardWizard.tsx is gone — the
-// new-job form (contract_type + the 2.4 billing_method split) is the slide-over.
-const NEW_JOB_SLIDEOVER = "src/components/new-job/NewJobSlideOver.tsx";
+// new-job form (contract_type + the 2.4 billing_method split) is the modal.
+const NEW_JOB_MODAL = "src/components/new-job/NewJobModal.tsx";
 // Quick-create curates to the 3 common custom-home contract types (Pattern 4);
 // gmp / time_and_materials / unit_price are DB/API-valid and set later on the job.
 const QUICK_CREATE_CONTRACT_TYPES = ["cost_plus_aia", "cost_plus_open_book", "fixed_price"];
@@ -247,44 +247,44 @@ test(`${JOBS_ID_PAGE} Job type includes phase field with new union`, () => {
 });
 
 // 3.4 (ONE NEW-JOB): the full-page /jobs/new form was DELETED — it redirects to
-// the Bills view and opens the New-Job slide-over. So contract_type coverage
+// the Bills view and opens the New-Job modal. So contract_type coverage
 // moved off this route; the migration + JOBS_API + JOBS_ID_PAGE assertions above
 // keep the full 6-value contract set enforced end-to-end.
-test(`${JOBS_NEW_PAGE} redirects to the New-Job slide-over (3.4 — no full-page form)`, () => {
+test(`${JOBS_NEW_PAGE} redirects to the New-Job modal (3.4 — no full-page form)`, () => {
   const src = readFileSync(JOBS_NEW_PAGE, "utf8");
   assert.ok(
     /router\.replace\(\s*["']\/financials\/bills["']\s*\)/.test(src) && /useNewJob/.test(src),
-    `${JOBS_NEW_PAGE} must redirect to /financials/bills and open the slide-over (3.4)`
+    `${JOBS_NEW_PAGE} must redirect to /financials/bills and open the modal (3.4)`
   );
 });
 
-test(`${NEW_JOB_SLIDEOVER} carries the deliberate contract_type + billing_method split (2.4)`, () => {
-  const src = readFileSync(NEW_JOB_SLIDEOVER, "utf8");
+test(`${NEW_JOB_MODAL} carries the deliberate contract_type + billing_method split (2.4)`, () => {
+  const src = readFileSync(NEW_JOB_MODAL, "utf8");
   for (const v of QUICK_CREATE_CONTRACT_TYPES) {
-    assert.ok(src.includes(`"${v}"`), `slide-over must offer contract_type "${v}"`);
+    assert.ok(src.includes(`"${v}"`), `modal must offer contract_type "${v}"`);
   }
-  assert.ok(/billing_method/.test(src), "slide-over must carry billing_method (2.4 split)");
+  assert.ok(/billing_method/.test(src), "modal must carry billing_method (2.4 split)");
   assert.ok(
     /"aia"/.test(src) && /"cost_plus_statement"/.test(src),
-    "slide-over billing_method must offer aia + cost_plus_statement"
+    "modal billing_method must offer aia + cost_plus_statement"
   );
 });
 
 // ── new-job default contract_type ────────────────────────────────────
 // 2.4 + 3.4: contract_type is a PER-JOB field (payment model), no longer an
 // org-onboarding field — OnboardWizard.tsx is gone and onboard/page.tsx sets no
-// contract_type. The default now lives on the New-Job slide-over.
+// contract_type. The default now lives on the New-Job modal.
 
-test(`${NEW_JOB_SLIDEOVER} defaults new jobs' contract_type to "cost_plus_aia"`, () => {
-  const src = readFileSync(NEW_JOB_SLIDEOVER, "utf8");
+test(`${NEW_JOB_MODAL} defaults new jobs' contract_type to "cost_plus_aia"`, () => {
+  const src = readFileSync(NEW_JOB_MODAL, "utf8");
   assert.ok(
     /DEFAULT_CONTRACT[^=]*=\s*["']cost_plus_aia["']/.test(src),
-    `${NEW_JOB_SLIDEOVER} must default contract_type to "cost_plus_aia"`
+    `${NEW_JOB_MODAL} must default contract_type to "cost_plus_aia"`
   );
   // Regression guard: no lingering bare legacy default.
   assert.ok(
     !/["']cost_plus["'](?!_aia|_open_book|_statement)/.test(src),
-    `${NEW_JOB_SLIDEOVER} must not default to the bare legacy "cost_plus"`
+    `${NEW_JOB_MODAL} must not default to the bare legacy "cost_plus"`
   );
 });
 

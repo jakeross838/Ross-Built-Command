@@ -876,6 +876,9 @@ export default function NewDrawWizardPage() {
                     <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">
                       This job has no contract amount yet, so the G702 math would come out $0. Set the contract (and confirm retainage) — it saves to the job.
                     </p>
+                    <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
+                      Prints: {job.billing_method === "aia" ? "AIA Pay Application (G702/G703)" : job.billing_method === "fixed_fee_schedule" ? "Fixed Fee Schedule" : "Cost-Plus Statement"} · change in Job Settings
+                    </p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
