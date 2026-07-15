@@ -7,7 +7,8 @@ import { supabase } from "@/lib/supabase/client";
 import { formatCents, formatDollars, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
 import AppShell from "@/components/app-shell";
 import InvoiceFilePreview from "@/components/invoice-file-preview";
-import InvoiceAllocationsEditor, { type InvoiceAllocationsEditorHandle } from "@/components/invoice-allocations-editor";
+import AllocationGrid, { type AllocationGridHandle } from "@/components/invoices/AllocationGrid";
+import "./review-redesign.css";
 import NwButton from "@/components/nw/Button";
 import NwEyebrow from "@/components/nw/Eyebrow";
 import OverflowMenu, { type OverflowMenuItem } from "@/components/nw/OverflowMenu";
@@ -123,7 +124,7 @@ export default function InvoiceReviewPage() {
  // Ref to the allocations editor so Approve flushes pending cost-code edits
  // before committing — otherwise a changed allocation is silently discarded
  // on approve (audit #4).
- const allocEditorRef = useRef<InvoiceAllocationsEditorHandle>(null);
+ const allocEditorRef = useRef<AllocationGridHandle>(null);
 
  // Current user's org role (null while loading). Drives lock + edit
  // gating via canEditInvoice(). A loading (null) role is treated as
@@ -1514,7 +1515,7 @@ export default function InvoiceReviewPage() {
              className="px-[22px] pb-[22px] pt-[4px]"
              style={{ borderTop: "1px solid var(--border-default)" }}
            >
-             <InvoiceAllocationsEditor
+             <AllocationGrid
                ref={allocEditorRef}
                invoiceId={invoice.id}
                invoiceTotalCents={invoice.total_amount}
