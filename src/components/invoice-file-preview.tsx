@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import DOMPurify from "isomorphic-dompurify";
 import { fileKindFromUrl } from "@/lib/invoices/display";
@@ -108,7 +109,7 @@ function ImagePreview({ src, alt, downloadUrl, fileName }: { src: string; alt: s
   return (
     <>
       {/* Document surface stays white — paper metaphor, intentional across themes. */}
-      <div className="border border-[var(--border-default)] bg-white">
+      <div className="border border-[var(--border-default)] bg-[rgba(255,255,255,1)]">
         <div className="flex items-center justify-between border-b border-[var(--border-default)] bg-[var(--bg-subtle)] px-3 py-2">
           <span className="text-[11px] tracking-[0.08em] uppercase text-[color:var(--text-secondary)] truncate pr-2">
             Image{fileName ? ` · ${fileName}` : ""}
@@ -136,38 +137,43 @@ function ImagePreview({ src, alt, downloadUrl, fileName }: { src: string; alt: s
         <button
           type="button"
           onClick={() => setZoomed(true)}
-          className="block w-full cursor-zoom-in bg-white"
+          className="block w-full cursor-zoom-in bg-[rgba(255,255,255,1)]"
           aria-label="Zoom image"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src} alt={alt} className="w-full h-auto max-h-[700px] object-contain" />
         </button>
       </div>
-      {zoomed && (
-        <div
-          className="fixed inset-0 z-[80] bg-black/85 flex items-center justify-center p-2 md:p-6 cursor-zoom-out touch-manipulation overflow-auto"
-          onClick={() => setZoomed(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Image fullscreen"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt={alt}
-            className="max-w-full max-h-full object-contain shadow-xl"
-            style={{ touchAction: "pinch-zoom" }}
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button
-            type="button"
+      {zoomed &&
+        // Portaled to <body> + fully opaque backdrop: escapes ancestor
+        // stacking contexts (sticky doc pane / animated modal panel) that
+        // otherwise let sibling content paint through the fullscreen viewer.
+        createPortal(
+          <div
+            className="fixed inset-0 z-[80] bg-nw-slate-deeper flex items-center justify-center p-2 md:p-6 cursor-zoom-out touch-manipulation overflow-auto"
             onClick={() => setZoomed(false)}
-            className="absolute top-4 right-4 text-white/80 hover:text-white text-sm px-3 py-1 border border-white/40"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Image fullscreen"
           >
-            Close
-          </button>
-        </div>
-      )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt={alt}
+              className="max-w-full max-h-full object-contain shadow-xl"
+              style={{ touchAction: "pinch-zoom" }}
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              type="button"
+              onClick={() => setZoomed(false)}
+              className="absolute top-4 right-4 text-[rgba(247,245,236,0.8)] hover:text-[color:rgba(247,245,236,1)] text-sm px-3 py-1 border border-[rgba(247,245,236,0.4)]"
+            >
+              Close
+            </button>
+          </div>,
+          document.body
+        )}
     </>
   );
 }
@@ -274,9 +280,11 @@ function DocxPreview({
   );
 
   if (expanded) {
-    return (
+    // Portaled to <body> + opaque backdrop — same stacking-context escape as
+    // the image/PDF fullscreen viewers.
+    return createPortal(
       <div
-        className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-2 md:p-6"
+        className="fixed inset-0 z-[80] bg-nw-slate-deeper flex items-center justify-center p-2 md:p-6"
         role="dialog"
         aria-modal="true"
         aria-label="Expanded DOCX preview"
@@ -285,17 +293,18 @@ function DocxPreview({
         }}
       >
         {/* Document surface stays white — paper metaphor, intentional across themes. */}
-        <div className="bg-white w-full h-full md:w-[80vw] md:h-[85vh] flex flex-col shadow-2xl">
+        <div className="bg-[rgba(255,255,255,1)] w-full h-full md:w-[80vw] md:h-[85vh] flex flex-col shadow-2xl">
           {header}
           {body}
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
   return (
     // Document surface stays white — paper metaphor, intentional across themes.
-    <div className="border border-[var(--border-default)] bg-white">
+    <div className="border border-[var(--border-default)] bg-[rgba(255,255,255,1)]">
       {header}
       {body}
     </div>

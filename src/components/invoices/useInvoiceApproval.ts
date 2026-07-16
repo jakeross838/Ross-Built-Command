@@ -35,6 +35,24 @@ export type ApprovalRow = ApprovalInvoice & {
 
 export type BatchAction = "approve" | "hold" | "deny" | "quick_approve";
 
+/** Server shape for a batch-action rejection (batch-action/route.ts FailedItem). */
+type BatchFailed = { id: string; reason: string };
+
+/** Human lines for the failure toast: "Vendor · $amount — reason" per invoice.
+ * Batch partial-failure honesty (HANDOFF-V2 OBS): the server's per-invoice
+ * rejection reasons must reach the PM — never a silent "approved fewer than
+ * clicked". */
+function describeFailures<T extends ApprovalRow>(failed: BatchFailed[], rows: T[]): string[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return failed.map((f) => {
+    const inv = byId.get(f.id);
+    const label = inv
+      ? `${inv.vendor_name_raw ?? "Invoice"} · ${formatCents(inv.total_amount)}`
+      : `Invoice ${f.id.slice(0, 8)}…`;
+    return `${label} — ${f.reason}`;
+  });
+}
+
 export interface UseInvoiceApprovalArgs<T extends ApprovalRow> {
   /** The currently-visible actionable rows (the caller's `filtered` set). */
   invoices: T[];
@@ -92,7 +110,7 @@ export interface UseInvoiceApprovalReturn<T extends ApprovalRow> {
   confirmDeny: () => void;
   // shared
   batchProcessing: boolean;
-  toast: { kind: "ok" | "err"; text: string } | null;
+  toast: { kind: "ok" | "err"; text: string; details?: string[] } | null;
 }
 
 export function useInvoiceApproval<T extends ApprovalRow>({
@@ -161,7 +179,7 @@ export function useInvoiceApproval<T extends ApprovalRow>({
   );
 
   // ── Toast ──────────────────────────────────────────────────────────────
-  const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string; details?: string[] } | null>(null);
 
   // ── Quick Approve ──────────────────────────────────────────────────────
   const [quickApproveConfirmId, setQuickApproveConfirmId] = useState<string | null>(null);
@@ -256,13 +274,31 @@ export function useInvoiceApproval<T extends ApprovalRow>({
       });
       if (res.ok) {
         const result = await res.json();
-        onMutatedRef.current(result.success as string[], "approve");
-        setSelectedIds(new Set());
-        setToast({
-          kind: "ok",
-          text: `Approved ${result.success.length} invoice${result.success.length !== 1 ? "s" : ""}`,
+        const success = (result.success ?? []) as string[];
+        const failed = (result.failed ?? []) as BatchFailed[];
+        if (success.length > 0) onMutatedRef.current(success, "approve");
+        // Partial-failure honesty: drop only the SUCCEEDED ids from the
+        // selection — failed rows stay selected so the PM can see and retry
+        // them — and name every failure with the server's reason.
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of success) next.delete(id);
+          return next;
         });
-        setTimeout(() => setToast(null), 3500);
+        if (failed.length > 0) {
+          setToast({
+            kind: "err",
+            text: `Approved ${success.length} of ${success.length + failed.length} — ${failed.length} failed`,
+            details: describeFailures(failed, approvalEligible),
+          });
+          setTimeout(() => setToast(null), 12000);
+        } else {
+          setToast({
+            kind: "ok",
+            text: `Approved ${success.length} invoice${success.length !== 1 ? "s" : ""}`,
+          });
+          setTimeout(() => setToast(null), 3500);
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         setToast({ kind: "err", text: err.error ?? "Batch approve failed" });
@@ -285,6 +321,7 @@ export function useInvoiceApproval<T extends ApprovalRow>({
 
   const confirmHold = useCallback(async () => {
     if (!holdNote.trim()) return;
+    const rows = invoices.filter((inv) => selectedIds.has(inv.id));
     setBatchProcessing(true);
     setShowHoldModal(false);
     try {
@@ -295,19 +332,39 @@ export function useInvoiceApproval<T extends ApprovalRow>({
       });
       if (res.ok) {
         const result = await res.json();
-        onMutatedRef.current(result.success as string[], "hold");
-        setSelectedIds(new Set());
-        setHoldNote("");
-        setToast({
-          kind: "ok",
-          text: `Held ${result.success.length} invoice${result.success.length !== 1 ? "s" : ""}`,
+        const success = (result.success ?? []) as string[];
+        const failed = (result.failed ?? []) as BatchFailed[];
+        if (success.length > 0) onMutatedRef.current(success, "hold");
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of success) next.delete(id);
+          return next;
         });
-        setTimeout(() => setToast(null), 3500);
+        setHoldNote("");
+        if (failed.length > 0) {
+          setToast({
+            kind: "err",
+            text: `Held ${success.length} of ${success.length + failed.length} — ${failed.length} failed`,
+            details: describeFailures(failed, rows),
+          });
+          setTimeout(() => setToast(null), 12000);
+        } else {
+          setToast({
+            kind: "ok",
+            text: `Held ${success.length} invoice${success.length !== 1 ? "s" : ""}`,
+          });
+          setTimeout(() => setToast(null), 3500);
+        }
+      } else {
+        // Previously silent on a non-OK response — honesty fix.
+        const err = await res.json().catch(() => ({}));
+        setToast({ kind: "err", text: err.error ?? "Batch hold failed" });
+        setTimeout(() => setToast(null), 4500);
       }
     } finally {
       setBatchProcessing(false);
     }
-  }, [selectedIds, holdNote]);
+  }, [selectedIds, holdNote, invoices]);
 
   // ── Batch deny ─────────────────────────────────────────────────────────
   const [showDenyModal, setShowDenyModal] = useState(false);
@@ -320,6 +377,7 @@ export function useInvoiceApproval<T extends ApprovalRow>({
 
   const confirmDeny = useCallback(async () => {
     if (!denyNote.trim()) return;
+    const rows = invoices.filter((inv) => selectedIds.has(inv.id));
     setBatchProcessing(true);
     setShowDenyModal(false);
     try {
@@ -330,19 +388,39 @@ export function useInvoiceApproval<T extends ApprovalRow>({
       });
       if (res.ok) {
         const result = await res.json();
-        onMutatedRef.current(result.success as string[], "deny");
-        setSelectedIds(new Set());
-        setDenyNote("");
-        setToast({
-          kind: "ok",
-          text: `Denied ${result.success.length} invoice${result.success.length !== 1 ? "s" : ""}`,
+        const success = (result.success ?? []) as string[];
+        const failed = (result.failed ?? []) as BatchFailed[];
+        if (success.length > 0) onMutatedRef.current(success, "deny");
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of success) next.delete(id);
+          return next;
         });
-        setTimeout(() => setToast(null), 3500);
+        setDenyNote("");
+        if (failed.length > 0) {
+          setToast({
+            kind: "err",
+            text: `Denied ${success.length} of ${success.length + failed.length} — ${failed.length} failed`,
+            details: describeFailures(failed, rows),
+          });
+          setTimeout(() => setToast(null), 12000);
+        } else {
+          setToast({
+            kind: "ok",
+            text: `Denied ${success.length} invoice${success.length !== 1 ? "s" : ""}`,
+          });
+          setTimeout(() => setToast(null), 3500);
+        }
+      } else {
+        // Previously silent on a non-OK response — honesty fix.
+        const err = await res.json().catch(() => ({}));
+        setToast({ kind: "err", text: err.error ?? "Batch deny failed" });
+        setTimeout(() => setToast(null), 4500);
       }
     } finally {
       setBatchProcessing(false);
     }
-  }, [selectedIds, denyNote]);
+  }, [selectedIds, denyNote, invoices]);
 
   return {
     selectedIds,

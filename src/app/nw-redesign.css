@@ -518,6 +518,21 @@
   .nw-review-body { overflow: visible; padding: 0; }
   .nw-review-doc-pane { position: static; }
   .nw-review-doc-well { max-height: none; overflow: visible; }
+  /* The global print CSS hides ALL button/input/select — which would blank
+     the grid's cost-code cells and the metadata vendor/PM values on paper.
+     Un-hide exactly the value-bearing controls, stripped of chrome. */
+  .nw-redesign .nw-grid-cell .cost-code-combobox button,
+  .nw-redesign .nw-grid-cell [data-combobox] button,
+  .nw-review-card input,
+  .nw-review-card select {
+    display: block !important;
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  .nw-redesign .nw-grid-remove,
+  .nw-review-doc-toggle,
+  .nw-review-quietlink { display: none !important; }
 }
 
 /* ── SpreadsheetGrid (Excel-pure) ─────────────────────────────────────── */

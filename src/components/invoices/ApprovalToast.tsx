@@ -4,9 +4,14 @@
 // (quick approve, batch approve/hold/deny). Lifted verbatim from the PM Queue
 // (src/app/invoices/queue/page.tsx:1425-1432) so the queue and the folded-in
 // Bills list share one presentation. Driven entirely by `useInvoiceApproval`.
+//
+// Batch partial-failure honesty (HANDOFF-V2 OBS): `details` carries the
+// server's per-invoice rejection reasons — rendered as a list under the
+// headline so a partial batch is never silent about WHICH invoices failed
+// and WHY.
 
 export interface ApprovalToastProps {
-  toast: { kind: "ok" | "err"; text: string } | null;
+  toast: { kind: "ok" | "err"; text: string; details?: string[] } | null;
 }
 
 export default function ApprovalToast({ toast }: ApprovalToastProps) {
@@ -21,6 +26,16 @@ export default function ApprovalToast({ toast }: ApprovalToastProps) {
         }`}
       >
         {toast.text}
+        {toast.details && toast.details.length > 0 ? (
+          <ul className="mt-2 space-y-1 text-[12px] font-normal max-w-[520px]">
+            {toast.details.map((d, i) => (
+              <li key={i} className="flex gap-2">
+                <span aria-hidden="true">•</span>
+                <span className="min-w-0">{d}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </div>
   );

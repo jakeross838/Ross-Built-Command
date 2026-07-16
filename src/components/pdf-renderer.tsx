@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/esm/Page/AnnotationLayer.css";
 import "react-pdf/dist/esm/Page/TextLayer.css";
@@ -36,28 +37,36 @@ export default function PdfRenderer({ fileUrl, downloadUrl, fileName }: Props) {
         fileName={fileName}
         onExpand={() => setExpanded(true)}
       />
-      {expanded && (
-        <div
-          className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-2 md:p-6 overflow-y-auto"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Expanded PDF preview"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setExpanded(false);
-          }}
-        >
-          {/* PDF canvas surface stays white — paper metaphor, intentional across themes. */}
-          <div className="bg-white w-full h-full md:w-[80vw] md:h-[85vh] flex flex-col shadow-2xl">
-            <PdfViewer
-              fileUrl={fileUrl}
-              downloadUrl={downloadUrl}
-              fileName={fileName}
-              onClose={() => setExpanded(false)}
-              fullscreen
-            />
-          </div>
-        </div>
-      )}
+      {expanded &&
+        // Portaled to <body>: inline previews can sit inside sticky/animated
+        // ancestors (e.g. the review modal's doc pane) whose stacking contexts
+        // trap a fixed z-[80] dialog — sibling content then paints THROUGH the
+        // viewer (ghost text over the document). The portal escapes every
+        // ancestor stacking context; the backdrop is fully opaque so nothing
+        // beneath renders through.
+        createPortal(
+          <div
+            className="fixed inset-0 z-[80] bg-nw-slate-deeper flex items-center justify-center p-2 md:p-6 overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Expanded PDF preview"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setExpanded(false);
+            }}
+          >
+            {/* PDF canvas surface stays white — paper metaphor, intentional across themes. */}
+            <div className="bg-[rgba(255,255,255,1)] w-full h-full md:w-[80vw] md:h-[85vh] flex flex-col shadow-2xl">
+              <PdfViewer
+                fileUrl={fileUrl}
+                downloadUrl={downloadUrl}
+                fileName={fileName}
+                onClose={() => setExpanded(false)}
+                fullscreen
+              />
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 }
@@ -232,7 +241,7 @@ function PdfViewer({
       {/* PDF canvas surface stays white — paper metaphor, intentional across themes. */}
       <div
         ref={containerRef}
-        className={`${fullscreen ? "flex-1" : "max-h-[700px]"} overflow-auto p-3 bg-white`}
+        className={`${fullscreen ? "flex-1" : "max-h-[700px]"} overflow-auto p-3 bg-[rgba(255,255,255,1)]`}
       >
         {error ? (
           <div className="p-4 text-center text-sm text-[color:var(--nw-danger)]">
