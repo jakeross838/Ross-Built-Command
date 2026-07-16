@@ -1,6 +1,22 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-16 · **HEAD (origin/main):** Stage-1 review-modal chrome (this commit) on top of New-Job `b57a4a3` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
+**Updated:** 2026-07-16 (massive-run session 1) · **HEAD (origin/main):** massive-run Stage-A `b21c963` on Stage-1 chrome `30ffd48` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean after doc commit.
+
+## 🛑 MASSIVE RUN — SESSION 1 CLOSE: Stage A SHIPPED · B-discovery COMPLETE · **HALTED for Jake's GO on the multi-job split build**
+
+**The run:** A (known defects) → B-discovery (HALT) → B-build → C (residual sweep) → D (review packet). Per the ordering, C and D wait behind B-build; B-build waits on Jake's ruling.
+
+**✅ STAGE A — all four shipped in `b21c963`** (QA: `.planning/qa-runs/2026-07-16-massive-run-stage-a-qa-report.md`):
+- **A1 viewer stacking (Jake's screenshot):** root cause = sticky doc-pane stacking context trapping the fixed z-80 viewer dialogs → rail content painted through (the "ghost vendor name" + "doubled description"). All three viewers (image/PDF/DOCX) now portal to `document.body` with a fully opaque backdrop. Verified at 1440 + 390 iframe probe.
+- **A2:** zero foreign-org cost-code references remain in RB data (6-surface SQL sweep clean; Mock Concrete repointed; combobox resolves).
+- **A3 batch honesty:** approve/hold/deny surface per-invoice failure reasons ("Approved 1 of 2 — 1 failed • vendor · $amt — reason"), failed rows stay selected, hold/deny got their missing error branches. Verified live via induced mid-batch stale-status flip.
+- **A4:** 390px layout DOM-verified; print CSS un-hides value-bearing controls (live print dialog untestable under automation — noted).
+
+**🛑 B-DISCOVERY — done; proposal at `.planning/coherence/multi-job-split-proposal.md`; HALT.** 6-agent parallel sweep (142 consumers, 72 must-change; raw results in session scratchpad) + first-hand verification of the money core. Headlines: WI-013's validator ALREADY models per-allocation job_id (dormant, tested, zero callers — the invariant predates the schema); `invoices.draw_id` scalar forces an `invoice_draw_links` junction; the draw RPCs (00061/00110/00117) carry whole-invoice status/lien/payment semantics in SQL; budget consumption reads line-items while draws read allocations (dual-source — Q8); `amount_cents >= 0` CHECK means credits can't split (Q9); PM RLS is header-job-keyed (Q7) **and a latent bug: NO PM write policy exists on invoice_allocations at all** (PM allocation saves likely no-op at RLS today — C2 verify+fix regardless). **Jake rules on Q1–Q9 (recs inline) → B-build proceeds (est. 2 sessions: B1 schema+engine+draws, B2 budget-source unification).**
+
+**Deliberately NOT in this run** (for the final report): 7-screen propagation (waits on split-stabilized grid + Jake's verdict) · #19 route namespace (Jake's call — asked in the review packet) · fixed-fee renderer, receipts, QuickBooks, email-in (parked).
+
+**C2 seed list (collected during A/B, for the post-B sweep):** PM-allocations RLS no-op bug (above) · `InvoiceHeader.tsx` orphaned (unused import target) · dead `?jobId=` link contract (`jobs/[id]/invoices` → `/invoices` never reads it) · `approvedInvoicesInPeriod` dead export (0 callers) · light `OverflowMenu` now unused · HANDOFF-V2 residuals (QA-absorb = C1 · 2.5b live-save walk · <70% confidence path unexercised) · draws list `.eq("job_id", jobId)` surfaces get allocation-aware semantics only after B.
 
 Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings), `invoices-draws-deep-dive/HANDOFF.md` (original TOP-20), **`HANDOFF-V2.md` (Stage-4 re-gauntlet dispositions + JAKE'S WALK LIST + NEW-2)**, and **`new2-carry-forward-fix.md` (NEW-2 fix + class sweep)**.
 
