@@ -474,7 +474,7 @@ function TimelineRow({
   );
 }
 
-function buildTimeline(
+export function buildTimeline(
   history: Array<Record<string, unknown>>,
   currentStatus: string,
   userNames: Map<string, string>
@@ -521,7 +521,7 @@ function buildHistoryLabel(
   return `${action}${actor}${suffix}`;
 }
 
-function humanStatus(s: string): string {
+export function humanStatus(s: string): string {
   switch (s) {
     case "received":
       return "Received";
@@ -556,7 +556,7 @@ function humanStatus(s: string): string {
   }
 }
 
-function pendingAfter(currentStatus: string): string[] {
+export function pendingAfter(currentStatus: string): string[] {
   switch (currentStatus) {
     case "received":
     case "ai_processed":
@@ -575,7 +575,7 @@ function pendingAfter(currentStatus: string): string[] {
   }
 }
 
-function buildAiNarrative(
+export function buildAiNarrative(
   confidenceDetails:
     | (Record<string, number> & { auto_fills?: Record<string, boolean> })
     | null,

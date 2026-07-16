@@ -46,8 +46,12 @@ const AllocationGrid = forwardRef<
     costCodes: CostCodeOption[];
     readOnly?: boolean;
     onChange?: () => void;
+    /** Display-only: reports the live allocation sum so the review modal's
+     *  footer can show ✓ BALANCED / $X UNALLOCATED (Stage-1 chrome). Never
+     *  gates any behavior. Pass a stable (useCallback) fn. */
+    onBalanceChange?: (info: { sumCents: number; balanced: boolean }) => void;
   }
->(function AllocationGrid({ invoiceId, invoiceTotalCents, costCodes, readOnly, onChange }, ref) {
+>(function AllocationGrid({ invoiceId, invoiceTotalCents, costCodes, readOnly, onChange, onBalanceChange }, ref) {
   const [rows, setRows] = useState<Allocation[]>([]);
   const [initialSnapshot, setInitialSnapshot] = useState("[]");
   const [loading, setLoading] = useState(true);
@@ -82,6 +86,9 @@ const AllocationGrid = forwardRef<
 
   const sum = useMemo(() => rows.reduce((s, r) => s + Math.round(r.amount_cents || 0), 0), [rows]);
   const balanced = sum === invoiceTotalCents;
+  useEffect(() => {
+    onBalanceChange?.({ sumCents: sum, balanced });
+  }, [sum, balanced, onBalanceChange]);
   const anyCostCodeMissing = rows.some((r) => !r.cost_code_id);
   const isDirty = JSON.stringify(rows) !== initialSnapshot;
   const canEdit = !readOnly && !locked;

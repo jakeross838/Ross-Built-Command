@@ -4,21 +4,25 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
-import { formatCents, formatDollars, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
+import { formatCents, formatDollars, formatStatus, formatDate, formatFlag } from "@/lib/utils/format";
 import AppShell from "@/components/app-shell";
 import InvoiceFilePreview from "@/components/invoice-file-preview";
 import AllocationGrid, { type AllocationGridHandle } from "@/components/invoices/AllocationGrid";
 import "@/app/nw-redesign.css";
 import NwButton from "@/components/nw/Button";
 import NwEyebrow from "@/components/nw/Eyebrow";
-import OverflowMenu, { type OverflowMenuItem } from "@/components/nw/OverflowMenu";
+import { type OverflowMenuItem } from "@/components/nw/OverflowMenu";
 import { useFlash } from "@/components/nw/FlashProvider";
 import { invoiceDisplayName } from "@/lib/invoices/display";
 import { toast } from "@/lib/utils/toast";
 import PaymentPanel from "@/components/invoices/PaymentPanel";
 import PaymentTrackingPanel from "@/components/invoices/PaymentTrackingPanel";
-import InvoiceHeader from "@/components/invoices/InvoiceHeader";
-import InvoiceDetailsPanel from "@/components/invoices/InvoiceDetailsPanel";
+import VendorContactPopover from "@/components/vendor-contact-popover";
+import {
+  buildTimeline,
+  buildAiNarrative,
+  pendingAfter,
+} from "@/components/invoices/InvoiceDetailsPanel";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentRole } from "@/hooks/use-current-role";
 import { useOrgId } from "@/hooks/use-org-id";
@@ -113,6 +117,36 @@ interface EditableLineItem {
  co_reference: string;
  ai_suggested_cost_code_id: string | null;
  ai_suggestion_confidence: number | null;
+}
+
+// Stage-1 review-modal chrome: status → header pill label + tone, per the
+// design_handoff_redesign/README.md "Label → status map" (FINAL REVIEW =
+// qa_review; pm_approved is awaiting final review so it shares the label).
+function reviewPill(
+ status: string,
+ drawInfo: { draw_number: number; status: string } | null
+): { label: string; tone: string } {
+ switch (status) {
+ case "received": return { label: "Received", tone: "is-muted" };
+ case "ai_processed":
+ case "pm_review": return { label: "PM review", tone: "is-accent" };
+ case "pm_held": return { label: "On hold", tone: "is-warn" };
+ case "pm_denied": return { label: "Denied", tone: "is-danger" };
+ case "info_requested": return { label: "Info requested", tone: "is-warn" };
+ case "pm_approved":
+ case "qa_review": return { label: "Final review", tone: "is-accent" };
+ case "qa_kicked_back": return { label: "Returned to PM", tone: "is-warn" };
+ case "qa_approved": return { label: "Approved", tone: "is-ok" };
+ case "pushed_to_qb": return { label: "Pushed to QuickBooks", tone: "is-muted" };
+ case "in_draw":
+ return {
+ label: drawInfo ? `Draw #${drawInfo.draw_number} · ${drawInfo.status}` : "In draw",
+ tone: "is-accent",
+ };
+ case "paid": return { label: "Paid", tone: "is-ok" };
+ case "void": return { label: "Void", tone: "is-muted" };
+ default: return { label: formatStatus(status), tone: "is-muted" };
+ }
 }
 
 // ── Main Page ───────────────────────────────────────────
@@ -213,6 +247,67 @@ export default function InvoiceReviewPage() {
  const [pickedUp, setPickedUp] = useState(false);
  const [mailedDate, setMailedDate] = useState("");
  const [savingPayment, setSavingPayment] = useState(false);
+
+ // ── Stage-1 review-modal chrome state (skin only — no workflow logic).
+ // Footer AI-status popover, dark ⋯ overflow, QB-note disclosure, history
+ // card, vendor-name draft (mirrors the retired InvoiceDetailsPanel input),
+ // and the live allocation balance reported by AllocationGrid.
+ const [aiOpen, setAiOpen] = useState(false);
+ const [footMenuOpen, setFootMenuOpen] = useState(false);
+ const [qbNoteOpen, setQbNoteOpen] = useState(false);
+ const [historyOpen, setHistoryOpen] = useState(false);
+ const [vendorDraft, setVendorDraft] = useState("");
+ const [allocBal, setAllocBal] = useState<{ sumCents: number; balanced: boolean } | null>(null);
+ const handleAllocBalance = useCallback(
+ (info: { sumCents: number; balanced: boolean }) => setAllocBal(info),
+ []
+ );
+ const aiPopRef = useRef<HTMLDivElement>(null);
+ const footMenuRef = useRef<HTMLDivElement>(null);
+ const panelRef = useRef<HTMLDivElement>(null);
+
+ // Keep the vendor draft in sync with the canonical value (post-save refetch).
+ useEffect(() => {
+ setVendorDraft(invoice?.vendor_name_raw ?? invoice?.vendors?.name ?? "");
+ }, [invoice?.vendor_name_raw, invoice?.vendors?.name]);
+
+ // ESC closes the review modal → back to the Bills list (mockup contract).
+ // Guarded so it never fires while something else owns the key: cell edits
+ // preventDefault their Esc, page modals/popovers are visible in state here,
+ // and the file-viewer overlays render [role="dialog"] elements.
+ const anyOverlaySurface =
+ showNoteModal !== null || showApproveConfirm || showAmountGuard || showMissingCoBlock ||
+ showMissingFieldsBlock || showOverBudgetModal || showRequestInfoModal || showPartialModal ||
+ showKickBackModal || showDeleteModal || aiOpen || footMenuOpen;
+ useEffect(() => {
+ const onKey = (e: KeyboardEvent) => {
+ if (e.key !== "Escape" || e.defaultPrevented) return;
+ if (anyOverlaySurface) return;
+ const t = e.target as HTMLElement | null;
+ if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+ // Any OTHER dialog (file-viewer expand/zoom overlays) owns the key —
+ // the review panel itself is role="dialog", so exclude it.
+ const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+ if (dialogs.some((d) => d !== panelRef.current)) return;
+ router.push("/financials/bills");
+ };
+ document.addEventListener("keydown", onKey);
+ return () => document.removeEventListener("keydown", onKey);
+ }, [anyOverlaySurface, router]);
+
+ // Footer popovers close on outside click (AI status + ⋯ overflow only —
+ // the Return-to-PM popover holds a typed note, so it closes via Cancel).
+ useEffect(() => {
+ if (!aiOpen && !footMenuOpen) return;
+ const onDown = (e: MouseEvent) => {
+ const t = e.target as Node;
+ if (aiPopRef.current?.contains(t) || footMenuRef.current?.contains(t)) return;
+ setAiOpen(false);
+ setFootMenuOpen(false);
+ };
+ document.addEventListener("mousedown", onDown);
+ return () => document.removeEventListener("mousedown", onDown);
+ }, [aiOpen, footMenuOpen]);
 
  // Fetch invoice
  async function fetchInvoice(signal?: AbortSignal) {
@@ -961,29 +1056,169 @@ export default function InvoiceReviewPage() {
  setSavingPayment(false);
  };
 
+ // ── Stage-1 derived display values (hoisted from the retired render IIFE —
+ // same computations, chrome-only consumers; handlers untouched per F1). ──
+ const isQaApproved = invoice.status === "qa_approved";
+ // Secondary + destructive actions live in the footer's quiet "⋯" overflow so
+ // the decision row is just the frequent verdicts (audit 3.6 / #15). Delete is
+ // danger-styled and grouped below a divider inside the menu.
+ const overflowItems: OverflowMenuItem[] = [];
+ if (isReviewable) {
+   overflowItems.push({
+     key: "partial",
+     label: "Partial",
+     disabled: saving || lineItems.length < 2 || !!approveDisabledReason,
+     title:
+       approveDisabledReason ??
+       (lineItems.length < 2
+         ? "Partial approval requires 2+ line items"
+         : "Split this invoice into approved and held portions"),
+     onClick: () => {
+       setPartialApprovedIds(new Set());
+       setPartialNote("");
+       setPartialError(null);
+       setShowPartialModal(true);
+     },
+   });
+   overflowItems.push({
+     key: "request_info",
+     label: "Request Info",
+     disabled: saving,
+     onClick: () => setShowRequestInfoModal(true),
+   });
+ }
+ overflowItems.push({ key: "print", label: "Print", onClick: () => window.print() });
+ if (invoice.signed_file_url) {
+   overflowItems.push({ key: "download", label: "Download PDF", href: invoice.signed_file_url });
+ }
+ if (canDelete) {
+   overflowItems.push({
+     key: "delete",
+     label: "Delete",
+     danger: true,
+     title: "Delete this un-approved invoice",
+     onClick: () => {
+       setDeleteReason("");
+       setDeleteError(null);
+       setShowDeleteModal(true);
+     },
+   });
+ }
+ const vendorName = invoice.vendor_name_raw ?? invoice.vendors?.name ?? "Unknown vendor";
+ const projectName = invoice.jobs?.name ?? "—";
+ const receivedAtLabel = invoice.received_date ? formatDate(invoice.received_date) : null;
+ const invoiceDateLabel = invoice.invoice_date ? formatDate(invoice.invoice_date) : null;
+ const paymentDueLabel = invoice.payment_date ? formatDate(invoice.payment_date) : null;
+ const drawLabel = drawInfo
+   ? `Draw #${drawInfo.draw_number}${drawInfo.status === "submitted" || drawInfo.status === "paid" ? "" : ` (${drawInfo.status})`}`
+   : null;
+ const flags = (invoice.ai_raw_response?.flags as string[] | undefined) ?? [];
+ const isReceipt = invoice.document_type === "receipt";
+ const pill = reviewPill(invoice.status, drawInfo);
+ const sublineParts: string[] = [];
+ if (projectName !== "—") sublineParts.push(projectName);
+ if (receivedAtLabel) sublineParts.push(`Received ${receivedAtLabel}`);
+ sublineParts.push(`PM ${invoice.assigned_pm?.full_name ?? "Unassigned"}`);
+ const subline = sublineParts.join(" · ");
+ // Footer AI status line + popover content — real extraction metadata only
+ // (README terminology: never a model name).
+ const autoFills = invoice.confidence_details?.auto_fills;
+ const autoFillCount = autoFills ? Object.values(autoFills).filter(Boolean).length : 0;
+ const aiFieldCount = Object.entries(invoice.confidence_details ?? {}).filter(
+   ([k, v]) => k !== "auto_fills" && typeof v === "number"
+ ).length;
+ const aiPct = Math.round(invoice.confidence_score * 100);
+ const flagsCleared = invoice.status === "qa_approved" && flags.length > 0;
+ const aiSummaryLine = `AI${aiFieldCount > 0 ? ` · ${aiFieldCount} fields` : ""} · ${aiPct}%${
+   flags.length === 0 ? "" : flagsCleared ? " · flags cleared" : ` · ${flags.length} flag${flags.length === 1 ? "" : "s"}`
+ }`;
+ const aiNarrative = buildAiNarrative(invoice.confidence_details, flags, autoFillCount);
+ // History card (real status_history via the shared timeline builder).
+ const timeline = buildTimeline(invoice.status_history ?? [], invoice.status, userNames);
+ const eventCount = (invoice.status_history ?? []).length;
+ const nextPending = pendingAfter(invoice.status)[0] ?? null;
+ // Source document: stamped copy when present + selected, else original.
+ const activeDocUrl = invoice.stamped_file_url && showStamped ? invoice.stamped_file_url : invoice.signed_file_url;
+ // Live allocation balance for the footer (reported by AllocationGrid;
+ // display-only — approval gating stays in openApproveFlow/save).
+ const balState = allocBal === null
+   ? null
+   : allocBal.balanced
+     ? { label: "✓ Balanced", cls: "is-ok" }
+     : allocBal.sumCents < invoice.total_amount
+       ? { label: `${formatCents(invoice.total_amount - allocBal.sumCents)} unallocated`, cls: "is-warn" }
+       : { label: `${formatCents(allocBal.sumCents - invoice.total_amount)} over-allocated`, cls: "is-danger" };
+ // PO / CO match display (adjudicated with Jake: renders READ-ONLY this pass).
+ const match = invoice.po_id
+   ? { kind: "PO", chipCls: "is-po", label: invoice.po_reference_raw ?? "Linked purchase order" }
+   : isChangeOrder
+     ? { kind: "CO", chipCls: "is-co", label: coReference || invoice.co_reference_raw || "Change order" }
+     : { kind: "—", chipCls: "is-none", label: "No PO / CO — direct to budget" };
+ const metaLineParts: string[] = [];
+ if (invoiceDateLabel) metaLineParts.push(`Invoiced ${invoiceDateLabel}`);
+ if (receivedAtLabel) metaLineParts.push(`Received ${receivedAtLabel}`);
+ if (paymentDueLabel) metaLineParts.push(`Due ${paymentDueLabel}`);
+ if (drawLabel) metaLineParts.push(drawLabel);
+ const paymentPill = invoice.status === "paid"
+   ? { label: "Paid", cls: "is-ok-light" }
+   : { label: invoice.payment_status ? formatStatus(invoice.payment_status) : "Unpaid", cls: "is-muted-light" };
+
  return (
  <AppShell>
 
- {/* Sub-header */}
- <InvoiceHeader
-   vendorNameRaw={invoice.vendor_name_raw}
-   vendorId={invoice.vendor_id}
-   vendor={invoice.vendors}
-   invoiceNumber={invoice.invoice_number}
-   confidenceScore={invoice.confidence_score}
-   status={invoice.status}
-   isCreditMemo={isCreditMemo}
-   isChangeOrder={isChangeOrder}
-   assignedPmId={invoice.assigned_pm?.id}
-   pmUsers={pmUsers}
-   reassigning={reassigning}
-   onReassignPm={handleReassignPm}
+ {/* ── Stage-1 review-modal chrome: full-screen overlay on the list (dimmed
+        backdrop = context), slate-deep header + sticky footer decision bar.
+        Scoped under .nw-redesign (firewall F3). ── */}
+ <div className="nw-redesign nw-review-overlay">
+ <button
+ type="button"
+ className="nw-review-backdrop"
+ aria-label="Close review"
+ tabIndex={-1}
+ onClick={() => router.push("/financials/bills")}
  />
+ <div
+ ref={panelRef}
+ className="nw-review-panel animate-fade-up"
+ role="dialog"
+ aria-modal="true"
+ aria-label={`Invoice review — ${vendorName}`}
+ >
+
+ {/* ── Slate-deep header: identity + status left · ESC right. Prev/next
+        stepper OMITTED (unbuilt list-nav → F2 zero-fiction; recorded in
+        design_handoff_redesign/ASSETS.md as the Phase-B auto-advance
+        propagation candidate). ── */}
+ <div className="nw-review-header">
+ <div style={{ minWidth: 0 }}>
+ <div className="flex items-center gap-[10px] flex-wrap">
+ <span className="nw-review-title">{vendorName}</span>
+ <span className="nw-review-docnum">#{invoice.invoice_number ?? "—"}</span>
+ <span className={`nw-review-pill ${pill.tone}`}>{pill.label}</span>
+ {isReceipt ? <span className="nw-review-pill is-muted">Receipt</span> : null}
+ {isCreditMemo ? <span className="nw-review-pill is-accent">Credit memo</span> : null}
+ {isChangeOrder ? <span className="nw-review-pill is-warn">Change order</span> : null}
+ </div>
+ <div className="nw-review-subtitle">{subline}</div>
+ </div>
+ <span style={{ flex: 1 }} />
+ <button
+ type="button"
+ className="nw-review-esc"
+ onClick={() => router.push("/financials/bills")}
+ title="Close · Esc"
+ >
+ <span className="nw-review-esc-key">ESC</span>
+ <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M6 18L18 6M6 6l12 12" /></svg>
+ </button>
+ </div>
+
+ <main className="nw-review-body print-area">
 
  {/* Kick-back banner from QA */}
  {kickBackInfo && (
- <div className="bg-[rgba(176,85,78,0.12)] border-b border-[rgba(176,85,78,0.24)] px-6 py-3">
- <div className="max-w-[1600px] mx-auto flex items-start gap-3">
+ <div className="mb-4 bg-[rgba(176,85,78,0.12)] border border-[rgba(176,85,78,0.24)] px-4 py-3 print:hidden">
+ <div className="flex items-start gap-3">
  <svg className="w-5 h-5 text-[color:var(--nw-danger)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
  </svg>
@@ -997,8 +1232,8 @@ export default function InvoiceReviewPage() {
 
  {/* Hold banner */}
  {holdInfo !== null && (
- <div className="bg-[rgba(201,138,59,0.12)] border-b border-[rgba(201,138,59,0.25)] px-6 py-3">
- <div className="max-w-[1600px] mx-auto flex items-start gap-3">
+ <div className="mb-4 bg-[rgba(201,138,59,0.12)] border border-[rgba(201,138,59,0.25)] px-4 py-3 print:hidden">
+ <div className="flex items-start gap-3">
  <svg className="w-5 h-5 text-nw-warn flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
  </svg>
@@ -1012,8 +1247,8 @@ export default function InvoiceReviewPage() {
 
  {/* Deny banner with reopen */}
  {denyInfo !== null && (
- <div className="bg-[rgba(176,85,78,0.12)] border-b border-[rgba(176,85,78,0.24)] px-6 py-3">
- <div className="max-w-[1600px] mx-auto flex items-start gap-3">
+ <div className="mb-4 bg-[rgba(176,85,78,0.12)] border border-[rgba(176,85,78,0.24)] px-4 py-3 print:hidden">
+ <div className="flex items-start gap-3">
  <svg className="w-5 h-5 text-[color:var(--nw-danger)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
  </svg>
@@ -1032,8 +1267,8 @@ export default function InvoiceReviewPage() {
 
  {/* Info Requested banner */}
  {infoRequestedInfo !== null && (
- <div className="bg-[rgba(201,138,59,0.12)] border-b border-[rgba(201,138,59,0.25)] px-6 py-3">
- <div className="max-w-[1600px] mx-auto flex items-start gap-3">
+ <div className="mb-4 bg-[rgba(201,138,59,0.12)] border border-[rgba(201,138,59,0.25)] px-4 py-3 print:hidden">
+ <div className="flex items-start gap-3">
  <svg className="w-5 h-5 text-nw-warn flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
  <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
  </svg>
@@ -1058,8 +1293,8 @@ export default function InvoiceReviewPage() {
 
  {/* Math mismatch banner */}
  {invoice.ai_raw_response?.flags?.includes("math_mismatch") && (
- <div className="bg-[rgba(176,85,78,0.12)] border-b border-[rgba(176,85,78,0.24)] px-6 py-3">
- <div className="max-w-[1600px] mx-auto flex items-start gap-3">
+ <div className="mb-4 bg-[rgba(176,85,78,0.12)] border border-[rgba(176,85,78,0.24)] px-4 py-3 print:hidden">
+ <div className="flex items-start gap-3">
  <svg className="w-5 h-5 text-[color:var(--nw-danger)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
  </svg>
@@ -1071,7 +1306,6 @@ export default function InvoiceReviewPage() {
  </div>
  )}
 
- <main className="print-area max-w-[1600px] mx-auto px-4 md:px-6 py-6 pb-32 md:pb-6">
  {/* Print-only header */}
  <div className="hidden print:block mb-4">
  <h1 className="text-xl font-semibold">
@@ -1167,354 +1401,131 @@ export default function InvoiceReviewPage() {
  </div>
  </div>
  )}
- {/* ═══ Unified two-column invoice detail — Phase 2 final rewrite.
-        Matches Nightwork Design System reference (Nightwork Invoice
-        Detail - Standalone.html). Two-column hero (PDF left / metadata
-        + AI + timeline right), full-width line items editor, workflow
-        actions row, payment row, cost-intelligence link-out. ═══ */}
- {(() => {
-   const isQaApproved = invoice.status === "qa_approved";
-   // Secondary + destructive actions live in a quiet "More" overflow so the
-   // primary row is just the frequent decisions (audit 3.6 / #15). Delete is
-   // danger-styled and grouped below a divider inside the menu.
-   const overflowItems: OverflowMenuItem[] = [];
-   if (isReviewable) {
-     overflowItems.push({
-       key: "partial",
-       label: "Partial",
-       disabled: saving || lineItems.length < 2 || !!approveDisabledReason,
-       title:
-         approveDisabledReason ??
-         (lineItems.length < 2
-           ? "Partial approval requires 2+ line items"
-           : "Split this invoice into approved and held portions"),
-       onClick: () => {
-         setPartialApprovedIds(new Set());
-         setPartialNote("");
-         setPartialError(null);
-         setShowPartialModal(true);
-       },
-     });
-     overflowItems.push({
-       key: "request_info",
-       label: "Request Info",
-       disabled: saving,
-       onClick: () => setShowRequestInfoModal(true),
-     });
-   }
-   if (invoice.signed_file_url) {
-     overflowItems.push({ key: "download", label: "Download PDF", href: invoice.signed_file_url });
-   }
-   if (canDelete) {
-     overflowItems.push({
-       key: "delete",
-       label: "Delete",
-       danger: true,
-       title: "Delete this un-approved invoice",
-       onClick: () => {
-         setDeleteReason("");
-         setDeleteError(null);
-         setShowDeleteModal(true);
-       },
-     });
-   }
-   const vendorName = invoice.vendor_name_raw ?? invoice.vendors?.name ?? "Unknown vendor";
-   const projectName = invoice.jobs?.name ?? "—";
-   const receivedAtLabel = invoice.received_date ? formatDate(invoice.received_date) : null;
-   const invoiceDateLabel = invoice.invoice_date ? formatDate(invoice.invoice_date) : null;
-   const drawLabel = drawInfo
-     ? `Draw #${drawInfo.draw_number}${drawInfo.status === "submitted" || drawInfo.status === "paid" ? "" : ` (${drawInfo.status})`}`
-     : null;
-   const aiModelUsed = (invoice as { ai_model_used?: string }).ai_model_used ?? null;
-   const flags = (invoice.ai_raw_response?.flags as string[] | undefined) ?? [];
-
-   const isReceipt = invoice.document_type === "receipt";
-   const titleMain = isReceipt
-     ? `Receipt ${invoice.invoice_number ?? ""}`.trim()
-     : `Invoice #${invoice.invoice_number ?? "—"}`;
-   const breadcrumbTrail = `#${invoice.invoice_number ?? "—"} · ${vendorName}`;
-   const subLineParts: string[] = [];
-   if (vendorName) subLineParts.push(vendorName);
-   if (projectName && projectName !== "—") subLineParts.push(projectName);
-   if (drawLabel) subLineParts.push(`Assigned to ${drawLabel}`);
-
-   return (
-     <div className="max-w-[1280px] mx-auto animate-fade-up">
-       {/* ── HEADER BLOCK ── */}
-       <div className="mb-6">
-         <div
-           className="mb-[14px]"
-           style={{
-             fontFamily: "var(--font-mono)",
-             fontSize: "10px",
-             letterSpacing: "0.12em",
-             textTransform: "uppercase",
-             color: "var(--text-muted)",
-           }}
-         >
-           <Link href="/financials/bills" className="hover:text-[color:var(--text-secondary)] transition-colors">Invoices</Link>{" "}/{" "}
-           <b style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-             {breadcrumbTrail}
-           </b>
-         </div>
-         <div className="flex items-end justify-between gap-5 flex-wrap">
-           <div className="min-w-0">
-             <h1
-               className="flex items-center gap-3 flex-wrap"
-               style={{
-                 fontFamily: "var(--font-display)",
-                 fontWeight: 500,
-                 fontSize: "30px",
-                 letterSpacing: "-0.02em",
-                 margin: "0 0 4px",
-                 color: "var(--text-primary)",
-                 lineHeight: 1.15,
-               }}
-             >
-               <span>{titleMain}</span>
-               <span
-                 className={`inline-flex items-center px-[9px] py-[3px] ${statusBadgeOutline(invoice.status)}`}
-                 style={{
-                   fontFamily: "var(--font-mono)",
-                   fontSize: "10px",
-                   letterSpacing: "0.12em",
-                   textTransform: "uppercase",
-                   fontWeight: 500,
-                 }}
-               >
-                 {formatStatus(invoice.status)}
-               </span>
-               {isReceipt ? (
-                 <span
-                   className="inline-flex items-center px-[9px] py-[3px] border"
-                   style={{
-                     fontFamily: "var(--font-mono)",
-                     fontSize: "10px",
-                     letterSpacing: "0.12em",
-                     textTransform: "uppercase",
-                     fontWeight: 500,
-                     borderColor: "var(--border-strong)",
-                     color: "var(--text-secondary)",
-                   }}
-                 >
-                   Receipt
-                 </span>
-               ) : null}
-             </h1>
-             <p
-               style={{
-                 fontSize: "13px",
-                 color: "var(--text-tertiary)",
-                 margin: 0,
-               }}
-             >
-               {subLineParts.join(" · ")}
-             </p>
-           </div>
-           <div className="hidden md:flex gap-[8px] flex-wrap items-center justify-end">
-             {isReviewable ? (
-               <>
-                 <NwButton
-                   variant="primary"
-                   size="sm"
-                   onClick={openApproveFlow}
-                   disabled={saving || !!approveDisabledReason}
-                   loading={saving}
-                   title={approveDisabledReason ?? undefined}
-                 >
-                   {saving ? "Saving" : "Approve"}
-                 </NwButton>
-                 <NwButton
-                   variant="secondary"
-                   size="sm"
-                   onClick={() => setShowNoteModal("hold")}
-                   disabled={saving}
-                 >
-                   Hold
-                 </NwButton>
-                 <NwButton
-                   variant="danger"
-                   size="sm"
-                   onClick={() => setShowNoteModal("deny")}
-                   disabled={saving}
-                 >
-                   Deny
-                 </NwButton>
-               </>
-             ) : null}
-             {isQaReviewable ? (
-               <>
-                 <NwButton
-                   variant="primary"
-                   size="sm"
-                   onClick={handleQaApprove}
-                   disabled={saving}
-                   loading={saving}
-                 >
-                   {saving ? "Saving" : "QA Approve"}
-                 </NwButton>
-                 <NwButton
-                   variant="danger"
-                   size="sm"
-                   onClick={() => {
-                     setKickBackNote("");
-                     setShowKickBackModal(true);
-                   }}
-                   disabled={saving}
-                 >
-                   Kick Back to PM
-                 </NwButton>
-               </>
-             ) : null}
-             {isQaApproved ? (
-               <NwButton
-                 variant="primary"
-                 size="sm"
-                 onClick={() => toast.info("QuickBooks integration coming soon")}
-               >
-                 Push to QuickBooks →
-               </NwButton>
-             ) : null}
-             <OverflowMenu items={overflowItems} label="More" ariaLabel="More invoice actions" />
-           </div>
-         </div>
-       </div>
-
-       {/* ── 50/50 HERO ── */}
-       <div
-         className="grid grid-cols-1 lg:grid-cols-2 items-start"
-         style={{
-           gap: "1px",
-           background: "var(--border-default)",
-           border: "1px solid var(--border-default)",
-         }}
-       >
-         {/* LEFT — Source document. Matches right-column bg-card so
-             both hero cells present as a single matched pair, separated
-             by the grid's 1px hairline. Natural height: the PDF
-             canvas renders at the column's available width without a
-             max-height cap (which previously capped at 460px and made
-             the canvas render at a small resolution, then got scaled
-             up and looked blurry). */}
-         <div
-           className="p-[22px]"
-           style={{ background: "var(--bg-card)" }}
-         >
-           <div className="flex items-center justify-between mb-[14px]">
-             <h3
-               style={{
-                 fontFamily: "var(--font-display)",
-                 fontWeight: 500,
-                 fontSize: "15px",
-                 color: "var(--text-primary)",
-                 margin: 0,
-               }}
-             >
-               Source document
-             </h3>
-             <div className="flex items-center gap-3">
+ {/* ── Two-pane grid: source document LEFT · metadata / allocation /
+        history rail RIGHT (mockup 02 body). Derived values hoisted above
+        the return; handlers reused byte-identical (F1). ── */}
+ <div className="nw-review-grid">
+         {/* LEFT — Source document: the REAL viewer (PDF/image/DOCX) keeps
+             its own zoom/expand/download controls inside the well. No fake
+             paper, no fake stamps (adjudicated with Jake). Sticky so the
+             document stays in view while the rail scrolls. */}
+         <div className="nw-review-doc-pane">
+           <div className="nw-review-doc-head">
+             <span className="nw-review-eyebrow">Source document</span>
+             <div className="flex items-center gap-4">
                {invoice.stamped_file_url ? (
-                 <div className="inline-flex border border-[var(--border-default)]" role="tablist" aria-label="Document copy">
-                   <button
-                     type="button"
-                     onClick={() => setShowStamped(true)}
-                     className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.1em] transition-colors ${showStamped ? "bg-[var(--nw-stone-blue)] text-[color:var(--bg-page)]" : "text-[color:var(--text-secondary)] hover:bg-[var(--bg-subtle)]"}`}
-                   >
+                 <div className="nw-review-doc-toggle" role="tablist" aria-label="Document copy">
+                   <button type="button" onClick={() => setShowStamped(true)} className={showStamped ? "is-on" : ""}>
                      Stamped
                    </button>
-                   <button
-                     type="button"
-                     onClick={() => setShowStamped(false)}
-                     className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.1em] transition-colors ${!showStamped ? "bg-[var(--nw-stone-blue)] text-[color:var(--bg-page)]" : "text-[color:var(--text-secondary)] hover:bg-[var(--bg-subtle)]"}`}
-                   >
+                   <button type="button" onClick={() => setShowStamped(false)} className={!showStamped ? "is-on" : ""}>
                      Original
                    </button>
                  </div>
                ) : null}
-               {(() => {
-                 const activeUrl = invoice.stamped_file_url && showStamped ? invoice.stamped_file_url : invoice.signed_file_url;
-                 return activeUrl ? (
-                   <a
-                     href={activeUrl}
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     style={{
-                       fontFamily: "var(--font-mono)",
-                       fontSize: "10px",
-                       letterSpacing: "0.1em",
-                       textTransform: "uppercase",
-                       color: "var(--nw-stone-blue)",
-                     }}
-                   >
-                     Open in new tab ↗
-                   </a>
-                 ) : null;
-               })()}
+               {activeDocUrl ? (
+                 <a href={activeDocUrl} target="_blank" rel="noopener noreferrer" className="nw-review-doc-link">
+                   Open ↗
+                 </a>
+               ) : null}
              </div>
            </div>
-           <div className="relative">
+           <div className="nw-review-doc-well">
              <InvoiceFilePreview
                invoiceId={invoice.id}
-               fileUrl={invoice.stamped_file_url && showStamped ? invoice.stamped_file_url : invoice.signed_file_url}
-               downloadUrl={invoice.stamped_file_url && showStamped ? invoice.stamped_file_url : invoice.signed_file_url}
+               fileUrl={activeDocUrl}
+               downloadUrl={activeDocUrl}
                fileName={invoiceDisplayName({
                  vendor_name_raw: invoice.vendor_name_raw,
                  invoice_number: invoice.invoice_number,
                  jobs: invoice.jobs,
                })}
              />
-             {isQaApproved ? (
-               <div
-                 className="pointer-events-none absolute bottom-6 right-6 px-3 py-1.5 border-2"
-                 style={{
-                   transform: "rotate(-8deg)",
-                   borderColor: "var(--nw-success)",
-                   color: "var(--nw-success)",
-                   fontFamily: "var(--font-mono)",
-                   letterSpacing: "0.14em",
-                   fontSize: "11px",
-                   fontWeight: 600,
-                   opacity: 0.75,
-                 }}
-               >
-                 QA APPROVED
-               </div>
-             ) : null}
            </div>
          </div>
 
-         {/* RIGHT — Details panel + allocations editor, stacked.
-             Both sit on the same bg-card so the hero grid's 1px gap
-             traces a single vertical hairline between the two columns. */}
-         <div style={{ background: "var(--bg-card)" }}>
-           <InvoiceDetailsPanel
-             totalAmountCents={invoice.total_amount}
-             vendorName={vendorName}
-             vendorId={invoice.vendor_id}
-             projectName={projectName}
-             jobId={invoice.job_id}
-             receivedAtLabel={receivedAtLabel}
-             invoiceDateLabel={invoiceDateLabel}
-             drawLabel={drawLabel}
-             drawInfo={drawInfo}
-             confidenceScore={invoice.confidence_score}
-             confidenceDetails={invoice.confidence_details}
-             flags={flags}
-             aiModelUsed={aiModelUsed}
-             statusHistory={invoice.status_history ?? []}
-             currentStatus={invoice.status}
-             userNames={userNames}
-             role={role}
-             onVendorNameSave={handleVendorNameSave}
-             savingVendorName={savingVendorName}
-             qbNotes={qbNotes}
-             onQbNotesChange={setQbNotes}
-             showQbNotes={isQaReviewable}
-           />
-           <div
-             className="px-[22px] pb-[22px] pt-[4px]"
-             style={{ borderTop: "1px solid var(--border-default)" }}
-           >
+         {/* RIGHT — metadata card + allocation card + history card
+             (mockup 02 rail). All values real; PO/CO match renders
+             read-only this pass (adjudicated). */}
+         <div className="nw-review-rail-col">
+           <div className="nw-review-card">
+             <div className="mb-5">
+               <div className="nw-review-field-label" style={{ marginBottom: "6px" }}>Total amount</div>
+               <div className="nw-review-bignum">{formatCents(invoice.total_amount)}</div>
+             </div>
+             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+               <div className="min-w-0">
+                 <div className="nw-review-field-label">Vendor</div>
+                 <div className="flex items-center gap-2">
+                   <input
+                     type="text"
+                     value={vendorDraft}
+                     onChange={(e) => setVendorDraft(e.target.value)}
+                     onBlur={() => {
+                       if (vendorDraft !== (invoice.vendor_name_raw ?? "")) handleVendorNameSave(vendorDraft);
+                     }}
+                     disabled={!canEdit || savingVendorName}
+                     placeholder="—"
+                     className="nw-review-input"
+                     aria-label="Vendor name"
+                   />
+                   <VendorContactPopover
+                     vendorId={invoice.vendor_id}
+                     vendorName={invoice.vendor_name_raw ?? invoice.vendors?.name ?? null}
+                     vendor={invoice.vendors}
+                   />
+                 </div>
+               </div>
+               <div className="min-w-0">
+                 <div className="nw-review-field-label">Job</div>
+                 {invoice.job_id ? (
+                   <Link
+                     href={`/jobs/${invoice.job_id}`}
+                     style={{ fontSize: "13px", color: "var(--nw-gulf-blue)", textDecoration: "none" }}
+                   >
+                     {projectName} ↗
+                   </Link>
+                 ) : (
+                   <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>—</span>
+                 )}
+                 <div className="nw-review-field-label" style={{ marginTop: "14px" }}>PM</div>
+                 <select
+                   value={invoice.assigned_pm?.id ?? ""}
+                   onChange={(e) => handleReassignPm(e.target.value)}
+                   disabled={reassigning}
+                   className="nw-review-input"
+                   style={{ cursor: "pointer" }}
+                   aria-label="Assigned PM"
+                 >
+                   <option value="">Unassigned</option>
+                   {pmUsers.map((u) => (
+                     <option key={u.id} value={u.id}>{u.full_name}</option>
+                   ))}
+                 </select>
+               </div>
+               <div className="col-span-2 min-w-0">
+                 <div className="nw-review-field-label">Matched to · PO / CO</div>
+                 <div className="nw-review-matchbox" title="PO / CO matching renders read-only in this pass">
+                   <span className="inline-flex items-center gap-2 min-w-0">
+                     <span className={`nw-review-kindchip ${match.chipCls}`}>{match.kind}</span>
+                     <span
+                       className="truncate"
+                       style={{ fontSize: "13px", color: match.kind === "—" ? "var(--text-tertiary)" : "var(--text-primary)" }}
+                     >
+                       {match.label}
+                     </span>
+                   </span>
+                 </div>
+               </div>
+             </div>
+             <div className="nw-review-metastrip">
+               <span className="nw-meta-line">{metaLineParts.length > 0 ? metaLineParts.join(" · ") : "—"}</span>
+               <span className={`nw-review-pill ${paymentPill.cls}`}>{paymentPill.label}</span>
+             </div>
+           </div>
+
+           <div className="nw-review-card">
+             <div className="nw-review-eyebrow" style={{ marginBottom: "12px" }}>Cost code allocation</div>
              <AllocationGrid
                ref={allocEditorRef}
                invoiceId={invoice.id}
@@ -1522,7 +1533,73 @@ export default function InvoiceReviewPage() {
                costCodes={costCodes}
                readOnly={!canEdit}
                onChange={refreshInvoice}
+               onBalanceChange={handleAllocBalance}
              />
+             {isQaReviewable ? (
+               qbNoteOpen || qbNotes.trim() ? (
+                 <div className="mt-3">
+                   <div className="nw-review-field-label">Note for QuickBooks · bundled into approve</div>
+                   <input
+                     type="text"
+                     value={qbNotes}
+                     onChange={(e) => setQbNotes(e.target.value)}
+                     placeholder="Note for QuickBooks entry"
+                     className="nw-review-input"
+                     autoFocus={qbNoteOpen}
+                   />
+                 </div>
+               ) : (
+                 <button type="button" className="nw-review-quietlink mt-3" onClick={() => setQbNoteOpen(true)}>
+                   + Note for QuickBooks
+                 </button>
+               )
+             ) : null}
+           </div>
+
+           <div className="nw-review-card is-flush">
+             <button
+               type="button"
+               className="nw-review-hist-toggle"
+               onClick={() => setHistoryOpen((o) => !o)}
+               aria-expanded={historyOpen}
+             >
+               <span className="nw-review-eyebrow">History</span>
+               <span className="inline-flex items-center gap-2.5 nw-meta-line">
+                 {eventCount} event{eventCount === 1 ? "" : "s"}
+                 {nextPending ? ` · next: ${nextPending.toLowerCase()}` : ""}
+                 <svg
+                   width="13"
+                   height="13"
+                   viewBox="0 0 24 24"
+                   fill="none"
+                   stroke="currentColor"
+                   strokeWidth={1.5}
+                   strokeLinecap="round"
+                   strokeLinejoin="round"
+                   className={`transition-transform ${historyOpen ? "rotate-180" : ""}`}
+                   aria-hidden="true"
+                 >
+                   <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                 </svg>
+               </span>
+             </button>
+             {historyOpen ? (
+               <div className="nw-review-hist-body">
+                 <div className="nw-review-timeline">
+                   <div className="nw-tl-rail" aria-hidden="true" />
+                   {timeline.map((ev, i) => (
+                     <div key={i} className={`nw-tl-row${ev.tone === "pending" ? " is-pending" : ""}`}>
+                       <span
+                         className={`nw-tl-dot ${ev.tone === "done" ? "is-done" : ev.tone === "current" ? "is-current" : "is-pending"}`}
+                         aria-hidden="true"
+                       />
+                       <div className="nw-tl-stamp">{ev.when}</div>
+                       <div className="nw-tl-label">{ev.label}</div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             ) : null}
            </div>
          </div>
        </div>
@@ -1602,76 +1679,211 @@ export default function InvoiceReviewPage() {
            Verify extracted line items in Cost Intelligence →
          </Link>
        </div>
-     </div>
-   );
- })()}
 
  </main>
 
- {/* ── Sticky Mobile Action Bar ── */}
- {isReviewable && (
- <div
- className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-sm border-t px-4 py-3 z-30"
- style={{
- background: "color-mix(in srgb, var(--bg-page) 95%, transparent)",
- borderColor: "var(--border-default)",
- }}
+ {/* ── Sticky footer decision bar — slate-deep, owns ALL verdict actions
+        (mockup contract: nothing above the fold approves anything). The
+        old sticky mobile action bar is retired; this bar wraps on small
+        viewports and carries the same handlers byte-identical (F1). ── */}
+ <div className="nw-review-footer">
+ <div className="relative" ref={aiPopRef}>
+ <button
+ type="button"
+ className="nw-review-ai-btn"
+ onClick={() => { setAiOpen((o) => !o); setFootMenuOpen(false); }}
+ aria-expanded={aiOpen}
+ aria-haspopup="true"
  >
- <div className="flex gap-2">
- <NwButton
- variant="primary"
- size="md"
+ <span className="nw-review-ai-dot" aria-hidden="true" />
+ {aiSummaryLine}
+ <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" style={{ transform: "rotate(180deg)" }} aria-hidden="true"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+ </button>
+ {aiOpen ? (
+ <div className="nw-review-pop is-left" style={{ width: "min(430px, 80vw)", padding: "16px 18px" }}>
+ <p className="m-0" style={{ fontSize: "12.5px", lineHeight: 1.55, color: "var(--text-primary)" }}>{aiNarrative}</p>
+ {flags.length > 0 ? (
+ <div className="mt-3 flex flex-col gap-2">
+ {flags.map((f) => (
+ <div key={f} className="flex items-center gap-2.5" style={{ fontSize: "12.5px", color: "var(--text-primary)" }}>
+ {flagsCleared ? (
+ <>
+ <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nw-success)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 12.75l6 6 9-13.5" /></svg>
+ <span className="flex-1 line-through" style={{ color: "var(--text-tertiary)" }}>{formatFlag(f)}</span>
+ <span style={{ fontFamily: "var(--font-mono)", fontSize: "9px", letterSpacing: "0.1em", color: "var(--nw-success)" }}>CLEARED</span>
+ </>
+ ) : (
+ <>
+ <span style={{ color: "var(--nw-warn)" }} aria-hidden="true">⚠</span>
+ <span className="flex-1">{formatFlag(f)}</span>
+ </>
+ )}
+ </div>
+ ))}
+ </div>
+ ) : null}
+ </div>
+ ) : null}
+ </div>
+ <span style={{ flex: 1 }} />
+ {balState ? <span className={`nw-review-foot-bal ${balState.cls}`}>{balState.label}</span> : null}
+ {isReviewable ? (
+ <>
+ <button type="button" className="nw-review-btn-ghost" onClick={() => setShowNoteModal("hold")} disabled={saving}>
+ Hold
+ </button>
+ <button type="button" className="nw-review-btn-ghost" onClick={() => setShowNoteModal("deny")} disabled={saving}>
+ Deny
+ </button>
+ <button
+ type="button"
+ className="nw-review-btn-accent"
  onClick={openApproveFlow}
  disabled={saving || !!approveDisabledReason}
- loading={saving}
  title={approveDisabledReason ?? undefined}
- className="flex-1"
  >
- Approve
- </NwButton>
- <NwButton
- variant="secondary"
- size="md"
- onClick={() => { setPartialApprovedIds(new Set()); setPartialNote(""); setPartialError(null); setShowPartialModal(true); }}
- disabled={saving || lineItems.length < 2 || !!approveDisabledReason}
- className="flex-1"
- >
- Partial
- </NwButton>
- <NwButton
- variant="secondary"
- size="md"
- onClick={() => setShowNoteModal("hold")}
+ {saving ? "Saving…" : "Approve"}
+ </button>
+ </>
+ ) : null}
+ {isQaReviewable ? (
+ <div className="relative flex items-center gap-[10px]">
+ <button
+ type="button"
+ className="nw-review-btn-ghost"
+ onClick={() => { setKickBackNote(""); setShowKickBackModal(true); }}
  disabled={saving}
- className="flex-1"
  >
- Hold
- </NwButton>
- <NwButton
- variant="danger"
- size="md"
- onClick={() => setShowNoteModal("deny")}
- disabled={saving}
- className="flex-1"
+ Return to PM
+ </button>
+ <button type="button" className="nw-review-btn-accent" onClick={handleQaApprove} disabled={saving}>
+ {saving ? "Saving…" : "Approve"}
+ </button>
+ {showKickBackModal ? (
+ <div className="nw-review-pop" style={{ width: "min(340px, 80vw)", padding: "18px 20px" }}>
+ <div className="nw-review-field-label" style={{ marginBottom: "8px" }}>Return to PM · reason required</div>
+ <Textarea
+ value={kickBackNote}
+ onChange={(e) => setKickBackNote(e.target.value)}
+ placeholder="Describe the correction needed — wrong cost code, missing lien waiver, amount mismatch…"
+ className="resize-none"
+ minRows={3}
+ autoFocus
+ />
+ <div className="flex justify-between items-center mt-3">
+ <button
+ type="button"
+ className="nw-review-quietlink"
+ style={{ color: "var(--text-tertiary)" }}
+ onClick={() => { setShowKickBackModal(false); setKickBackNote(""); }}
  >
- Deny
- </NwButton>
+ Cancel
+ </button>
+ <button
+ type="button"
+ className="nw-review-btn-dark"
+ onClick={async () => {
+ await handleKickBack();
+ setShowKickBackModal(false);
+ }}
+ disabled={!kickBackNote.trim() || saving}
+ >
+ {saving ? "Returning…" : "Return invoice"}
+ </button>
  </div>
- <NwButton
- variant="ghost"
- size="sm"
- onClick={() => setShowRequestInfoModal(true)}
- disabled={saving}
- className="w-full mt-2"
- >
- Request Info
- </NwButton>
  </div>
+ ) : null}
+ </div>
+ ) : null}
+ {isQaApproved ? (
+ <button
+ type="button"
+ className="nw-review-btn-accent"
+ onClick={() => toast.info("QuickBooks integration coming soon")}
+ >
+ Push to QuickBooks →
+ </button>
+ ) : null}
+ {overflowItems.length > 0 ? (
+ <div className="relative" ref={footMenuRef}>
+ <button
+ type="button"
+ className="nw-review-iconbtn"
+ onClick={() => { setFootMenuOpen((o) => !o); setAiOpen(false); }}
+ aria-haspopup="menu"
+ aria-expanded={footMenuOpen}
+ aria-label="More invoice actions"
+ title="More"
+ >
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
+ </button>
+ {footMenuOpen ? (
+ <div role="menu" className="nw-review-pop" style={{ width: "220px", padding: "6px 0" }}>
+ {overflowItems.filter((i) => !i.danger).map((item) =>
+ item.href && !item.disabled ? (
+ <a
+ key={item.key}
+ href={item.href}
+ target="_blank"
+ rel="noopener noreferrer"
+ download
+ role="menuitem"
+ title={item.title}
+ className="nw-pop-item"
+ onClick={() => setFootMenuOpen(false)}
+ >
+ {item.label}
+ </a>
+ ) : (
+ <button
+ key={item.key}
+ type="button"
+ role="menuitem"
+ disabled={item.disabled}
+ title={item.title}
+ className="nw-pop-item"
+ onClick={() => {
+ if (item.disabled) return;
+ setFootMenuOpen(false);
+ item.onClick?.();
+ }}
+ >
+ {item.label}
+ </button>
+ )
  )}
+ {overflowItems.some((i) => i.danger) && overflowItems.some((i) => !i.danger) ? (
+ <div className="nw-pop-divider" aria-hidden="true" />
+ ) : null}
+ {overflowItems.filter((i) => i.danger).map((item) => (
+ <button
+ key={item.key}
+ type="button"
+ role="menuitem"
+ disabled={item.disabled}
+ title={item.title}
+ className="nw-pop-item is-danger"
+ onClick={() => {
+ if (item.disabled) return;
+ setFootMenuOpen(false);
+ item.onClick?.();
+ }}
+ >
+ {item.label}
+ </button>
+ ))}
+ </div>
+ ) : null}
+ </div>
+ ) : null}
+ </div>
+
+ </div>
+ </div>
 
  {/* ── Approve Confirmation Modal ── */}
  {showApproveConfirm && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90]">
  <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-md animate-fade-up shadow-2xl">
  <h3 className="font-display text-xl text-[color:var(--text-primary)] mb-2">
  {isCreditMemo ? "Approve Credit Memo" : "Approve Invoice"}
@@ -1749,7 +1961,7 @@ export default function InvoiceReviewPage() {
  const hasRed = redRows.length > 0;
  const formatCc = (ccId: string) => costCodes.find(c => c.id === ccId)?.code ?? "???";
  return (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90]">
  <div className="bg-[var(--bg-card)] border border-[rgba(176,85,78,0.35)] p-6 w-full max-w-lg animate-fade-up shadow-2xl">
  <div className="flex items-center gap-3 mb-4">
  <div className={`w-10 h-10 flex items-center justify-center flex-shrink-0 ${hasRed ? "bg-[rgba(176,85,78,0.12)]" : "bg-[rgba(201,138,59,0.12)]"}`}>
@@ -1841,7 +2053,7 @@ export default function InvoiceReviewPage() {
 
  {/* ── Amount Guard Modal (>10% over AI-parsed) ── */}
  {showAmountGuard && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90]">
  <div className="bg-[var(--bg-card)] border border-[rgba(176,85,78,0.35)] p-6 w-full max-w-md animate-fade-up shadow-2xl">
  <div className="flex items-center gap-3 mb-4">
  <div className="w-10 h-10 bg-[rgba(176,85,78,0.12)] flex items-center justify-center flex-shrink-0">
@@ -1888,7 +2100,7 @@ export default function InvoiceReviewPage() {
 
  {/* ── Missing CO Reference Modal ── */}
  {showMissingCoBlock && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90]">
  <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-md animate-fade-up shadow-2xl">
  <div className="flex items-center gap-3 mb-4">
  <div className="w-10 h-10 bg-[rgba(176,85,78,0.12)] flex items-center justify-center flex-shrink-0">
@@ -1917,7 +2129,7 @@ export default function InvoiceReviewPage() {
 
  {/* ── Missing Fields Block Modal ── */}
  {showMissingFieldsBlock && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90]">
  <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-md animate-fade-up shadow-2xl">
  <div className="flex items-center gap-3 mb-4">
  <div className="w-10 h-10 bg-[rgba(176,85,78,0.12)] flex items-center justify-center flex-shrink-0">
@@ -1962,7 +2174,7 @@ export default function InvoiceReviewPage() {
 
  {/* ── Request Info Modal ── */}
  {showRequestInfoModal && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90]">
  <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-md animate-fade-up shadow-2xl">
  <h3 className="font-display text-xl text-[color:var(--text-primary)] mb-4">Request Information</h3>
  <div className="space-y-4">
@@ -2026,7 +2238,7 @@ export default function InvoiceReviewPage() {
 
  {/* ── Hold / Deny Note Modal ── */}
  {showNoteModal && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90]">
  <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-md animate-fade-up shadow-2xl">
  <h3 className="font-display text-xl text-[color:var(--text-primary)] mb-4">
  {showNoteModal === "hold" ? "Hold Invoice" : "Deny Invoice"}
@@ -2051,55 +2263,13 @@ export default function InvoiceReviewPage() {
  </div>
  )}
 
- {/* ── Kick Back Modal (Phase 3b) ── */}
- {showKickBackModal && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50">
- <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-md animate-fade-up shadow-2xl">
- <h3 className="font-display text-xl text-[color:var(--text-primary)] mb-2">
- Kick Back to PM
- </h3>
- <p className="text-sm text-[color:var(--text-secondary)] mb-4">
- This invoice will be sent back to the PM queue with your note.
- </p>
- <Textarea
- value={kickBackNote}
- onChange={(e) => setKickBackNote(e.target.value)}
- placeholder="Reason for kick back (required)..."
- className="resize-none"
- minRows={4}
- />
- <div className="flex gap-3 mt-4">
- <NwButton
- variant="danger"
- size="md"
- onClick={async () => {
- await handleKickBack();
- setShowKickBackModal(false);
- }}
- disabled={!kickBackNote.trim() || saving}
- className="flex-1"
- >
- Kick Back
- </NwButton>
- <NwButton
- variant="ghost"
- size="md"
- onClick={() => {
- setShowKickBackModal(false);
- setKickBackNote("");
- }}
- className="flex-1"
- >
- Cancel
- </NwButton>
- </div>
- </div>
- </div>
- )}
+ {/* Kick Back modal retired — Return-to-PM now lives as the footer's
+        upward popover (mockup contract). Same handler (handleKickBack),
+        same required-note gate. */}
 
  {/* ── Partial Approve Modal ── */}
  {showPartialModal && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4">
  <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-6 w-full max-w-3xl max-h-[92vh] overflow-y-auto animate-fade-up shadow-2xl">
  <h3 className="font-display text-xl text-[color:var(--text-primary)] mb-2">Partial Approval</h3>
  <p className="text-sm text-[color:var(--text-secondary)] mb-5">
@@ -2244,7 +2414,7 @@ export default function InvoiceReviewPage() {
 
  {/* ── Delete / Void Confirmation Modal ── */}
  {showDeleteModal && (
- <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+ <div className="fixed inset-0 bg-nw-slate-deep/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4">
  <div className="bg-[var(--bg-card)] border border-[var(--border-default)] shadow-2xl max-w-md w-full p-6">
  <div className="flex items-center gap-3 mb-4">
  <div className="w-10 h-10 bg-[rgba(176,85,78,0.12)] flex items-center justify-center flex-shrink-0">

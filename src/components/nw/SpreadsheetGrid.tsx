@@ -20,13 +20,22 @@
  * Generic over the row type. Columns declare how each cell reads, displays, and
  * writes its value. The grid owns selection/edit state; rows stay controlled by
  * the parent via `onRowsChange`.
+ *
+ * Perf (Stage-1): rows render through a memoized <GridRow> so a keystroke in
+ * the active cell re-renders ONLY that row — the per-row combobox cells in the
+ * other rows skip. Unchanged row objects keep identity (parents patch rows via
+ * map-with-same-object-for-untouched), so the default shallow compare works.
+ * Handlers reach rows through a ref-backed stable callback, keeping the memo
+ * effective without stale closures.
  */
 import {
+  memo,
   useCallback,
   useEffect,
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 export type GridColumnKind = "text" | "number" | "combobox";
@@ -66,6 +75,112 @@ type Props<Row> = {
   footer?: ReactNode;
   ariaLabel?: string;
 };
+
+type RowCallbacks<Row> = {
+  onCellKeyDown: (e: React.KeyboardEvent, r: number, c: number) => void;
+  onCellClick: (r: number, c: number) => void;
+  onDraftChange: (value: string) => void;
+  onCommit: () => void;
+  onEditorDone: () => void;
+  onEditorSetRow: (r: number, patch: Row) => void;
+  onRemove: (r: number) => void;
+};
+
+function GridRowInner<Row>({
+  row,
+  rowIndex,
+  columns,
+  template,
+  readOnly,
+  showRemove,
+  activeCol,
+  editing,
+  draft,
+  inputRef,
+  activeCellRef,
+  cb,
+}: {
+  row: Row;
+  rowIndex: number;
+  columns: GridColumn<Row>[];
+  template: string;
+  readOnly?: boolean;
+  showRemove: boolean;
+  /** Column index of the active cell when this row holds it, else null. */
+  activeCol: number | null;
+  /** True when the active cell in THIS row is in edit mode. */
+  editing: boolean;
+  /** Draft value for the in-edit cell (only meaningful while editing). */
+  draft: string;
+  inputRef: RefObject<HTMLInputElement>;
+  activeCellRef: RefObject<HTMLDivElement>;
+  cb: RowCallbacks<Row>;
+}) {
+  return (
+    <div role="row" className="nw-grid-row" style={{ gridTemplateColumns: template }}>
+      {columns.map((col, c) => {
+        const isActive = activeCol === c;
+        const isEditing = isActive && editing;
+        const invalid = col.invalid?.(row) ?? false;
+        return (
+          <div
+            key={col.key}
+            ref={isActive ? activeCellRef : undefined}
+            role="gridcell"
+            tabIndex={isActive ? 0 : -1}
+            onKeyDown={(e) => cb.onCellKeyDown(e, rowIndex, c)}
+            onClick={() => cb.onCellClick(rowIndex, c)}
+            className={
+              "nw-grid-cell" +
+              (isActive ? " is-active" : "") +
+              (invalid ? " is-invalid" : "") +
+              (col.align === "right" ? " is-num" : "")
+            }
+          >
+            {isEditing && col.kind === "combobox" && col.editor
+              ? col.editor({
+                  row,
+                  rowIndex,
+                  done: cb.onEditorDone,
+                  setRow: (patch) => cb.onEditorSetRow(rowIndex, patch),
+                })
+              : isEditing
+                ? (
+                  <input
+                    ref={inputRef}
+                    className="nw-grid-input"
+                    type="text"
+                    inputMode={col.kind === "number" ? "decimal" : undefined}
+                    value={draft}
+                    onChange={(e) => cb.onDraftChange(e.target.value)}
+                    onBlur={cb.onCommit}
+                    style={{ textAlign: col.align ?? "left" }}
+                  />
+                )
+                : (
+                  <span className="nw-grid-value">{col.display(row, rowIndex)}</span>
+                )}
+          </div>
+        );
+      })}
+      <div className="nw-grid-rowact">
+        {!readOnly && showRemove && (
+          <button
+            type="button"
+            aria-label="Remove row"
+            className="nw-grid-remove"
+            onClick={() => cb.onRemove(rowIndex)}
+            tabIndex={-1}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+// Shallow-compare memo; generics survive via the cast.
+const GridRow = memo(GridRowInner) as typeof GridRowInner;
 
 export default function SpreadsheetGrid<Row>({
   rows,
@@ -201,6 +316,44 @@ export default function SpreadsheetGrid<Row>({
     }
   }
 
+  function onCellClick(r: number, c: number) {
+    const col = columns[c];
+    const canEdit = !readOnly && col.editable !== false;
+    // Single click edits an editable text/number cell in place
+    // (mockup: "click any cell to edit in place"). Combobox cells
+    // own their own click; just select those.
+    if (canEdit && col.kind !== "combobox") beginEdit(r, c);
+    else setActive({ r, c });
+  }
+
+  // Stable callback bundle for the memoized rows — identity never changes;
+  // the ref always points at this render's handlers (no stale closures).
+  const handlersRef = useRef<RowCallbacks<Row>>(null as unknown as RowCallbacks<Row>);
+  handlersRef.current = {
+    onCellKeyDown,
+    onCellClick,
+    onDraftChange: setDraft,
+    onCommit: commit,
+    onEditorDone: () => setEditing(false),
+    onEditorSetRow: (r, patch) => onRowsChange(rows.map((x, i) => (i === r ? patch : x))),
+    onRemove: (r) => onRemoveRow?.(r),
+  };
+  const stableCbRef = useRef<RowCallbacks<Row> | null>(null);
+  if (stableCbRef.current === null) {
+    stableCbRef.current = {
+      onCellKeyDown: (e, r, c) => handlersRef.current.onCellKeyDown(e, r, c),
+      onCellClick: (r, c) => handlersRef.current.onCellClick(r, c),
+      onDraftChange: (v) => handlersRef.current.onDraftChange(v),
+      onCommit: () => handlersRef.current.onCommit(),
+      onEditorDone: () => handlersRef.current.onEditorDone(),
+      onEditorSetRow: (r, patch) => handlersRef.current.onEditorSetRow(r, patch),
+      onRemove: (r) => handlersRef.current.onRemove(r),
+    };
+  }
+  const cb = stableCbRef.current;
+
+  const showRemove = !readOnly && !!onRemoveRow && rows.length > 1;
+
   return (
     <div
       ref={gridRef}
@@ -224,78 +377,21 @@ export default function SpreadsheetGrid<Row>({
       </div>
 
       {rows.map((row, r) => (
-        <div
-          role="row"
+        <GridRow
           key={r}
-          className="nw-grid-row"
-          style={{ gridTemplateColumns: template }}
-        >
-          {columns.map((col, c) => {
-            const isActive = active?.r === r && active?.c === c;
-            const isEditing = isActive && editing;
-            const invalid = col.invalid?.(row) ?? false;
-            const canEdit = !readOnly && col.editable !== false;
-            return (
-              <div
-                key={col.key}
-                ref={isActive ? activeCellRef : undefined}
-                role="gridcell"
-                tabIndex={isActive ? 0 : -1}
-                onKeyDown={(e) => onCellKeyDown(e, r, c)}
-                onClick={() => {
-                  // Single click edits an editable text/number cell in place
-                  // (mockup: "click any cell to edit in place"). Combobox cells
-                  // own their own click; just select those.
-                  if (canEdit && col.kind !== "combobox") beginEdit(r, c);
-                  else setActive({ r, c });
-                }}
-                className={
-                  "nw-grid-cell" +
-                  (isActive ? " is-active" : "") +
-                  (invalid ? " is-invalid" : "") +
-                  (col.align === "right" ? " is-num" : "")
-                }
-              >
-                {isEditing && col.kind === "combobox" && col.editor
-                  ? col.editor({
-                      row,
-                      rowIndex: r,
-                      done: () => setEditing(false),
-                      setRow: (patch) => onRowsChange(rows.map((x, i) => (i === r ? patch : x))),
-                    })
-                  : isEditing
-                    ? (
-                      <input
-                        ref={inputRef}
-                        className="nw-grid-input"
-                        type={col.kind === "number" ? "text" : "text"}
-                        inputMode={col.kind === "number" ? "decimal" : undefined}
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={commit}
-                        style={{ textAlign: col.align ?? "left" }}
-                      />
-                    )
-                    : (
-                      <span className="nw-grid-value">{col.display(row, r)}</span>
-                    )}
-              </div>
-            );
-          })}
-          <div className="nw-grid-rowact">
-            {!readOnly && onRemoveRow && rows.length > 1 && (
-              <button
-                type="button"
-                aria-label="Remove row"
-                className="nw-grid-remove"
-                onClick={() => onRemoveRow(r)}
-                tabIndex={-1}
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
+          row={row}
+          rowIndex={r}
+          columns={columns}
+          template={template}
+          readOnly={readOnly}
+          showRemove={showRemove}
+          activeCol={active?.r === r ? active.c : null}
+          editing={active?.r === r && editing}
+          draft={active?.r === r && editing ? draft : ""}
+          inputRef={inputRef}
+          activeCellRef={activeCellRef}
+          cb={cb}
+        />
       ))}
 
       {footer && (

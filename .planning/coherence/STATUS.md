@@ -1,6 +1,6 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-15 · **HEAD (origin/main):** Stage-2 review-redesign `5100efc` + this New-Job surface-#2 commit · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
+**Updated:** 2026-07-16 · **HEAD (origin/main):** Stage-1 review-modal chrome (this commit) on top of New-Job `b57a4a3` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean.
 
 Chat transfer is unreliable — this file is the durable handoff. Read alongside `RESUME.md` (full scope + rulings), `invoices-draws-deep-dive/HANDOFF.md` (original TOP-20), **`HANDOFF-V2.md` (Stage-4 re-gauntlet dispositions + JAKE'S WALK LIST + NEW-2)**, and **`new2-carry-forward-fix.md` (NEW-2 fix + class sweep)**.
 
@@ -11,26 +11,27 @@ Job-creation surface reduced to TWO required fields (Name + Client, create-in-pl
 - **Verified:** tsc 0; full suite green; live authed click-path (fixture soft-deleted) — centered modal → create-in-place client → CREATE → rail insert → silent defaults (DB) → first-draw card fires + Prints line renders. Catch-nets: Job Settings edit selects (read-confirmed), first-draw card (live).
 - **Note for the Stage-1 review-modal chrome session:** the shared class is now `.nw-redesign` (not `.nw-review-redesign`); the `.nw-review-overlay/-panel/-header/-footer/...` chrome classes are still in `src/app/nw-redesign.css`.
 
-## ✅ REVIEW-SCREEN REDESIGN — STAGE 2 SHIPPED (2026-07-15). Modal chrome (Stage 1) = NEXT FRESH SESSION.
+## ✅ REVIEW-SCREEN REDESIGN — STAGE 1 MODAL CHROME SHIPPED (2026-07-16). Redesign surface #1 COMPLETE (Stage 2 grid+strip + Stage 1 chrome). QA: `.planning/qa-runs/2026-07-16-stage1-review-modal-chrome-qa-report.md`.
+The review page now renders as the mockup's full-screen modal: dimmed backdrop over the list, centered panel `min(1380px,100vw−64px)`, **slate-deep header** (vendor + mono #num + label→status pill via `reviewPill()` + subline; ESC/✕ + document-Escape → `/financials/bills`, guarded for cell-edits/modals/viewer-dialogs), **source pane** (Stamped/Original toggle + Open ↗; REAL viewer keeps its own zoom — no fake paper/stamps; old fake "QA APPROVED" overlay removed), **rail** (metadata card w/ Total bignum · vendor blur-save input · job link · PM select · read-only PO/CO matchbox · one-line metastrip + payment pill; allocation card; collapsible History card off status_history), **sticky slate-deep footer decision bar** owning ALL verdicts (AI status line + upward popover w/ read-only flags · live ✓ BALANCED/$X UNALLOCATED via new display-only `onBalanceChange` · PM Hold/Deny/Approve · final-review Return-to-PM (upward reason-popover, real handler) + Approve · Push-to-QB · dark ⋯ overflow w/ Print/Download/Partial/Request-Info/Delete). Handlers byte-identical (F1); page modals bumped to z-[90]; retired: old sub-header/action-row/mobile-bar/kick-back-modal. **Perf:** SpreadsheetGrid rows memoized (`GridRow` + stable handler bundle) after 2 CDP renderer freezes — keystrokes now re-render only the active row; interaction contract re-verified live.
+- **Live walk PASSED** (fresh server, 1440, all fixture writes announced + reverted, DB-verified): open-from-list → all 4 status states (Final review/PM review/Approved/Draw #1·submitted) → PDF + image viewers → single-click edit/Tab/arrow/Esc-revert → strip recompute ($450 over red ↔ $200 remain ink) → dirty-Approve flushed `PUT /allocations` → **over-budget modal fired exactly where the red row predicted (03114 +$450, 90%)** → Return-to-PM real submit (flash + navigate) → ESC-close. Console clean. tsc 0; full suite green.
+- **Found (not fixed, pre-existing):** Mock Concrete allocation row-1 references cost code 05101 of a FOREIGN org (`c0a42420…`) — deep-dive blocker-#1 class (colliding cost-code seed); org-scoped picker correctly renders it unresolved.
+
+### 🚀 PROPAGATION READINESS (redesign surface #1 final — global-candidate list)
+Proven on the review screen and ready to propagate (each via `/nightwork-propagate` when Jake green-lights):
+1. **Modal record view** (`.nw-review-overlay/-panel/-header/-footer`) → Draw Detail (06), any record review. Upload (03) + New Job (07-superseded) already centered PopModal.
+2. **Footer decision bar** (dark action set + upward popovers; "nothing above the fold approves anything") → Draw Detail (06), Draw Wizard (05 sticky footer w/ running total).
+3. **SpreadsheetGrid** (Excel interaction spec, now memoized) → wizard G703 grid, draw tables, cost codes (08).
+4. **Balance-impact strip** → wizard preview; **label→status pill map** (`reviewPill`) → lists/queues.
+5. **Adjudicated deltas carried forward** (ASSETS.md §screen-02): prev/next stepper = Phase-B auto-advance build; PO/CO match write-path unbuilt (read-only shipped); retainage RET-100 model deferred; ink-stamps = stamp-into-archived-PDF pipeline (future); zoom lives in the real viewer.
+
+## ✅ REVIEW-SCREEN REDESIGN — STAGE 2 SHIPPED (2026-07-15).
 Design handoff imported from the claude.ai Design project "Construction Invoice Redesign" (`3be86e57-60da-4e42-8fb1-398525ca8fd8`) → durable in git at `design_handoff_redesign/` (README.md carries both binding artifacts: label→status map + Excel-grid interaction spec; render locally via `node <scratch>/handoff-server.js design_handoff_redesign 4600`). QA: `.planning/qa-runs/2026-07-15-stage2-allocation-grid-balance-strip-qa-report.md`.
 
 **Shipped (Stage 2 — the "one behavior build"):** reusable Excel-pure `SpreadsheetGrid` (`src/components/nw/`) + `BalanceImpactStrip` + read-only `/api/invoices/[id]/balance-impact` route + trap-proof math (`src/lib/invoices/balance-impact.ts`, 19/19 tests). `AllocationGrid` (`src/components/invoices/`) is a DROP-IN for `InvoiceAllocationsEditor` (identical props + `isDirty`/`save` ref) → swapped in `invoices/[id]/page.tsx`; scoped styles `invoices/[id]/review-redesign.css` under `.nw-review-redesign` (F3). tsc 0; full suite green. **Live authed walk PASSED** (Mock Concrete 188cfe10 + announced/reverted PO fixture): Excel grid renders, double-click edit → Enter commit → strip recomputes ($450 over red → $200 remain after ink), Esc reverts, fixture reverted clean.
 - **Trap-proof (Jake's caveat):** `invoiced_total` counts `{pm_approved, qa_review, qa_approved, pushed_to_qb, in_draw, paid}` via `invoice_line_items.po_id` (recalc.ts:158). Route computes each scope baseline FROM SOURCE EXCLUDING the reviewed invoice → `after` subtracts live lines exactly once, any status. Test: final-review PO-linked → $2,050 not −$11,900.
 - **Ships in the CURRENT full-page layout** (Option 3 per Jake) — NOT the mockup modal yet. That's Stage 1.
 
-### 🔜 CHROME-SESSION RESUME NOTE (Stage 1 — "match the picture", modal chrome)
-Green foundation is in place; the remaining work is the modal container/skin. Start hot with:
-- **Wrap** `invoices/[id]/page.tsx` render (currently `<div className="max-w-[1280px] mx-auto animate-fade-up">` at ~line 1242, IIFE inside `<AppShell>`) in `.nw-review-redesign` + `.nw-review-panel`. Scoped CSS classes ALREADY authored in `review-redesign.css`: `.nw-review-overlay/-panel/-header/-title/-subtitle/-stepper/-stepbtn/-esc/-footer/-body/-doc/-rail/-metastrip`.
-- **Slate-deep header** (`.nw-review-header`): title + status badge (map via README label→status) + subline. **OMIT the prev/next numeric stepper** (unbuilt list-nav → F2 zero-fiction); keep ESC/close → `/financials/bills` (real). Adjudicated with Jake: PO/CO renders read-only, retainage deferred, real PDF viewer (no fake stamp overlay).
-- **Sticky footer decision bar** (`.nw-review-footer`, slate-deep) — the DARK-THEME ACTION-SET INVENTORY (the light-theme `NwButton`/`OverflowMenu` are INVISIBLE on slate-deep, must be re-authored dark):
-  - Left: AI status line (`AI · N fields · X% · N flags`), from `invoice.confidence_*` + flags.
-  - Right: live balance state (`✓ BALANCED` / `$X UNALLOCATED` — success/warn mono) + actions, gated by status (handlers already exist in page.tsx, reuse verbatim):
-    - `isReviewable` (pm_review/ai_processed/pm_held/info_requested): **Approve** (`openApproveFlow`, stone-blue `btn-accent`) · **Hold** (`setShowNoteModal("hold")`, ghost white-border) · **Deny** (`setShowNoteModal("deny")`, ghost).
-    - `isQaReviewable` (qa_review/pm_approved): **QA Approve** = mockup's "Approve" (`handleQaApprove`, stone-blue) · **Return to PM** = the mockup's relabel of "Kick Back" (`setShowKickBackModal(true)` + reason-required popover opening UPWARD, ghost white-border).
-    - `isQaApproved`: **Push to QuickBooks →** (toast stub).
-    - **⋯ overflow** (`overflowItems`, ghost) — Return-to-PM popover + more menu open UPWARD (`bottom:46px`), per mockup.
-  - Footer buttons: transparent + `rgba(247,245,236,0.25)` border + white-sand text for ghost; stone-blue `btn-accent` for primary. Hover → border stone-blue.
-- **Verify (fresh dev server so Fast Refresh is clean):** confirm single-click-to-edit + active-cell focus (both in source, weren't hot-reloaded this session) → full Tab-through + arrow-nav; then the over-budget modal fires when a red row predicts it; side-by-side vs `design_handoff_redesign/02 Invoice Review.dc.html` at 1440, every state (`stage`, `confirmOver`, `retainagePct`, `aiExpanded`, `historyOpen`). Perf: memoize the combobox cell / grid rows (2 CDP capture hiccups this session).
+(Stage-1 chrome resume note RETIRED — executed 2026-07-16, see the Stage-1 section above.)
 
 ## ✅ NEW-2 CARRY-FORWARD FIX — SHIPPED + WALK-READY (2026-07-14). Full report: `new2-carry-forward-fix.md`; QA: `.planning/qa-runs/2026-07-14-new2-carryforward-qa-report.md`.
 **WALK-READY:** create a carry-forward draw #2 on Sample Client B → G702 line 7 = **$22,983.20** (canonical, credit applied), NOT $23,623.20 (stale). Both prior invariants + the new carry-forward invariant green; live read-only DB tie-out cent-exact.

@@ -1,14 +1,20 @@
 /*
  * Review-screen redesign — SCOPED styles (Stage-1 + Stage-2).
  *
- * Everything is nested under `.nw-redesign` so this is a scoped variant
- * on the invoice-review screen only, NOT a global rewrite (firewall F3). Global
- * adoption of the grid + modal patterns is the propagation decision, after Jake
- * approves this live. Values use design tokens (var(--nw-*)) + rgba() literals
- * only — no hardcoded hex, so the design-token hook passes.
+ * Everything is nested under `.nw-redesign` (or the `.nw-review-*` modal
+ * chrome, which always renders inside a `.nw-redesign` scope) so this is a
+ * scoped variant on the invoice-review screen only, NOT a global rewrite
+ * (firewall F3). Global adoption of the grid + modal patterns is the
+ * propagation decision, after Jake approves this live. Values use design
+ * tokens (var(--nw-*)) + rgba() literals only — no hardcoded hex, so the
+ * design-token hook passes.
  *
  * The mockup overrides body type to Space Grotesk on these screens
  * (design_handoff_redesign/README.md "Type"). Scoped here, not globally.
+ *
+ * Geometry source of truth: design_handoff_redesign/02 Invoice Review.dc.html
+ * (panel min(1380px, 100vw−64px), header 13/20/13/24, footer 12/20, body
+ * 24/28, doc well bg rgba(59,88,100,.05)).
  */
 .nw-redesign {
   --font-body: "Space Grotesk", system-ui, sans-serif;
@@ -20,131 +26,498 @@
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: rgba(19, 32, 40, 0.5);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  overflow-y: auto;
-  padding: 24px 20px;
+}
+.nw-review-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: rgba(19, 32, 40, 0.55);
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }
 .nw-review-panel {
-  position: relative;
-  width: 100%;
-  max-width: 1180px;
+  /* Centered via auto margins, NOT translateX — animate-fade-up animates
+     `transform` and would override a transform-based centering. */
+  position: absolute;
+  top: 32px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: min(1380px, calc(100vw - 64px));
+  height: calc(100vh - 64px);
   background: var(--nw-white-sand);
   border: 1px solid var(--border-default);
-  box-shadow: 0 8px 24px -12px rgba(26, 40, 48, 0.35);
+  box-shadow: 0 8px 24px -12px rgba(26, 40, 48, 0.4);
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
+@media (max-width: 700px) {
+  .nw-review-panel {
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+  }
+}
 
-/* Slate-deep header: identity + status pill left, stepper + ESC right. */
+/* Slate-deep header: identity + status pill left, ESC right.
+   (Prev/next stepper omitted — unbuilt list-nav, F2 zero-fiction;
+   recorded in design_handoff_redesign/ASSETS.md as a propagation-pass
+   candidate.) */
 .nw-review-header {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 16px 24px;
+  padding: 13px 20px 13px 24px;
   background: var(--nw-slate-deep);
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  flex-shrink: 0;
 }
 .nw-review-title {
-  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-family: var(--font-display);
   font-weight: 600;
   font-size: 17px;
   letter-spacing: -0.02em;
   color: var(--nw-white-sand);
   white-space: nowrap;
 }
+.nw-review-docnum {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: rgba(247, 245, 236, 0.45);
+}
 .nw-review-subtitle {
   font-family: var(--font-mono);
   font-size: 9px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: rgba(247, 245, 236, 0.5);
   margin-top: 3px;
 }
-.nw-review-stepper {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: rgba(247, 245, 236, 0.85);
-}
-.nw-review-stepbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid rgba(247, 245, 236, 0.25);
-  background: transparent;
-  color: var(--nw-white-sand);
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-.nw-review-stepbtn:hover:not(:disabled) { border-color: var(--nw-stone-blue); }
-.nw-review-stepbtn:disabled { opacity: 0.4; cursor: default; }
 .nw-review-esc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: rgba(247, 245, 236, 0.7);
+  transition: background 0.15s;
+}
+.nw-review-esc:hover { background: rgba(247, 245, 236, 0.08); }
+.nw-review-esc-key {
   font-family: var(--font-mono);
   font-size: 8px;
   letter-spacing: 0.1em;
-  color: rgba(247, 245, 236, 0.55);
+  color: rgba(247, 245, 236, 0.4);
   border: 1px solid rgba(247, 245, 236, 0.25);
-  padding: 3px 6px;
-  text-decoration: none;
-  cursor: pointer;
+  padding: 2px 5px;
 }
-.nw-review-esc:hover { border-color: var(--nw-stone-blue); color: var(--nw-white-sand); }
 
-/* Sticky footer decision bar: AI/context left, validation + actions right. */
-.nw-review-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 24px;
-  background: var(--nw-slate-deep);
+/* Status pills on the slate-deep header (mockup .pill tones). */
+.nw-review-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  white-space: nowrap;
 }
-.nw-review-footer .nw-foot-context {
+.nw-review-pill.is-accent { color: var(--nw-stone-blue); }
+.nw-review-pill.is-ok { color: rgba(127, 184, 159, 1); }
+.nw-review-pill.is-warn { color: var(--nw-warn); }
+.nw-review-pill.is-danger { color: rgba(214, 120, 110, 1); }
+.nw-review-pill.is-muted { color: rgba(247, 245, 236, 0.55); }
+/* Same pill on a light card (meta strip payment state). */
+.nw-review-pill.is-muted-light { color: var(--text-tertiary); }
+.nw-review-pill.is-ok-light { color: var(--nw-success); }
+
+/* ── Scrollable body ──────────────────────────────────────────────────── */
+.nw-review-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px 28px;
+}
+.nw-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 640px) {
+  .nw-review-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Source-document pane (left). The REAL viewer renders inside the well —
+   its own zoom/expand/download controls are kept (no duplicated chrome,
+   no fake paper, no fake stamps). */
+.nw-review-doc-pane {
+  min-width: 0;
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+}
+.nw-review-doc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.nw-review-doc-well {
+  padding: 24px;
+  background: rgba(59, 88, 100, 0.05);
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.nw-review-doc-link {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(247, 245, 236, 0.6);
+  text-decoration: none;
+  color: var(--nw-gulf-blue);
 }
-.nw-review-footer .nw-foot-bal {
+.nw-review-doc-link:hover { color: var(--nw-stone-blue); }
+.nw-review-doc-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-subtle);
+}
+.nw-review-doc-toggle button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 9px;
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s;
 }
-.nw-review-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0;
+.nw-review-doc-toggle button.is-on {
+  background: var(--nw-stone-blue);
+  color: var(--nw-white-sand);
 }
-@media (max-width: 900px) {
-  .nw-review-body { grid-template-columns: 1fr; }
-}
-.nw-review-doc { border-right: 1px solid var(--border-subtle); padding: 20px 24px; min-width: 0; }
-.nw-review-rail { padding: 20px 24px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
 
-/* Condensed one-line meta strip. */
+/* Right rail: metadata card, allocation card, history card. */
+.nw-review-rail-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.nw-review-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  padding: 22px 24px;
+}
+.nw-review-card.is-flush { padding: 0; }
+.nw-review-bignum {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 27px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.nw-review-field-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+.nw-review-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.nw-review-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-default);
+  background: var(--bg-card);
+  padding: 8px 10px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.nw-review-input:focus {
+  border-color: var(--nw-stone-blue);
+  outline: none;
+}
+.nw-review-input:disabled { opacity: 0.6; }
+
+/* Read-only PO / CO match display (adjudicated: read-only this pass). */
+.nw-review-matchbox {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-card);
+  padding: 8px 10px;
+  min-width: 0;
+}
+.nw-review-kindchip {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+.nw-review-kindchip.is-po { color: var(--nw-gulf-blue); border-color: rgba(91, 134, 153, 0.35); }
+.nw-review-kindchip.is-co { color: var(--nw-warn); border-color: rgba(201, 138, 59, 0.45); }
+.nw-review-kindchip.is-none { color: var(--text-tertiary); border-color: var(--border-subtle); }
+
+/* Condensed one-line meta strip (metadata card bottom). */
 .nw-review-metastrip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.nw-meta-line {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* Quiet mono link (＋ Add allocation / ＋ Note for QuickBooks style). */
+.nw-review-quietlink {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nw-gulf-blue);
+  transition: color 0.15s;
+}
+.nw-review-quietlink:hover { color: var(--nw-stone-blue); }
+
+/* History card (collapsible timeline). */
+.nw-review-hist-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 15px 24px;
+}
+.nw-review-hist-body { padding: 4px 24px 20px; }
+.nw-review-timeline { position: relative; padding-left: 18px; }
+.nw-review-timeline .nw-tl-rail {
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--border-default);
+}
+.nw-tl-row { position: relative; padding: 5px 0 12px; }
+.nw-tl-dot {
+  position: absolute;
+  left: -18px;
+  top: 9px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%; /* dot — sanctioned radius exception */
+}
+.nw-tl-dot.is-done { background: var(--nw-success); border: 2px solid var(--bg-card); }
+.nw-tl-dot.is-current { background: var(--nw-stone-blue); border: 2px solid var(--bg-card); }
+.nw-tl-dot.is-pending { background: transparent; border: 2px solid var(--border-strong); }
+.nw-tl-stamp {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-tertiary);
+}
+.nw-tl-label { font-size: 13px; color: var(--text-primary); }
+.nw-tl-row.is-pending .nw-tl-label { color: var(--text-secondary); }
+
+/* ── Sticky footer decision bar (slate-deep, owns ALL verdict actions) ── */
+.nw-review-footer {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
   align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--nw-slate-deep);
+  flex-shrink: 0;
+  position: relative;
+  flex-wrap: wrap;
+}
+.nw-review-ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247, 245, 236, 0.6);
+  padding: 6px 0;
+  transition: color 0.15s;
+}
+.nw-review-ai-btn:hover { color: var(--nw-white-sand); }
+.nw-review-ai-dot {
+  width: 5px;
+  height: 5px;
+  background: var(--nw-stone-blue);
+  flex-shrink: 0;
+}
+.nw-review-foot-bal {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.nw-review-foot-bal.is-ok { color: var(--nw-success); }
+.nw-review-foot-bal.is-warn { color: var(--nw-warn); }
+.nw-review-foot-bal.is-danger { color: rgba(214, 120, 110, 1); }
+
+/* Dark action set — the light NwButton/OverflowMenu are invisible on
+   slate-deep; these are the re-authored dark variants. */
+.nw-review-btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(247, 245, 236, 0.25);
+  color: var(--nw-white-sand);
+  cursor: pointer;
+  padding: 9px 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: border-color 0.15s;
+  white-space: nowrap;
+}
+.nw-review-btn-ghost:hover:not(:disabled) { border-color: var(--nw-stone-blue); }
+.nw-review-btn-accent {
+  background: var(--nw-stone-blue);
+  border: 1px solid var(--nw-stone-blue);
+  color: var(--nw-white-sand);
+  cursor: pointer;
+  padding: 9px 18px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.nw-review-btn-accent:hover:not(:disabled) {
+  background: var(--nw-gulf-blue);
+  border-color: var(--nw-gulf-blue);
+}
+.nw-review-btn-dark {
+  background: var(--nw-slate-deep);
+  border: 1px solid var(--nw-slate-deep);
+  color: var(--nw-white-sand);
+  cursor: pointer;
+  padding: 8px 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.nw-review-btn-ghost:disabled,
+.nw-review-btn-accent:disabled,
+.nw-review-btn-dark:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.nw-review-iconbtn {
+  background: transparent;
+  border: 1px solid rgba(247, 245, 236, 0.25);
+  cursor: pointer;
+  padding: 9px;
+  display: flex;
+  color: var(--nw-white-sand);
+  transition: border-color 0.15s;
+}
+.nw-review-iconbtn:hover { border-color: var(--nw-stone-blue); }
+
+/* Footer popovers open UPWARD (mockup: bottom:46px). White paper on dark. */
+.nw-review-pop {
+  position: absolute;
+  bottom: 46px;
+  right: 0;
+  z-index: 70;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  box-shadow: 0 8px 24px -12px rgba(26, 40, 48, 0.3);
+}
+.nw-review-pop.is-left {
+  left: 0;
+  right: auto;
+}
+.nw-review-pop .nw-pop-item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 9px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+  display: block;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.nw-review-pop .nw-pop-item:hover:not(:disabled) { background: rgba(91, 134, 153, 0.06); }
+.nw-review-pop .nw-pop-item.is-danger { color: var(--nw-danger); }
+.nw-review-pop .nw-pop-item.is-danger:hover:not(:disabled) { background: rgba(176, 85, 78, 0.06); }
+.nw-review-pop .nw-pop-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.nw-review-pop .nw-pop-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 6px 0;
+}
+
+/* Print: flatten the modal chrome — the body is the print area. */
+@media print {
+  .nw-review-overlay { position: static; }
+  .nw-review-backdrop,
+  .nw-review-header,
+  .nw-review-footer { display: none; }
+  .nw-review-panel {
+    position: static;
+    transform: none;
+    width: auto;
+    height: auto;
+    border: none;
+    box-shadow: none;
+  }
+  .nw-review-body { overflow: visible; padding: 0; }
+  .nw-review-doc-pane { position: static; }
+  .nw-review-doc-well { max-height: none; overflow: visible; }
 }
 
 /* ── SpreadsheetGrid (Excel-pure) ─────────────────────────────────────── */
