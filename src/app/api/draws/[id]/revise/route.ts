@@ -133,29 +133,49 @@ export async function POST(
       );
     }
 
-    // Move invoices from parent to revision so the new draft starts with the
-    // same population. Invoice status stays whatever it was (in_draw if parent
-    // was submitted+).
-    const { data: invs } = await supabase
-      .from("invoices")
-      .select("id")
+    // Move invoice PORTIONS from parent to revision so the new draft starts
+    // with the same population (00122 junction: soft-delete the parent's
+    // links, insert fresh links on the revision; invoices.draw_id repoints
+    // only where it pointed at the parent — the header-portion sync).
+    // Invoice status stays whatever it was (in_draw if parent was submitted+).
+    const { data: parentLinks } = await supabase
+      .from("invoice_draw_links")
+      .select("invoice_id, job_id")
       .eq("draw_id", original.id)
-      .eq("org_id", orgId)
       .is("deleted_at", null);
-    const invIds = (invs ?? []).map((i) => i.id as string);
-    if (invIds.length > 0) {
-      const { data: relinked, error: relinkErr } = await supabase
+    const linkRows = (parentLinks ?? []) as Array<{ invoice_id: string; job_id: string }>;
+    const invIds = Array.from(new Set(linkRows.map((l) => l.invoice_id)));
+    if (linkRows.length > 0) {
+      const nowIso = new Date().toISOString();
+      const { error: dropErr } = await supabase
+        .from("invoice_draw_links")
+        .update({ deleted_at: nowIso, updated_at: nowIso })
+        .eq("draw_id", original.id)
+        .is("deleted_at", null);
+      if (dropErr) {
+        console.error("[revise] parent link release failed:", dropErr.message);
+      }
+      const { error: insErr } = await supabase
+        .from("invoice_draw_links")
+        .insert(
+          linkRows.map((l) => ({
+            invoice_id: l.invoice_id,
+            job_id: l.job_id,
+            draw_id: revision.id,
+            org_id: orgId,
+          }))
+        );
+      if (insErr) {
+        console.error("[revise] revision link insert failed:", insErr.message);
+      }
+      const { error: relinkErr } = await supabase
         .from("invoices")
         .update({ draw_id: revision.id })
         .in("id", invIds)
-        .eq("org_id", orgId)
-        .select("id");
+        .eq("draw_id", original.id)
+        .eq("org_id", orgId);
       if (relinkErr) {
         console.error("[revise] invoice re-link failed:", relinkErr.message);
-      } else if (!relinked || relinked.length !== invIds.length) {
-        console.warn(
-          `[revise] Expected to re-link ${invIds.length} invoices, only ${relinked?.length ?? 0} updated`
-        );
       }
     }
 

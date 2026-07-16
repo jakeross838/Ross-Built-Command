@@ -101,7 +101,12 @@ export type DrawInvoice = {
   vendor: string;
   invoice_number: string | null;
   received_date: string | null;
+  /** THIS-JOB portion in cents (00122) — equals the full invoice total for
+   *  mono-job invoices; the split portion otherwise. */
   amount: number;
+  /** Full invoice total in cents. When amount < invoice_total the renderers
+   *  show "$X of $Y invoice total" (Q5). */
+  invoice_total: number;
   cost_code_id: string | null;
   code: string | null;
   stamped: boolean;
@@ -334,14 +339,51 @@ export async function loadPayAppViewData(
     ? jobEmbed.client[0] ?? null
     : jobEmbed.client;
 
-  // Invoices linked to this draw (this_period source for computeDrawLines;
-  // vendor/number/amount/cost-code also feed the statement "detailed" backup).
-  const { data: invoices } = await supabase
-    .from("invoices")
-    .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id, received_date, status")
+  // Invoices linked to this draw — junction membership (00122). Each carries
+  // its THIS-JOB portion (Σ allocations on the draw's job; full total only
+  // for allocation-less invoices headered here) so the statement backup and
+  // "Invoices in this draw" tie to the per-portion G703 cent-exact.
+  const { data: linkRowsForDraw } = await supabase
+    .from("invoice_draw_links")
+    .select("invoice_id")
     .eq("draw_id", drawId)
-    .eq("org_id", membership.org_id)
     .is("deleted_at", null);
+  const linkedInvoiceIds = Array.from(
+    new Set((linkRowsForDraw ?? []).map((l) => (l as { invoice_id: string }).invoice_id))
+  );
+  const { data: invoices } = linkedInvoiceIds.length
+    ? await supabase
+        .from("invoices")
+        .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id, received_date, status, job_id")
+        .in("id", linkedInvoiceIds)
+        .eq("org_id", membership.org_id)
+        .is("deleted_at", null)
+    : { data: [] as never[] };
+  const { data: portionAllocRows } = linkedInvoiceIds.length
+    ? await supabase
+        .from("invoice_allocations")
+        .select("invoice_id, amount_cents, job_id")
+        .in("invoice_id", linkedInvoiceIds)
+        .is("deleted_at", null)
+    : { data: [] as never[] };
+  const invoiceHasAllocs = new Set(
+    (portionAllocRows ?? []).map((a) => (a as { invoice_id: string }).invoice_id)
+  );
+  const invoicePortion = new Map<string, number>();
+  for (const a of portionAllocRows ?? []) {
+    const row = a as { invoice_id: string; amount_cents: number; job_id: string };
+    if (row.job_id !== (draw.job_id as string)) continue;
+    invoicePortion.set(
+      row.invoice_id,
+      (invoicePortion.get(row.invoice_id) ?? 0) + (row.amount_cents ?? 0)
+    );
+  }
+  const portionFor = (inv: { id: unknown; total_amount: unknown; job_id?: unknown }): number =>
+    invoiceHasAllocs.has(inv.id as string)
+      ? invoicePortion.get(inv.id as string) ?? 0
+      : (inv.job_id as string | null) === (draw.job_id as string)
+        ? Number(inv.total_amount ?? 0)
+        : 0;
 
   // Budget lines + cost-code embeds for the G703 rows.
   const { data: budgetLinesRaw } = await supabase
@@ -688,7 +730,10 @@ export async function loadPayAppViewData(
       vendor: (i.vendor_name_raw as string | null) ?? "—",
       invoice_number: (i.invoice_number as string | null) ?? null,
       received_date: (i.received_date as string | null) ?? null,
-      amount: Number(i.total_amount ?? 0),
+      // THIS-JOB portion (00122) — the statement/backup rows tie to the
+      // per-portion G703, never the cross-job invoice total.
+      amount: portionFor(i),
+      invoice_total: Number(i.total_amount ?? 0),
       cost_code_id: (i.cost_code_id as string | null) ?? null,
       code: i.cost_code_id ? invCcMap.get(i.cost_code_id as string) ?? null : null,
       // Stamped once approved (no approved_at column — derive from status).
@@ -741,7 +786,9 @@ export async function loadPayAppViewData(
       list.push({
         vendor: (inv.vendor_name_raw as string | null) ?? "—",
         invoice_number: (inv.invoice_number as string | null) ?? null,
-        amount: Number(inv.total_amount ?? 0),
+        // 00122: THIS-JOB portion — the open-book backup rows must tie to
+        // the per-portion code subtotals, never a cross-job invoice total.
+        amount: portionFor(inv),
       });
       invByCode.set(cc, list);
     }

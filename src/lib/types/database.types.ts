@@ -1834,6 +1834,7 @@ export type Database = {
           description: string | null
           id: string
           invoice_id: string
+          job_id: string
           org_id: string
           updated_at: string
         }
@@ -1846,6 +1847,7 @@ export type Database = {
           description?: string | null
           id?: string
           invoice_id: string
+          job_id: string
           org_id: string
           updated_at?: string
         }
@@ -1858,6 +1860,7 @@ export type Database = {
           description?: string | null
           id?: string
           invoice_id?: string
+          job_id?: string
           org_id?: string
           updated_at?: string
         }
@@ -1884,7 +1887,79 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "invoice_allocations_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "invoice_allocations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_draw_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          draw_id: string
+          id: string
+          invoice_id: string
+          job_id: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          draw_id: string
+          id?: string
+          invoice_id: string
+          job_id: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          draw_id?: string
+          id?: string
+          invoice_id?: string
+          job_id?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_draw_links_draw_id_fkey"
+            columns: ["draw_id"]
+            isOneToOne: false
+            referencedRelation: "draws"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_draw_links_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_draw_links_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_draw_links_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"

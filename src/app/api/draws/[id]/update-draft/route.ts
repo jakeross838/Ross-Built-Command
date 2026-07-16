@@ -117,13 +117,18 @@ export async function PUT(
         );
       }
 
-      const { data: currentInvRows } = await supabase
-        .from("invoices")
-        .select("id")
+      // 00122 per-portion membership: reconcile against the junction, not
+      // invoices.draw_id. Detach soft-deletes this draw's link (and clears
+      // the header draw_id sync when it pointed here); attach validates the
+      // portion (header job OR an allocation on this job), qa_approved
+      // status, and portion-uniqueness before inserting a link.
+      const { data: currentLinks } = await supabase
+        .from("invoice_draw_links")
+        .select("invoice_id")
         .eq("draw_id", drawId)
         .is("deleted_at", null);
       const current = new Set(
-        (currentInvRows ?? []).map((r) => (r as { id: string }).id)
+        (currentLinks ?? []).map((r) => (r as { invoice_id: string }).invoice_id)
       );
       const next = new Set(invoiceIds);
 
@@ -131,10 +136,23 @@ export async function PUT(
       const toAttach = invoiceIds.filter((id) => !current.has(id));
 
       if (toDetach.length > 0) {
+        const { error: dropErr } = await supabase
+          .from("invoice_draw_links")
+          .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("draw_id", drawId)
+          .in("invoice_id", toDetach)
+          .is("deleted_at", null);
+        if (dropErr) {
+          return NextResponse.json(
+            { error: `Failed to detach invoice portions: ${dropErr.message}` },
+            { status: 500 }
+          );
+        }
         const { error: detachErr } = await supabase
           .from("invoices")
           .update({ draw_id: null })
           .in("id", toDetach)
+          .eq("draw_id", drawId)
           .eq("org_id", orgId);
         if (detachErr) {
           return NextResponse.json(
@@ -145,41 +163,109 @@ export async function PUT(
       }
 
       if (toAttach.length > 0) {
-        // Only attach invoices that are unattached + qa_approved (or already
-        // on this draw, filtered out above). Prevents stealing another draw's
-        // invoices or attaching pre-approval bills.
-        const { data: attached, error: attachErr } = await supabase
+        const { data: cands, error: candErr } = await supabase
           .from("invoices")
-          .update({ draw_id: drawId })
+          .select("id, job_id, status")
           .in("id", toAttach)
           .eq("org_id", orgId)
-          .is("draw_id", null)
-          .eq("status", "qa_approved")
-          .select("id");
-        if (attachErr) {
+          .is("deleted_at", null);
+        if (candErr) {
           return NextResponse.json(
-            { error: `Failed to attach invoices: ${attachErr.message}` },
+            { error: `Failed to load invoices to attach: ${candErr.message}` },
             { status: 500 }
           );
         }
-        if (!attached || attached.length !== toAttach.length) {
+        const notApproved = (cands ?? []).filter((c) => c.status !== "qa_approved");
+        if (!cands || cands.length !== toAttach.length || notApproved.length > 0) {
           return NextResponse.json(
             {
               error: `Could not attach all invoices — ${
-                toAttach.length - (attached?.length ?? 0)
-              } were already on another draw or not QA-approved.`,
+                toAttach.length - ((cands?.length ?? 0) - notApproved.length)
+              } were missing or not QA-approved.`,
             },
             { status: 409 }
           );
         }
+
+        const foreign = cands.filter((c) => c.job_id !== jobId);
+        if (foreign.length > 0) {
+          const { data: portionRows } = await supabase
+            .from("invoice_allocations")
+            .select("invoice_id")
+            .in("invoice_id", foreign.map((c) => c.id))
+            .eq("job_id", jobId)
+            .is("deleted_at", null);
+          const withPortion = new Set((portionRows ?? []).map((r) => r.invoice_id));
+          const ineligible = foreign.filter((c) => !withPortion.has(c.id));
+          if (ineligible.length > 0) {
+            return NextResponse.json(
+              {
+                error: `${ineligible.length} invoice(s) carry no allocation portion for this job — cannot attach.`,
+              },
+              { status: 409 }
+            );
+          }
+        }
+
+        const { data: clash } = await supabase
+          .from("invoice_draw_links")
+          .select("invoice_id")
+          .in("invoice_id", toAttach)
+          .eq("job_id", jobId)
+          .is("deleted_at", null);
+        if ((clash ?? []).length > 0) {
+          return NextResponse.json(
+            {
+              error: `Could not attach all invoices — ${clash!.length} portion(s) already on another draw.`,
+            },
+            { status: 409 }
+          );
+        }
+
+        const { error: junctionErr } = await supabase
+          .from("invoice_draw_links")
+          .insert(
+            toAttach.map((id) => ({
+              invoice_id: id,
+              job_id: jobId,
+              draw_id: drawId,
+              org_id: orgId,
+            }))
+          );
+        if (junctionErr) {
+          return NextResponse.json(
+            { error: `Failed to attach invoice portions: ${junctionErr.message}` },
+            { status: 500 }
+          );
+        }
+
+        const headerIds = cands.filter((c) => c.job_id === jobId).map((c) => c.id);
+        if (headerIds.length > 0) {
+          const { error: attachErr } = await supabase
+            .from("invoices")
+            .update({ draw_id: drawId })
+            .in("id", headerIds)
+            .eq("org_id", orgId)
+            .is("draw_id", null);
+          if (attachErr) {
+            return NextResponse.json(
+              { error: `Failed to sync header draw link: ${attachErr.message}` },
+              { status: 500 }
+            );
+          }
+        }
       }
     } else {
-      const { data: currentInvRows } = await supabase
-        .from("invoices")
-        .select("id")
+      const { data: currentLinks } = await supabase
+        .from("invoice_draw_links")
+        .select("invoice_id")
         .eq("draw_id", drawId)
         .is("deleted_at", null);
-      invoiceIds = (currentInvRows ?? []).map((r) => (r as { id: string }).id);
+      invoiceIds = Array.from(
+        new Set(
+          (currentLinks ?? []).map((r) => (r as { invoice_id: string }).invoice_id)
+        )
+      );
     }
 
     // Recompute the stored snapshot from source (excluding this draw's own

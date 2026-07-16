@@ -7,6 +7,11 @@ export interface InvoiceStampData {
   approvedBy: string;
   approvedDate: string; // display string, e.g. "Jul 8, 2026"
   invoiceNumber?: string | null;
+  /** 00122 multi-job split: when the invoice's allocations span >1 job, one
+   *  entry per job (job name · codes · portion). The stamp then prints a
+   *  per-job breakdown instead of the single Job/Cost rows, so the printed
+   *  rubber stamp never misstates which job the money belongs to. */
+  jobLines?: { jobName: string; codes: string[]; amountCents: number }[];
 }
 
 function formatCentsToDollars(cents: number): string {
@@ -37,9 +42,14 @@ export async function stampInvoicePdf(
 
   const { width: pageW, height: pageH } = page.getSize();
 
+  const splitLines =
+    data.jobLines && data.jobLines.length > 1 ? data.jobLines : null;
+
   // Stamp box — top-right of page 1, clamped so it never runs off a small page.
+  // Split invoices get one extra row per job beyond the two Job/Cost rows they
+  // replace.
   const boxW = Math.min(240, pageW - 24);
-  const boxH = 108;
+  const boxH = 108 + (splitLines ? Math.max(0, splitLines.length - 2) * 14.5 : 0);
   const x = Math.max(12, pageW - boxW - 18);
   const y = Math.max(12, pageH - boxH - 18);
 
@@ -59,13 +69,27 @@ export async function stampInvoicePdf(
     page.drawText(inv, { x: x + boxW - invW - 10, y: y + boxH - 14, size: 9, font: bold, color: rgb(1, 1, 1) });
   }
 
-  const rows: { label: string; value: string }[] = [
-    { label: "Job", value: fit(data.jobName ?? "—", 30) },
-    { label: "Cost", value: fit(data.costCodes.length ? data.costCodes.join(", ") : "—", 30) },
-    { label: "Amount", value: formatCentsToDollars(data.amountCents) },
-    { label: "By", value: fit(data.approvedBy, 30) },
-    { label: "Date", value: data.approvedDate },
-  ];
+  const rows: { label: string; value: string }[] = splitLines
+    ? [
+        // Per-job money breakdown (00122): "Job name · codes — $portion".
+        ...splitLines.map((jl) => ({
+          label: "Job",
+          value: fit(
+            `${jl.jobName}${jl.codes.length ? ` · ${jl.codes.join(", ")}` : ""} — ${formatCentsToDollars(jl.amountCents)}`,
+            34
+          ),
+        })),
+        { label: "Amount", value: formatCentsToDollars(data.amountCents) },
+        { label: "By", value: fit(data.approvedBy, 30) },
+        { label: "Date", value: data.approvedDate },
+      ]
+    : [
+        { label: "Job", value: fit(data.jobName ?? "—", 30) },
+        { label: "Cost", value: fit(data.costCodes.length ? data.costCodes.join(", ") : "—", 30) },
+        { label: "Amount", value: formatCentsToDollars(data.amountCents) },
+        { label: "By", value: fit(data.approvedBy, 30) },
+        { label: "Date", value: data.approvedDate },
+      ];
 
   let ry = y + boxH - 34;
   for (const row of rows) {

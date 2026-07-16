@@ -4,6 +4,7 @@ import { ApiError, withApiError } from "@/lib/api/errors";
 import { getCurrentMembership } from "@/lib/org/session";
 import {
   computeBaselineCents,
+  scopeKey,
   type CodeBaseline,
   type InvoiceContribution,
 } from "@/lib/invoices/balance-impact";
@@ -12,14 +13,17 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 /**
- * Read-only baselines for the balance-impact strip (Stage-2 review redesign).
+ * Read-only baselines for the balance-impact strip (Stage-2 review redesign;
+ * 00122 multi-job aware).
  *
- * For every cost code on this job that has a budget line or an open PO, returns
- * the scope (PO takes precedence over budget), the scope total, and the
- * invoiced-against-scope baseline computed FROM SOURCE EXCLUDING this invoice
- * (the trap-proof contract — see src/lib/invoices/balance-impact.ts header).
- * The client computes now = scopeTotal - baseline and after = now - liveGridSum,
- * live as the PM edits allocations. NO approval math is touched here.
+ * For every (job, cost code) the invoice touches — the header job plus every
+ * job named by its allocations — returns the scope (PO takes precedence over
+ * budget), the scope total, and the invoiced-against-scope baseline computed
+ * FROM SOURCE EXCLUDING this invoice (the trap-proof contract — see
+ * src/lib/invoices/balance-impact.ts header). Keys are `${jobId}::${costCodeId}`
+ * (scopeKey); `jobNames` maps job ids to display names so the strip can group
+ * rows by job. The client computes now = scopeTotal - baseline and
+ * after = now - liveGridSum, live as the PM edits. NO approval math here.
  */
 export const GET = withApiError(async (
   _req: NextRequest,
@@ -38,38 +42,52 @@ export const GET = withApiError(async (
   if (!invoice || invoice.org_id !== membership.org_id) {
     throw new ApiError("Invoice not found", 404);
   }
-  const jobId = invoice.job_id as string | null;
-  if (!jobId) {
-    // No job → nothing to predict against. Empty (not an error).
-    return NextResponse.json({ baselines: {} });
+  const headerJobId = invoice.job_id as string | null;
+
+  // Jobs in scope: header + every allocation job (00122).
+  const { data: allocJobRows } = await supabase
+    .from("invoice_allocations")
+    .select("job_id")
+    .eq("invoice_id", reviewedId)
+    .is("deleted_at", null);
+  const jobIds = Array.from(
+    new Set(
+      [headerJobId, ...(allocJobRows ?? []).map((r) => (r as { job_id: string | null }).job_id)]
+        .filter((j): j is string => !!j)
+    )
+  );
+  if (jobIds.length === 0) {
+    // No job anywhere → nothing to predict against. Empty (not an error).
+    return NextResponse.json({ baselines: {}, jobNames: {} });
   }
 
-  // PO scope (precedence): open POs on this job, keyed by cost code.
-  // Open = issued | partially_invoiced | fully_invoiced (recalc.ts PO_OPEN_STATUSES).
-  const [{ data: budgetLines }, { data: pos }] = await Promise.all([
+  const [{ data: budgetLines }, { data: pos }, { data: jobRows }] = await Promise.all([
     supabase
       .from("budget_lines")
-      .select("id, cost_code_id, revised_estimate")
-      .eq("job_id", jobId)
+      .select("id, job_id, cost_code_id, revised_estimate")
+      .in("job_id", jobIds)
       .eq("org_id", membership.org_id)
       .is("deleted_at", null),
     supabase
       .from("purchase_orders")
-      .select("id, cost_code_id, po_number, amount, status")
-      .eq("job_id", jobId)
+      .select("id, job_id, cost_code_id, po_number, amount, status")
+      .in("job_id", jobIds)
       .eq("org_id", membership.org_id)
       .is("deleted_at", null)
       .in("status", ["issued", "partially_invoiced", "fully_invoiced"]),
+    supabase
+      .from("jobs")
+      .select("id, name")
+      .in("id", jobIds)
+      .eq("org_id", membership.org_id),
   ]);
 
-  // All invoice_line_items on this job (via the invoice_line_items → invoices
-  // FK `invoice_line_items_invoice_id_fkey`), with each line's invoice status so
-  // computeBaselineCents can apply the counting-status filter + exclude the
-  // reviewed invoice. RLS + the org-scoped job filter keep this tenant-safe.
+  // Line-item contributions per scope, across ALL in-scope jobs (via the
+  // invoices join; RLS + the org filter keep this tenant-safe).
   const { data: lineItems } = await supabase
     .from("invoice_line_items")
     .select("amount_cents, budget_line_id, po_id, invoices!inner(id, status, deleted_at, job_id)")
-    .eq("invoices.job_id", jobId)
+    .in("invoices.job_id", jobIds)
     .is("deleted_at", null);
 
   type LineRow = {
@@ -107,18 +125,20 @@ export const GET = withApiError(async (
   // Budget scope first...
   for (const bl of budgetLines ?? []) {
     const ccId = (bl as { cost_code_id: string | null }).cost_code_id;
-    if (!ccId) continue;
-    baselines[ccId] = {
+    const blJob = (bl as { job_id: string | null }).job_id;
+    if (!ccId || !blJob) continue;
+    baselines[scopeKey(blJob, ccId)] = {
       scope: "budget",
       scopeTotalCents: (bl as { revised_estimate: number | null }).revised_estimate ?? 0,
       baselineCents: computeBaselineCents(contribsByBudgetLine.get((bl as { id: string }).id) ?? [], reviewedId),
     };
   }
-  // ...then PO scope overrides any code that has an open PO (mockup precedence).
+  // ...then PO scope overrides any (job, code) that has an open PO.
   for (const po of pos ?? []) {
     const ccId = (po as { cost_code_id: string | null }).cost_code_id;
-    if (!ccId) continue;
-    baselines[ccId] = {
+    const poJob = (po as { job_id: string | null }).job_id;
+    if (!ccId || !poJob) continue;
+    baselines[scopeKey(poJob, ccId)] = {
       scope: "po",
       poNumber: (po as { po_number: string | null }).po_number,
       scopeTotalCents: (po as { amount: number | null }).amount ?? 0,
@@ -126,5 +146,10 @@ export const GET = withApiError(async (
     };
   }
 
-  return NextResponse.json({ baselines });
+  const jobNames: Record<string, string> = {};
+  for (const j of jobRows ?? []) {
+    jobNames[(j as { id: string }).id] = (j as { name: string | null }).name ?? "—";
+  }
+
+  return NextResponse.json({ baselines, jobNames });
 });

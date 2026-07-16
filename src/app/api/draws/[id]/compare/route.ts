@@ -70,12 +70,23 @@ export async function GET(
       period_end: string | null;
       is_final: boolean;
     }) => {
-      const { data: invs } = await supabase
-        .from("invoices")
-        .select("id, total_amount, vendor_id, vendor_name_raw, cost_code_id")
+      // 00122: membership via the junction (per-portion).
+      const { data: cmpLinks } = await supabase
+        .from("invoice_draw_links")
+        .select("invoice_id")
         .eq("draw_id", draw.id)
-        .eq("org_id", orgId)
         .is("deleted_at", null);
+      const cmpLinkedIds = Array.from(
+        new Set((cmpLinks ?? []).map((l) => (l as { invoice_id: string }).invoice_id))
+      );
+      const { data: invs } = cmpLinkedIds.length
+        ? await supabase
+            .from("invoices")
+            .select("id, total_amount, vendor_id, vendor_name_raw, cost_code_id")
+            .in("id", cmpLinkedIds)
+            .eq("org_id", orgId)
+            .is("deleted_at", null)
+        : { data: [] as never[] };
       const invIds = (invs ?? []).map((i) => i.id as string);
       const { data: jobRow } = await supabase
         .from("jobs")

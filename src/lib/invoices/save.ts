@@ -742,20 +742,31 @@ export async function saveParsedInvoice(
       for (let i = 0; i < shares.length && leftover > 0; i++, leftover--) {
         shares[i].cents += 1;
       }
-      const allocRows = shares
-        .filter((x) => x.cents > 0)
-        .map((x) => ({
-          invoice_id: invoiceId,
-          cost_code_id: x.ccId,
-          amount_cents: x.cents,
-          description: parsed.description ?? null,
-          org_id: orgId,
-        }));
-      try {
-        await supabase.from("invoice_allocations").insert(allocRows);
-      } catch (allocErr) {
+      // 00122: job_id NOT NULL — auto-created allocations default to the
+      // header job (Q1). A jobless invoice can't allocate yet; the PM
+      // assigns a job in review and the GET auto-materialize path (which
+      // also stamps the header job) covers it.
+      if (effectiveJobId) {
+        const allocRows = shares
+          .filter((x) => x.cents > 0)
+          .map((x) => ({
+            invoice_id: invoiceId,
+            cost_code_id: x.ccId,
+            amount_cents: x.cents,
+            description: parsed.description ?? null,
+            org_id: orgId,
+            job_id: effectiveJobId,
+          }));
+        try {
+          await supabase.from("invoice_allocations").insert(allocRows);
+        } catch (allocErr) {
+          console.warn(
+            `[save] invoice_allocations auto-create failed for ${invoiceId}: ${allocErr instanceof Error ? allocErr.message : allocErr}`
+          );
+        }
+      } else {
         console.warn(
-          `[save] invoice_allocations auto-create failed for ${invoiceId}: ${allocErr instanceof Error ? allocErr.message : allocErr}`
+          `[save] invoice ${invoiceId}: allocations deferred — no job assigned yet (00122 job_id NOT NULL); PM assigns a job in review.`
         );
       }
     } else {

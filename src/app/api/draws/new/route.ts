@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
     // HANDOFF #2 — uncaptured (uncoded) dollars among the selected invoices flow
     // into the stored current_payment_due at creation so a linked credit memo
     // isn't dropped until the first recompute.
-    const { total: uncapturedLinked } = await uncapturedLinkedInvoices(invoice_ids);
+    const { total: uncapturedLinked } = await uncapturedLinkedInvoices(invoice_ids, job_id);
     // BLOCK B pt2b — clamp the requested deposit application to the remaining
     // pool (new draw → no exclude; Σ deposit_applied_cents across non-void draws).
     const depositPool = Math.round(
@@ -204,27 +204,105 @@ export async function POST(request: NextRequest) {
     }
 
     // Link invoices to the draw (status stays qa_approved until submit).
+    // 00122 per-portion membership: every pulled invoice gets an
+    // invoice_draw_links row for (invoice, THIS job); invoices.draw_id is
+    // kept in sync ONLY for invoices headered to this job (Q2 — the header
+    // portion). An invoice qualifies for this job's draw when it is
+    // headered here OR carries an allocation portion for this job, and its
+    // (invoice, job) portion isn't already on another live draw.
     if (invoice_ids.length > 0) {
-      const { data: linked, error: linkErr } = await supabase
+      const { data: candidates, error: candErr } = await supabase
         .from("invoices")
-        .update({ draw_id: draw.id })
+        .select("id, job_id")
         .in("id", invoice_ids)
         .eq("org_id", orgId)
-        .select("id");
-      if (linkErr) {
+        .is("deleted_at", null);
+      if (candErr) {
         return NextResponse.json(
-          { error: `Failed to link invoices: ${linkErr.message}` },
+          { error: `Failed to load invoices for linking: ${candErr.message}` },
           { status: 500 }
         );
       }
-      if (!linked || linked.length !== invoice_ids.length) {
+      if (!candidates || candidates.length !== invoice_ids.length) {
         return NextResponse.json(
           {
-            error: `Expected to link ${invoice_ids.length} invoices but only ${linked?.length ?? 0} updated. Check permissions or invoice status.`,
+            error: `Expected ${invoice_ids.length} invoices but found ${candidates?.length ?? 0}. Check permissions or invoice status.`,
             draw_id: draw.id,
           },
           { status: 500 }
         );
+      }
+
+      const foreignHeadered = candidates.filter((c) => c.job_id !== job_id);
+      if (foreignHeadered.length > 0) {
+        // Portion eligibility: every non-header invoice must carry a live
+        // allocation on THIS job.
+        const { data: portionRows } = await supabase
+          .from("invoice_allocations")
+          .select("invoice_id")
+          .in("invoice_id", foreignHeadered.map((c) => c.id))
+          .eq("job_id", job_id)
+          .is("deleted_at", null);
+        const withPortion = new Set((portionRows ?? []).map((r) => r.invoice_id));
+        const ineligible = foreignHeadered.filter((c) => !withPortion.has(c.id));
+        if (ineligible.length > 0) {
+          return NextResponse.json(
+            {
+              error: `${ineligible.length} invoice(s) carry no allocation portion for this job and are headered to another job — cannot pull into this draw.`,
+              draw_id: draw.id,
+            },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Portion-uniqueness: no live link may already exist for (invoice, job).
+      const { data: existingLinks } = await supabase
+        .from("invoice_draw_links")
+        .select("invoice_id")
+        .in("invoice_id", invoice_ids)
+        .eq("job_id", job_id)
+        .is("deleted_at", null);
+      if ((existingLinks ?? []).length > 0) {
+        return NextResponse.json(
+          {
+            error: `${existingLinks!.length} invoice portion(s) for this job are already on another draw.`,
+            draw_id: draw.id,
+          },
+          { status: 400 }
+        );
+      }
+
+      const { error: junctionErr } = await supabase
+        .from("invoice_draw_links")
+        .insert(
+          invoice_ids.map((id) => ({
+            invoice_id: id,
+            job_id,
+            draw_id: draw.id,
+            org_id: orgId,
+          }))
+        );
+      if (junctionErr) {
+        return NextResponse.json(
+          { error: `Failed to link invoice portions: ${junctionErr.message}` },
+          { status: 500 }
+        );
+      }
+
+      const headerIds = candidates.filter((c) => c.job_id === job_id).map((c) => c.id);
+      if (headerIds.length > 0) {
+        const { error: linkErr } = await supabase
+          .from("invoices")
+          .update({ draw_id: draw.id })
+          .in("id", headerIds)
+          .eq("org_id", orgId);
+        if (linkErr) {
+          return NextResponse.json(
+            { error: `Failed to sync header draw link: ${linkErr.message}` },
+            { status: 500 }
+          );
+        }
       }
     }
 

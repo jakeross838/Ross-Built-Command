@@ -23,7 +23,11 @@ type Allocation = {
   cost_code_id: string | null;
   amount_cents: number;
   description: string | null;
+  /** 00122 multi-job split — the job this portion bills to (null = header). */
+  job_id?: string | null;
 };
+
+export type AllocationJobOption = { id: string; name: string };
 
 export type AllocationGridHandle = {
   isDirty: () => boolean;
@@ -50,15 +54,25 @@ const AllocationGrid = forwardRef<
      *  footer can show ✓ BALANCED / $X UNALLOCATED (Stage-1 chrome). Never
      *  gates any behavior. Pass a stable (useCallback) fn. */
     onBalanceChange?: (info: { sumCents: number; balanced: boolean }) => void;
+    /** 00122 multi-job split (Q4 override): org-scoped active jobs for the
+     *  per-row Job column. The column is HIDDEN while all rows share one
+     *  job; it auto-reveals when loaded rows span >1 job, or via the
+     *  explicit "Split to another job…" affordance. */
+    jobs?: AllocationJobOption[];
+    /** The invoice's header job — the default for new/unsplit rows. */
+    headerJobId?: string | null;
   }
->(function AllocationGrid({ invoiceId, invoiceTotalCents, costCodes, readOnly, onChange, onBalanceChange }, ref) {
+>(function AllocationGrid({ invoiceId, invoiceTotalCents, costCodes, readOnly, onChange, onBalanceChange, jobs, headerJobId }, ref) {
   const [rows, setRows] = useState<Allocation[]>([]);
   const [initialSnapshot, setInitialSnapshot] = useState("[]");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [locked, setLocked] = useState(false);
   const [baselines, setBaselines] = useState<Record<string, CodeBaseline>>({});
+  const [jobNames, setJobNames] = useState<Record<string, string>>({});
+  const [showJobColumn, setShowJobColumn] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -67,12 +81,22 @@ const AllocationGrid = forwardRef<
     const loaded: Allocation[] = data.allocations ?? [];
     setRows(loaded);
     setInitialSnapshot(JSON.stringify(loaded));
+    // Q4 override: auto-reveal the Job column when the persisted rows
+    // already span more than one job.
+    const distinctJobs = new Set(
+      loaded.map((r) => r.job_id ?? headerJobId).filter(Boolean)
+    );
+    if (distinctJobs.size > 1) setShowJobColumn(true);
     setLoading(false);
   }
   async function loadBaselines() {
     try {
       const res = await fetch(`/api/invoices/${invoiceId}/balance-impact`);
-      if (res.ok) setBaselines((await res.json()).baselines ?? {});
+      if (res.ok) {
+        const body = await res.json();
+        setBaselines(body.baselines ?? {});
+        setJobNames(body.jobNames ?? {});
+      }
     } catch {
       /* strip degrades to empty — display-only, never blocks review */
     }
@@ -125,6 +149,7 @@ const AllocationGrid = forwardRef<
     }
     setSaving(true);
     setError(null);
+    setWarnings([]);
     setLocked(false);
     try {
       const res = await fetch(`/api/invoices/${invoiceId}/allocations`, {
@@ -135,6 +160,8 @@ const AllocationGrid = forwardRef<
             cost_code_id: r.cost_code_id,
             amount_cents: Math.round(r.amount_cents || 0),
             description: r.description,
+            // 00122: per-portion job (omit → server defaults to header).
+            job_id: r.job_id ?? headerJobId ?? undefined,
           })),
         }),
       });
@@ -144,7 +171,15 @@ const AllocationGrid = forwardRef<
         setError(data.error ?? "Cannot edit: this invoice is on a submitted draw.");
         return false;
       }
+      if (res.status === 422 && data?.error === "split_invalid") {
+        setError(data.message ?? "Split allocation failed validation.");
+        return false;
+      }
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      // Q3 advisory: budget-line-per-(job,code) gaps surface as warnings.
+      if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+        setWarnings(data.warnings as string[]);
+      }
       await load();
       await loadBaselines();
       onChange?.();
@@ -163,6 +198,7 @@ const AllocationGrid = forwardRef<
   saveRef.current = save;
   useImperativeHandle(ref, () => ({ isDirty: () => isDirtyRef.current, save: () => saveRef.current() }), []);
 
+  const jobOptions = jobs ?? [];
   const columns: GridColumn<Allocation>[] = useMemo(
     () => [
       {
@@ -175,6 +211,34 @@ const AllocationGrid = forwardRef<
         setValue: (r, raw) => ({ ...r, description: raw }),
         editable: canEdit,
       },
+      // 00122 Job column (Q4 override): hidden while uniform; revealed by
+      // auto-detection (load) or the "Split to another job…" affordance.
+      ...(showJobColumn
+        ? ([
+            {
+              key: "job",
+              header: "Job",
+              width: "150px",
+              kind: "combobox",
+              editable: false, // the select owns its own interaction
+              display: (r: Allocation, i: number) => (
+                <select
+                  value={r.job_id ?? headerJobId ?? ""}
+                  onChange={(e) => updateRow(i, { job_id: e.target.value || null })}
+                  disabled={!canEdit}
+                  className="nw-grid-jobselect"
+                  aria-label="Job for this allocation"
+                >
+                  {jobOptions.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.name}
+                    </option>
+                  ))}
+                </select>
+              ),
+            },
+          ] as GridColumn<Allocation>[])
+        : []),
       {
         key: "cost_code",
         header: "Cost code",
@@ -209,7 +273,7 @@ const AllocationGrid = forwardRef<
         editable: canEdit,
       },
     ],
-    [canEdit, codeOptions] // eslint-disable-line react-hooks/exhaustive-deps
+    [canEdit, codeOptions, showJobColumn, headerJobId, jobOptions] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   if (loading) {
@@ -253,6 +317,16 @@ const AllocationGrid = forwardRef<
           <NwButton variant="secondary" size="sm" onClick={addRow} disabled={saving}>
             + Add allocation
           </NwButton>
+          {!showJobColumn && jobOptions.length > 1 && (
+            <button
+              type="button"
+              className="nw-review-quietlink"
+              onClick={() => setShowJobColumn(true)}
+              title="Reveal a per-row Job column to split this invoice across jobs"
+            >
+              Split to another job…
+            </button>
+          )}
           {(isDirty || !balanced || anyCostCodeMissing) && (
             <NwButton
               variant="primary"
@@ -273,8 +347,21 @@ const AllocationGrid = forwardRef<
           {error}
         </div>
       )}
+      {warnings.length > 0 && (
+        <div className="border border-[rgba(201,138,59,0.35)] bg-[rgba(201,138,59,0.08)] px-2 py-1 text-xs text-[color:var(--nw-warn)]">
+          {warnings.map((w, i) => (
+            <div key={i}>{w}</div>
+          ))}
+        </div>
+      )}
 
-      <BalanceImpactStrip rows={rows} baselines={baselines} codeLabelById={codeLabelById} />
+      <BalanceImpactStrip
+        rows={rows}
+        baselines={baselines}
+        codeLabelById={codeLabelById}
+        headerJobId={headerJobId}
+        jobNames={jobNames}
+      />
     </div>
   );
 });

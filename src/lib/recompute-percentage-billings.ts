@@ -47,15 +47,46 @@ export async function recomputePercentageBillings(drawId: string): Promise<void>
     .is("deleted_at", null);
   const allLines = (lines ?? []) as DrawLineRow[];
 
-  const { data: invoices } = await supabase
-    .from("invoices")
-    .select("total_amount")
+  // 00122: fee base = THIS-JOB portions of the junction-linked invoices,
+  // not full invoice totals (a split invoice's other-job dollars must not
+  // inflate this job's percentage fee).
+  const { data: linkRows } = await supabase
+    .from("invoice_draw_links")
+    .select("invoice_id")
     .eq("draw_id", drawId)
     .is("deleted_at", null);
-  const invoiceTotal = (invoices ?? []).reduce(
-    (s, i) => s + (i.total_amount ?? 0),
-    0
+  const linkedIds = Array.from(
+    new Set((linkRows ?? []).map((l) => (l as { invoice_id: string }).invoice_id))
   );
+  let invoiceTotal = 0;
+  if (linkedIds.length > 0) {
+    const [{ data: invRows }, { data: allocRows }] = await Promise.all([
+      supabase
+        .from("invoices")
+        .select("id, total_amount, job_id")
+        .in("id", linkedIds)
+        .is("deleted_at", null),
+      supabase
+        .from("invoice_allocations")
+        .select("invoice_id, amount_cents, job_id")
+        .in("invoice_id", linkedIds)
+        .is("deleted_at", null),
+    ]);
+    const hasAllocs = new Set((allocRows ?? []).map((a) => a.invoice_id as string));
+    for (const a of allocRows ?? []) {
+      if ((a as { job_id: string }).job_id === (draw.job_id as string)) {
+        invoiceTotal += (a as { amount_cents: number }).amount_cents ?? 0;
+      }
+    }
+    for (const i of invRows ?? []) {
+      if (
+        !hasAllocs.has(i.id as string) &&
+        (i as { job_id: string | null }).job_id === (draw.job_id as string)
+      ) {
+        invoiceTotal += (i as { total_amount: number }).total_amount ?? 0;
+      }
+    }
+  }
 
   const billingIds = allLines
     .map((l) => l.internal_billing_id)

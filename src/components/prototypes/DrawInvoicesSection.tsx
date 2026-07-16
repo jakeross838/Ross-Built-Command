@@ -53,7 +53,17 @@ export default function DrawInvoicesSection({
                     <span className="text-[10px] font-mono" style={{ color: "var(--text-tertiary)" }}>—</span>
                   )}
                 </td>
-                <td className="py-2 px-3 text-right"><Money cents={inv.amount} size="sm" /></td>
+                <td className="py-2 px-3 text-right">
+                  <Money cents={inv.amount} size="sm" />
+                  {inv.amount !== inv.invoice_total ? (
+                    <span
+                      className="block text-[9px] uppercase font-mono tracking-[0.08em]"
+                      style={{ color: "var(--text-tertiary)" }}
+                    >
+                      of <Money cents={inv.invoice_total} size="sm" /> invoice total
+                    </span>
+                  ) : null}
+                </td>
                 <td className="py-2 px-3 text-right">
                   <Link
                     href={`/financials/bills/${inv.id}`}

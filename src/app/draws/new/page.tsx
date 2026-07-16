@@ -28,6 +28,10 @@ interface AvailableInvoice {
   status: string | null; // drives the stamped/approved badge
   cost_code_id: string | null;
   cost_codes: { code: string; description: string } | null;
+  /** 00122 — THIS job's portion in cents (= total_amount for mono-job
+   *  invoices; the allocation sum for split invoices). The wizard shows
+   *  "$X of $Y invoice total" when portion < total (Q5). */
+  portion_cents: number;
 }
 
 // An invoice is "stamped" once it has passed approval (the approval-stamp
@@ -389,30 +393,89 @@ export default function NewDrawWizardPage() {
       return;
     }
     (async () => {
-      // Phase 8f: include invoices already attached to the resumed draft so
-      // resume mode shows the same line items the draft was created with.
-      let query = supabase
-        .from("invoices")
-        .select(
-          "id, vendor_id, vendor_name_raw, invoice_number, total_amount, received_date, cost_code_id, draw_id, status, cost_codes:cost_code_id (code, description)"
-        )
-        .eq("job_id", jobId)
-        .is("deleted_at", null)
-        .gte("received_date", periodStart)
-        .lte("received_date", periodEnd);
-
-      // Allow either: unattached qa_approved invoices, OR invoices on the
-      // resumed draft (any status — they may already be in_draw or paid).
-      if (draftId) {
-        query = query.or(
-          `and(draw_id.is.null,status.eq.qa_approved),draw_id.eq.${draftId}`
-        );
-      } else {
-        query = query.is("draw_id", null).in("status", ["qa_approved"]);
+      // 00122 per-portion pool: an invoice qualifies for THIS job's draw when
+      // it is headered here OR carries an allocation portion for this job,
+      // its (invoice, job) portion isn't already on a live draw (junction),
+      // and it is qa_approved. Resume mode also includes the draft's own
+      // linked portions (any status). Legacy client-auth surface (RIDER-1) —
+      // kept client-side, made junction/allocation-aware.
+      const [{ data: portionRows }, { data: linkRows }] = await Promise.all([
+        supabase
+          .from("invoice_allocations")
+          .select("invoice_id, amount_cents")
+          .eq("job_id", jobId)
+          .is("deleted_at", null),
+        supabase
+          .from("invoice_draw_links")
+          .select("invoice_id, draw_id")
+          .eq("job_id", jobId)
+          .is("deleted_at", null),
+      ]);
+      const portionSum = new Map<string, number>();
+      for (const r of portionRows ?? []) {
+        const row = r as { invoice_id: string; amount_cents: number };
+        portionSum.set(row.invoice_id, (portionSum.get(row.invoice_id) ?? 0) + (row.amount_cents ?? 0));
       }
+      const linkedElsewhere = new Set(
+        (linkRows ?? [])
+          .filter((l) => (l as { draw_id: string }).draw_id !== draftId)
+          .map((l) => (l as { invoice_id: string }).invoice_id)
+      );
+      const linkedToDraft = new Set(
+        (linkRows ?? [])
+          .filter((l) => draftId && (l as { draw_id: string }).draw_id === draftId)
+          .map((l) => (l as { invoice_id: string }).invoice_id)
+      );
 
-      const { data } = await query;
-      const invs = (data ?? []) as unknown as AvailableInvoice[];
+      const SELECT_COLS =
+        "id, vendor_id, vendor_name_raw, invoice_number, total_amount, received_date, cost_code_id, draw_id, status, job_id, cost_codes:cost_code_id (code, description)";
+      const portionIds = Array.from(portionSum.keys());
+      const [headerRes, portionRes, draftRes] = await Promise.all([
+        supabase
+          .from("invoices")
+          .select(SELECT_COLS)
+          .eq("job_id", jobId)
+          .is("deleted_at", null)
+          .gte("received_date", periodStart)
+          .lte("received_date", periodEnd)
+          .in("status", ["qa_approved"]),
+        portionIds.length
+          ? supabase
+              .from("invoices")
+              .select(SELECT_COLS)
+              .in("id", portionIds)
+              .is("deleted_at", null)
+              .gte("received_date", periodStart)
+              .lte("received_date", periodEnd)
+              .in("status", ["qa_approved"])
+          : Promise.resolve({ data: [] as never[] }),
+        draftId && linkedToDraft.size
+          ? supabase
+              .from("invoices")
+              .select(SELECT_COLS)
+              .in("id", Array.from(linkedToDraft))
+              .is("deleted_at", null)
+          : Promise.resolve({ data: [] as never[] }),
+      ]);
+
+      type RawInv = AvailableInvoice & { job_id: string | null };
+      const byId = new Map<string, RawInv>();
+      for (const set of [headerRes.data, portionRes.data, draftRes.data]) {
+        for (const r of (set ?? []) as unknown as RawInv[]) byId.set(r.id, r);
+      }
+      const invs: AvailableInvoice[] = Array.from(byId.values())
+        .filter((r) => linkedToDraft.has(r.id) || !linkedElsewhere.has(r.id))
+        .map((r) => ({
+          ...r,
+          // Portion: allocation sum on this job when allocations exist;
+          // else full total for header-job (allocation-less legacy) rows.
+          portion_cents: portionSum.has(r.id)
+            ? portionSum.get(r.id)!
+            : r.job_id === jobId
+              ? r.total_amount
+              : 0,
+        }))
+        .sort((a, b) => (a.received_date ?? "").localeCompare(b.received_date ?? ""));
       setPeriodInvoices(invs);
       // Default-select all on first load if nothing selected yet — but NEVER
       // in edit mode. In edit mode the attached-invoice seed is authoritative
@@ -1080,7 +1143,15 @@ export default function NewDrawWizardPage() {
                               )}
                             </td>
                             <td className="py-2 px-3 text-[color:var(--text-primary)] text-right font-mono tabular-nums">
-                              {formatCents(inv.total_amount)}
+                              {formatCents(inv.portion_cents)}
+                              {inv.portion_cents !== inv.total_amount ? (
+                                <span
+                                  className="block text-[9px] uppercase tracking-[0.08em]"
+                                  style={{ color: "var(--text-tertiary)" }}
+                                >
+                                  of {formatCents(inv.total_amount)} invoice total
+                                </span>
+                              ) : null}
                             </td>
                             <td className="py-2 px-3 text-right">
                               <a

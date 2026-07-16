@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     const lessPrevCerts = await lessPreviousCertificatesForJob(job_id, drawNumber);
     // HANDOFF #2 — preview the uncaptured (uncoded) dollars among the selected
     // invoices so a credit memo visibly moves the previewed total.
-    const { total: uncapturedLinked } = await uncapturedLinkedInvoices(invoice_ids ?? []);
+    const { total: uncapturedLinked } = await uncapturedLinkedInvoices(invoice_ids ?? [], job_id);
     // Deposit ledger (BLOCK B pt2b): pool = contract × deposit%; applied-to-date
     // = Σ deposit_applied_cents across all NON-VOID draws (excluding the draft
     // being edited); remaining = pool − applied-to-date. The requested

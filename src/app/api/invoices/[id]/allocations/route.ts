@@ -12,6 +12,7 @@ import {
   canEditLockedFields,
 } from "@/lib/invoice-permissions";
 import { logFieldEdit } from "@/lib/audit/log-field-edit";
+import { wi013MultiJobAllocation } from "@/lib/knowledge-graph/validators/wi-013-multi-job-allocation";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -20,6 +21,9 @@ type AllocationInput = {
   cost_code_id: string;
   amount_cents: number;
   description?: string | null;
+  /** 00122 multi-job split — the job this portion bills to. Omitted/null
+   *  defaults to the invoice's header job (Q1). */
+  job_id?: string | null;
 };
 
 export const GET = withApiError(async (
@@ -32,7 +36,7 @@ export const GET = withApiError(async (
 
   const { data: invoice } = await supabase
     .from("invoices")
-    .select("id, org_id, total_amount, cost_code_id, description")
+    .select("id, org_id, total_amount, cost_code_id, description, job_id")
     .eq("id", context.params.id)
     .single();
   if (!invoice || invoice.org_id !== membership.org_id) {
@@ -41,7 +45,7 @@ export const GET = withApiError(async (
 
   const { data: existing } = await supabase
     .from("invoice_allocations")
-    .select("id, invoice_id, cost_code_id, amount_cents, description, created_at")
+    .select("id, invoice_id, cost_code_id, amount_cents, description, created_at, job_id")
     .eq("invoice_id", context.params.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
@@ -68,7 +72,10 @@ export const GET = withApiError(async (
   //     invoice.total_amount (the invariant the PUT route enforces);
   //     any mismatch falls through to the single-row stub so the
   //     invariant never gets violated by the auto-create path.
-  if ((existing ?? []).length === 0 && invoice.total_amount != null) {
+  // 00122: job_id is NOT NULL on allocations — a jobless invoice can't
+  // auto-materialize; it falls to the empty-set return so the editor
+  // prompts (the PM assigns a job first).
+  if ((existing ?? []).length === 0 && invoice.total_amount != null && invoice.job_id) {
     const { data: lineItems } = await supabase
       .from("invoice_line_items")
       .select("cost_code_id, amount_cents, description, line_index")
@@ -113,12 +120,15 @@ export const GET = withApiError(async (
           // Q10b ORG-scoped child (migration 00096): org_id NOT NULL.
           // Sourced from membership.org_id (server-side getCurrentMembership).
           org_id: membership.org_id,
+          // 00122: auto-materialized legacy allocations default to the
+          // header job (job_id NOT NULL).
+          job_id: invoice.job_id,
         })
       );
       const { data: inserted } = await supabase
         .from("invoice_allocations")
         .insert(toInsert)
-        .select("id, invoice_id, cost_code_id, amount_cents, description, created_at")
+        .select("id, invoice_id, cost_code_id, amount_cents, description, created_at, job_id")
         .order("created_at", { ascending: true });
       return NextResponse.json({
         allocations: inserted ?? [],
@@ -150,8 +160,10 @@ export const GET = withApiError(async (
         // Q10b ORG-scoped child (migration 00096): org_id NOT NULL.
         // Sourced from membership.org_id (server-side getCurrentMembership).
         org_id: membership.org_id,
+        // 00122: header-job default (job_id NOT NULL).
+        job_id: invoice.job_id,
       })
-      .select("id, invoice_id, cost_code_id, amount_cents, description, created_at")
+      .select("id, invoice_id, cost_code_id, amount_cents, description, created_at, job_id")
       .single();
     return NextResponse.json({
       allocations: inserted ? [inserted] : [],
@@ -195,11 +207,30 @@ export const PUT = withApiError(async (
 
   const { data: invoice } = await supabase
     .from("invoices")
-    .select("id, org_id, total_amount, status, draw_id")
+    .select("id, org_id, total_amount, status, draw_id, job_id")
     .eq("id", context.params.id)
     .single();
   if (!invoice || invoice.org_id !== membership.org_id) {
     throw new ApiError("Invoice not found", 404);
+  }
+
+  // 00122 multi-job split: resolve each row's job (header default per Q1)
+  // and detect the split case.
+  const headerJobId = (invoice as { job_id: string | null }).job_id;
+  const resolvedRows = body.allocations.map((a) => ({
+    ...a,
+    job_id: a.job_id ?? headerJobId,
+  }));
+  const isSplit = resolvedRows.some((a) => a.job_id !== headerJobId);
+  if (isSplit && !headerJobId) {
+    throw new ApiError("Assign the invoice a job before splitting across jobs", 400);
+  }
+  if (isSplit && resolvedRows.some((a) => !a.job_id)) {
+    throw new ApiError("Every allocation on a split invoice must name a job", 400);
+  }
+  if (isSplit && (invoice.total_amount ?? 0) < 0) {
+    // Q9: credits stay mono-job (negative allocations are DB-impossible).
+    throw new ApiError("Credit memos cannot be split across jobs", 400);
   }
   // Phase 3a: lock-aware authorization. Non-privileged roles (pm)
   // cannot modify allocations on locked invoices — privileged roles
@@ -224,16 +255,34 @@ export const PUT = withApiError(async (
     );
   }
 
+  // Draw gate — 00122: EVERY draw holding a live portion of this invoice
+  // must still be editable (draft/pm_review), not just the header draw.
   const drawId = invoice.draw_id;
-  if (drawId) {
+  const { data: portionLinks } = await supabase
+    .from("invoice_draw_links")
+    .select("draw_id, draws:draw_id (status)")
+    .eq("invoice_id", context.params.id)
+    .is("deleted_at", null);
+  const gatedDrawStatuses = new Set<string>();
+  for (const l of portionLinks ?? []) {
+    const d = (l as { draws?: { status?: string } | { status?: string }[] }).draws;
+    const status = Array.isArray(d) ? d[0]?.status : d?.status;
+    if (status) gatedDrawStatuses.add(status);
+  }
+  if (drawId && gatedDrawStatuses.size === 0) {
+    // Legacy safety net: header draw_id set but no junction row (pre-00122
+    // data drift) — fall back to the old single-draw check.
     const { data: draw } = await supabase
       .from("draws")
       .select("status")
       .eq("id", drawId)
       .single();
-    if (draw && !["draft", "pm_review"].includes(draw.status as string)) {
+    if (draw?.status) gatedDrawStatuses.add(draw.status as string);
+  }
+  for (const status of gatedDrawStatuses) {
+    if (!["draft", "pm_review"].includes(status)) {
       throw new ApiError(
-        "Cannot modify allocations: invoice is on a non-draft draw.",
+        "Cannot modify allocations: a portion of this invoice is on a non-draft draw.",
         409
       );
     }
@@ -245,6 +294,61 @@ export const PUT = withApiError(async (
       `Allocations sum to ${sum} cents but invoice total is ${invoice.total_amount} cents`,
       400
     );
+  }
+
+  // 00122: the resurrected WI-013 validator is the split invariant. Hard
+  // checks (sum drift, job-not-found, cross-tenant, non-finite amounts)
+  // 422 the save; the budget-line-per-(job,code) check is ADVISORY unless
+  // the org's require_budget_allocation gate is on (Q3). Returned as
+  // `warnings` so the grid can surface them.
+  let splitWarnings: string[] = [];
+  if (isSplit) {
+    const {
+      data: { user: validatorUser },
+    } = await supabase.auth.getUser();
+    const result = await wi013MultiJobAllocation(
+      {
+        invoice_id: invoice.id as string,
+        invoice_total_amount: invoice.total_amount as number,
+        allocations: resolvedRows.map((a) => ({
+          invoice_id: invoice.id as string,
+          job_id: a.job_id as string,
+          cost_code_id: a.cost_code_id,
+          amount: Math.round(a.amount_cents ?? 0),
+        })),
+      },
+      {
+        supabase,
+        org_id: membership.org_id,
+        user_id: validatorUser?.id ?? null,
+      }
+    );
+    if (!result.ok) {
+      const { data: ows } = await supabase
+        .from("org_workflow_settings")
+        .select("require_budget_allocation")
+        .eq("org_id", membership.org_id)
+        .maybeSingle();
+      const budgetGateOn = !!(ows as { require_budget_allocation?: boolean } | null)
+        ?.require_budget_allocation;
+      const hard = result.violations.filter(
+        (v) => v.code !== "wi-013-allocation-cost-code-no-budget-line" || budgetGateOn
+      );
+      const advisory = result.violations.filter(
+        (v) => v.code === "wi-013-allocation-cost-code-no-budget-line" && !budgetGateOn
+      );
+      if (hard.length > 0) {
+        return NextResponse.json(
+          {
+            error: "split_invalid",
+            message: hard.map((v) => v.message).join(" · "),
+            violations: hard,
+          },
+          { status: 422 }
+        );
+      }
+      splitWarnings = advisory.map((v) => v.message);
+    }
   }
 
   // Capture the pre-save allocation set for the audit log below.
@@ -265,7 +369,7 @@ export const PUT = withApiError(async (
     .eq("invoice_id", context.params.id)
     .is("deleted_at", null);
 
-  const toInsert = body.allocations.map((a) => ({
+  const toInsert = resolvedRows.map((a) => ({
     invoice_id: context.params.id,
     cost_code_id: a.cost_code_id,
     amount_cents: Math.round(a.amount_cents ?? 0),
@@ -273,6 +377,8 @@ export const PUT = withApiError(async (
     // Q10b ORG-scoped child (migration 00096): org_id NOT NULL.
     // Sourced from membership.org_id (server-side getCurrentMembership).
     org_id: membership.org_id,
+    // 00122: per-portion job (header default resolved above; NOT NULL).
+    job_id: a.job_id,
   }));
   const { error: insErr } = await supabase
     .from("invoice_allocations")
@@ -315,5 +421,11 @@ export const PUT = withApiError(async (
     method: "PUT",
   });
 
-  return NextResponse.json({ ok: true, count: toInsert.length });
+  return NextResponse.json({
+    ok: true,
+    count: toInsert.length,
+    // Q3 advisory: budget-line-per-(job,code) gaps on a split save when the
+    // org's require_budget_allocation gate is off.
+    warnings: splitWarnings.length > 0 ? splitWarnings : undefined,
+  });
 });

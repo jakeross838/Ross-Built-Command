@@ -467,16 +467,50 @@ export async function POST(
       return lockResult.response;
     }
 
-    // send_back cascade (revert in_draw invoices to qa_approved).
+    // send_back cascade (revert in_draw invoices to qa_approved). 00122:
+    // membership via the junction; the links STAY on this (now-draft) draw.
+    // An invoice reverts only when no OTHER issued draw still holds a live
+    // portion of it (whole-invoice status = "≥1 portion on a submitted+
+    // draw", per Q6).
     if (action === "send_back") {
-      const { data: invs } = await supabase
-        .from("invoices")
-        .select("id")
+      const { data: linkRows } = await supabase
+        .from("invoice_draw_links")
+        .select("invoice_id")
         .eq("draw_id", params.id)
-        .eq("org_id", orgId)
-        .eq("status", "in_draw")
         .is("deleted_at", null);
-      const invIds = (invs ?? []).map((i) => i.id as string);
+      const candidateIds = Array.from(
+        new Set((linkRows ?? []).map((l) => (l as { invoice_id: string }).invoice_id))
+      );
+      let invIds: string[] = [];
+      if (candidateIds.length > 0) {
+        const [{ data: invs }, { data: otherLinks }] = await Promise.all([
+          supabase
+            .from("invoices")
+            .select("id")
+            .in("id", candidateIds)
+            .eq("org_id", orgId)
+            .eq("status", "in_draw")
+            .is("deleted_at", null),
+          supabase
+            .from("invoice_draw_links")
+            .select("invoice_id, draws:draw_id (status)")
+            .in("invoice_id", candidateIds)
+            .neq("draw_id", params.id)
+            .is("deleted_at", null),
+        ]);
+        const heldElsewhere = new Set(
+          (otherLinks ?? [])
+            .filter((l) => {
+              const d = (l as { draws?: { status?: string } | { status?: string }[] }).draws;
+              const status = Array.isArray(d) ? d[0]?.status : d?.status;
+              return ["submitted", "approved", "locked", "paid"].includes(status ?? "");
+            })
+            .map((l) => (l as { invoice_id: string }).invoice_id)
+        );
+        invIds = (invs ?? [])
+          .map((i) => i.id as string)
+          .filter((id) => !heldElsewhere.has(id));
+      }
       if (invIds.length > 0) {
         await supabase
           .from("invoices")

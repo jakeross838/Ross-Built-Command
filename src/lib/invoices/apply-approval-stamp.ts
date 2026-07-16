@@ -42,9 +42,12 @@ export async function applyApprovalStamp(
   if (type !== "pdf") return { ok: false, skipped: `non-pdf original (${type ?? "unknown"})` };
 
   // Cost codes: prefer the allocation split; fall back to line-item codes.
+  // 00122: allocations also carry job_id — a multi-job invoice produces a
+  // per-job stamp breakdown (job · codes · portion) so the printed rubber
+  // stamp never books another job's dollars to this one.
   const { data: allocs } = await supabase
     .from("invoice_allocations")
-    .select("cost_codes(code)")
+    .select("amount_cents, job_id, cost_codes(code), jobs:job_id(name)")
     .eq("invoice_id", invoiceId)
     .is("deleted_at", null);
   let codes = (allocs ?? [])
@@ -62,6 +65,32 @@ export async function applyApprovalStamp(
   }
   codes = Array.from(new Set(codes));
 
+  // Per-job breakdown for split invoices.
+  type JobEmbed = { name?: string | null } | { name?: string | null }[] | null;
+  const byJob = new Map<string, { jobName: string; codes: Set<string>; amountCents: number }>();
+  for (const a of allocs ?? []) {
+    const row = a as { amount_cents: number; job_id: string | null; cost_codes: EmbedCode; jobs: JobEmbed };
+    if (!row.job_id) continue;
+    const jr = Array.isArray(row.jobs) ? row.jobs[0] : row.jobs;
+    const entry = byJob.get(row.job_id) ?? {
+      jobName: jr?.name ?? "—",
+      codes: new Set<string>(),
+      amountCents: 0,
+    };
+    const code = pickCode(row.cost_codes);
+    if (code) entry.codes.add(code);
+    entry.amountCents += row.amount_cents ?? 0;
+    byJob.set(row.job_id, entry);
+  }
+  const jobLines =
+    byJob.size > 1
+      ? Array.from(byJob.values()).map((e) => ({
+          jobName: e.jobName,
+          codes: Array.from(e.codes),
+          amountCents: e.amountCents,
+        }))
+      : undefined;
+
   const { data: file, error: dlErr } = await supabase.storage.from(BUCKET).download(url);
   if (dlErr || !file) return { ok: false, error: `download failed: ${dlErr?.message ?? "no file"}` };
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -78,6 +107,7 @@ export async function applyApprovalStamp(
       approvedBy: approverName,
       approvedDate,
       invoiceNumber: (inv.invoice_number as string | null) ?? null,
+      jobLines,
     });
   } catch (err) {
     return { ok: false, error: `stamp render failed: ${err instanceof Error ? err.message : err}` };

@@ -96,26 +96,48 @@ const PRIOR_DRAW_STATUSES = ["submitted", "approved", "locked", "paid"];
  */
 async function sumThisPeriodByCostCode(
   supabase: ReturnType<typeof createServiceRoleClient>,
-  invoiceIds: string[]
+  invoiceIds: string[],
+  jobId: string
 ): Promise<Map<string, number>> {
   const m = new Map<string, number>();
   const add = (cc: string, cents: number) => m.set(cc, (m.get(cc) ?? 0) + (cents ?? 0));
   if (invoiceIds.length === 0) return m;
 
-  // 1) invoice_allocations — the canonical every-dollar split.
+  // 00122 multi-job split: sums are JOB-SCOPED. Tier 1 counts only the
+  // allocations whose job_id = jobId (an invoice split across jobs
+  // contributes exactly its this-job portion). An invoice that HAS
+  // allocations — on any job — is "covered": allocations are canonical, so
+  // the tier-2/3 fallbacks must never re-add its dollars. Fallbacks fire
+  // only for allocation-less legacy invoices, and only when the invoice's
+  // HEADER job is this job (a mono-job invoice can only be pulled by its
+  // header job's draw).
+  const { data: headerRows } = await supabase
+    .from("invoices")
+    .select("id, job_id")
+    .in("id", invoiceIds)
+    .is("deleted_at", null);
+  const headerJob = new Map<string, string | null>(
+    (headerRows ?? []).map((r) => [
+      (r as { id: string }).id,
+      (r as { job_id: string | null }).job_id,
+    ])
+  );
+
+  // 1) invoice_allocations — the canonical every-dollar split (this job only).
   const { data: allocs } = await supabase
     .from("invoice_allocations")
-    .select("invoice_id, cost_code_id, amount_cents")
+    .select("invoice_id, cost_code_id, amount_cents, job_id")
     .in("invoice_id", invoiceIds)
     .is("deleted_at", null);
   const covered = new Set<string>();
   for (const a of allocs ?? []) {
-    const cc = (a as { cost_code_id: string | null }).cost_code_id;
-    if (cc) { covered.add((a as { invoice_id: string }).invoice_id); add(cc, (a as { amount_cents: number }).amount_cents); }
+    const row = a as { invoice_id: string; cost_code_id: string | null; amount_cents: number; job_id: string | null };
+    if (row.cost_code_id) covered.add(row.invoice_id);
+    if (row.cost_code_id && row.job_id === jobId) add(row.cost_code_id, row.amount_cents);
   }
 
-  // 2) line items for invoices with no allocations.
-  const noAlloc = invoiceIds.filter((id) => !covered.has(id));
+  // 2) line items for invoices with no allocations (header-job only).
+  const noAlloc = invoiceIds.filter((id) => !covered.has(id) && headerJob.get(id) === jobId);
   if (noAlloc.length > 0) {
     const { data: lines } = await supabase
       .from("invoice_line_items")
@@ -128,8 +150,8 @@ async function sumThisPeriodByCostCode(
     }
   }
 
-  // 3) invoice-level cost code for anything still uncovered.
-  const stillUncovered = invoiceIds.filter((id) => !covered.has(id));
+  // 3) invoice-level cost code for anything still uncovered (header-job only).
+  const stillUncovered = invoiceIds.filter((id) => !covered.has(id) && headerJob.get(id) === jobId);
   if (stillUncovered.length > 0) {
     const { data: invs } = await supabase
       .from("invoices")
@@ -142,6 +164,21 @@ async function sumThisPeriodByCostCode(
     }
   }
   return m;
+}
+
+/** Live junction invoice ids for a draw (00122 — per-portion membership).
+ *  The junction is canonical post-00122 (backfill created one header-portion
+ *  link per legacy linked invoice, so it covers pre-split rows too). */
+export async function drawLinkedInvoiceIds(drawId: string): Promise<string[]> {
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase
+    .from("invoice_draw_links")
+    .select("invoice_id")
+    .eq("draw_id", drawId)
+    .is("deleted_at", null);
+  return Array.from(
+    new Set((data ?? []).map((l) => (l as { invoice_id: string }).invoice_id))
+  );
 }
 
 /**
@@ -199,8 +236,9 @@ export async function computeDrawLines(args: {
   for (const bl of bls) bCodeMap.set(bl.cost_code_id as string, bl);
 
   // 2. This period per cost_code_id — from the invoices on this draw
-  //    (allocations first; see sumThisPeriodByCostCode).
-  const thisPeriod = await sumThisPeriodByCostCode(supabase, drawInvoiceIds);
+  //    (allocations first; see sumThisPeriodByCostCode). Job-scoped (00122):
+  //    a split invoice contributes only its this-job portion.
+  const thisPeriod = await sumThisPeriodByCostCode(supabase, drawInvoiceIds, jobId);
 
   // 3. Previous applications per cost_code_id: sum of this_period on every
   //    LOCKED draw with a lower draw_number. Take the latest revision per
@@ -227,16 +265,19 @@ export async function computeDrawLines(args: {
   const priorDrawIds = Array.from(priorByNumber.values()).map((v) => v.id);
 
   // Previous = baseline per line + sum of this_period for that cost_code
-  // across prior (locked) draws (same allocation-first source).
+  // across prior (locked) draws (same allocation-first source). Invoice
+  // membership via the 00122 junction (per-portion), job-scoped sums.
   let priorThisPeriod = new Map<string, number>();
   if (priorDrawIds.length > 0) {
-    const { data: priorInvoices } = await supabase
-      .from("invoices")
-      .select("id, draw_id")
+    const { data: priorLinks } = await supabase
+      .from("invoice_draw_links")
+      .select("invoice_id")
       .in("draw_id", priorDrawIds)
       .is("deleted_at", null);
-    const priorInvIds = (priorInvoices ?? []).map((i) => i.id as string);
-    priorThisPeriod = await sumThisPeriodByCostCode(supabase, priorInvIds);
+    const priorInvIds = Array.from(
+      new Set((priorLinks ?? []).map((l) => (l as { invoice_id: string }).invoice_id))
+    );
+    priorThisPeriod = await sumThisPeriodByCostCode(supabase, priorInvIds, jobId);
   }
 
   // 4. Compose the snapshot — one line per cost code that has a budget line OR
@@ -445,12 +486,7 @@ async function recomputeTotalsForDraw(
     (job as { retainage_percent?: number } | null)?.retainage_percent ?? 10
   );
 
-  const { data: invRows } = await supabase
-    .from("invoices")
-    .select("id")
-    .eq("draw_id", d.id)
-    .is("deleted_at", null);
-  const invoiceIds = (invRows ?? []).map((i) => (i as { id: string }).id);
+  const invoiceIds = await drawLinkedInvoiceIds(d.id);
 
   const { lines } = await computeDrawLines({
     jobId,
@@ -729,17 +765,47 @@ export type UncapturedLinked = {
 };
 
 export async function uncapturedLinkedInvoices(
-  invoiceIds: string[]
+  invoiceIds: string[],
+  jobId: string
 ): Promise<UncapturedLinked> {
   if (invoiceIds.length === 0) return { total: 0, items: [] };
   const supabase = createServiceRoleClient();
 
   const { data: invRows } = await supabase
     .from("invoices")
-    .select("id, total_amount, vendor_name_raw, invoice_number, cost_code_id")
+    .select("id, total_amount, vendor_name_raw, invoice_number, cost_code_id, job_id")
     .in("id", invoiceIds)
     .is("deleted_at", null);
-  const invoices = invRows ?? [];
+  const allInvoices = invRows ?? [];
+  if (allInvoices.length === 0) return { total: 0, items: [] };
+
+  // 00122 multi-job split: uncaptured is a HEADER-JOB concept. A SPLIT
+  // invoice (any live allocation on a job ≠ header) is fully allocated by
+  // the DB trigger, so its per-job portions are exact and it can never
+  // contribute uncaptured dollars. An invoice headered to ANOTHER job can
+  // only be on this draw via an allocation portion (also exact). So the
+  // working set = non-split invoices headered to THIS job — for those the
+  // legacy math applies unchanged.
+  const { data: allocJobs } = await supabase
+    .from("invoice_allocations")
+    .select("invoice_id, job_id")
+    .in("invoice_id", allInvoices.map((i) => i.id as string))
+    .is("deleted_at", null);
+  const splitIds = new Set<string>();
+  {
+    const headerById = new Map(
+      allInvoices.map((i) => [i.id as string, (i as { job_id: string | null }).job_id])
+    );
+    for (const a of allocJobs ?? []) {
+      const row = a as { invoice_id: string; job_id: string | null };
+      if (row.job_id !== headerById.get(row.invoice_id)) splitIds.add(row.invoice_id);
+    }
+  }
+  const invoices = allInvoices.filter(
+    (i) =>
+      (i as { job_id: string | null }).job_id === jobId &&
+      !splitIds.has(i.id as string)
+  );
   if (invoices.length === 0) return { total: 0, items: [] };
 
   const ids = invoices.map((i) => i.id as string);
@@ -747,7 +813,7 @@ export async function uncapturedLinkedInvoices(
     (s, i) => s + ((i as { total_amount: number }).total_amount ?? 0),
     0
   );
-  const captured = await sumThisPeriodByCostCode(supabase, ids);
+  const captured = await sumThisPeriodByCostCode(supabase, ids, jobId);
   const capturedTotal = Array.from(captured.values()).reduce((s, v) => s + v, 0);
   const total = linkedTotal - capturedTotal;
 
@@ -802,19 +868,22 @@ export async function uncapturedLinkedInvoices(
   return { total, items };
 }
 
-/** HANDOFF #2 — uncaptured linked-invoice dollars for a persisted draw (fetches
- *  the draw's linked invoices, then delegates to uncapturedLinkedInvoices). */
+/** HANDOFF #2 — uncaptured linked-invoice dollars for a persisted draw
+ *  (junction membership + the draw's job, per 00122). */
 export async function uncapturedLinkedInvoicesForDraw(
   drawId: string
 ): Promise<UncapturedLinked> {
   if (!drawId) return { total: 0, items: [] };
   const supabase = createServiceRoleClient();
-  const { data } = await supabase
-    .from("invoices")
-    .select("id")
-    .eq("draw_id", drawId)
-    .is("deleted_at", null);
-  return uncapturedLinkedInvoices((data ?? []).map((i) => i.id as string));
+  const { data: draw } = await supabase
+    .from("draws")
+    .select("job_id")
+    .eq("id", drawId)
+    .maybeSingle();
+  const jobId = (draw as { job_id: string | null } | null)?.job_id;
+  if (!jobId) return { total: 0, items: [] };
+  const ids = await drawLinkedInvoiceIds(drawId);
+  return uncapturedLinkedInvoices(ids, jobId);
 }
 
 /**
@@ -957,12 +1026,7 @@ export async function recalcDraftDrawsForJob(jobId: string): Promise<number> {
       deposit_applied_cents: number | null;
     };
 
-    const { data: invRows } = await supabase
-      .from("invoices")
-      .select("id")
-      .eq("draw_id", draw.id)
-      .is("deleted_at", null);
-    const invoiceIds = (invRows ?? []).map((i) => (i as { id: string }).id);
+    const invoiceIds = await drawLinkedInvoiceIds(draw.id);
 
     const { lines } = await computeDrawLines({
       jobId,

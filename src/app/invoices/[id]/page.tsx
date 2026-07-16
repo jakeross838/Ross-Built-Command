@@ -1534,6 +1534,8 @@ export default function InvoiceReviewPage() {
                readOnly={!canEdit}
                onChange={refreshInvoice}
                onBalanceChange={handleAllocBalance}
+               jobs={jobs.map((j) => ({ id: j.id, name: j.name }))}
+               headerJobId={invoice.job_id}
              />
              {isQaReviewable ? (
                qbNoteOpen || qbNotes.trim() ? (

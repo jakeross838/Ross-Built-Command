@@ -56,15 +56,57 @@ export async function GET(
       return NextResponse.json({ error: "Draw not found" }, { status: 404 });
     }
 
-    // Invoices linked to this draw.
-    const { data: invoices } = await supabase
-      .from("invoices")
-      .select(
-        "id, vendor_id, vendor_name_raw, invoice_number, total_amount, cost_code_id, payment_status, payment_date"
-      )
+    // Invoices linked to this draw — junction membership (00122). Each
+    // invoice also gets its THIS-JOB portion: Σ allocations on the draw's
+    // job, falling back to the full total for allocation-less invoices
+    // headered to this job (mirrors the engine's tiering).
+    const { data: linkRows } = await supabase
+      .from("invoice_draw_links")
+      .select("invoice_id")
       .eq("draw_id", params.id)
-      .eq("org_id", orgId)
       .is("deleted_at", null);
+    const linkedIds = Array.from(
+      new Set((linkRows ?? []).map((l) => (l as { invoice_id: string }).invoice_id))
+    );
+    const { data: invoicesRaw } = linkedIds.length
+      ? await supabase
+          .from("invoices")
+          .select(
+            "id, vendor_id, vendor_name_raw, invoice_number, total_amount, cost_code_id, payment_status, payment_date, job_id"
+          )
+          .in("id", linkedIds)
+          .eq("org_id", orgId)
+          .is("deleted_at", null)
+      : { data: [] as never[] };
+    const { data: portionAllocs } = linkedIds.length
+      ? await supabase
+          .from("invoice_allocations")
+          .select("invoice_id, amount_cents, cost_code_id, job_id")
+          .in("invoice_id", linkedIds)
+          .is("deleted_at", null)
+      : { data: [] as never[] };
+    const allocCoverage = new Set(
+      (portionAllocs ?? []).map((a) => (a as { invoice_id: string }).invoice_id)
+    );
+    const portionByInvoice = new Map<string, number>();
+    for (const a of portionAllocs ?? []) {
+      const row = a as { invoice_id: string; amount_cents: number; job_id: string };
+      if (row.job_id !== (draw.job_id as string)) continue;
+      portionByInvoice.set(
+        row.invoice_id,
+        (portionByInvoice.get(row.invoice_id) ?? 0) + (row.amount_cents ?? 0)
+      );
+    }
+    const invoices = (invoicesRaw ?? []).map((inv) => {
+      const isHeader = (inv as { job_id: string | null }).job_id === (draw.job_id as string);
+      const hasAllocs = allocCoverage.has(inv.id as string);
+      const portion_cents = hasAllocs
+        ? portionByInvoice.get(inv.id as string) ?? 0
+        : isHeader
+          ? ((inv as { total_amount: number }).total_amount ?? 0)
+          : 0;
+      return { ...inv, portion_cents };
+    });
 
     // Budget lines and cost codes for this job.
     const { data: budgetLinesRaw } = await supabase
@@ -83,8 +125,20 @@ export async function GET(
     const coveredCc = new Set((budgetLinesRaw ?? []).map((b) => b.cost_code_id as string));
     const missingCc = new Set<string>();
     for (const inv of invoices ?? []) {
-      if (inv.cost_code_id && !coveredCc.has(inv.cost_code_id as string)) {
+      // 00122: only THIS-JOB dollars may mint budget lines on this job —
+      // invoice-level codes count only for allocation-less invoices
+      // headered here (their tier-3 fallback dollars land on this G703).
+      const isHeader = (inv as { job_id?: string | null }).job_id === (draw.job_id as string);
+      const hasAllocs = allocCoverage.has(inv.id as string);
+      if (!hasAllocs && isHeader && inv.cost_code_id && !coveredCc.has(inv.cost_code_id as string)) {
         missingCc.add(inv.cost_code_id as string);
+      }
+    }
+    // Codes from THIS-JOB allocation portions (split or mono) not yet budgeted.
+    for (const a of portionAllocs ?? []) {
+      const row = a as { cost_code_id: string | null; job_id: string };
+      if (row.job_id === (draw.job_id as string) && row.cost_code_id && !coveredCc.has(row.cost_code_id)) {
+        missingCc.add(row.cost_code_id);
       }
     }
     for (const ccId of Array.from(missingCc)) {

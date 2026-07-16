@@ -68,6 +68,20 @@ export function computeBaselineCents(
 
 export type ImpactScope = "po" | "budget";
 
+/** Composite scope key for multi-job baselines (00122): `${jobId}::${costCodeId}`.
+ *  The pure functions below treat keys as opaque strings, so mono-job and
+ *  multi-job callers share the same math. */
+export function scopeKey(jobId: string, costCodeId: string): string {
+  return `${jobId}::${costCodeId}`;
+}
+
+export function parseScopeKey(key: string): { jobId: string; costCodeId: string } {
+  const idx = key.indexOf("::");
+  return idx === -1
+    ? { jobId: "", costCodeId: key }
+    : { jobId: key.slice(0, idx), costCodeId: key.slice(idx + 2) };
+}
+
 /** Per-cost-code baseline, computed server-side, EXCLUDING the reviewed invoice. */
 export type CodeBaseline = {
   /** Scope total in cents: PO amount, or budget-line revised_estimate. */
