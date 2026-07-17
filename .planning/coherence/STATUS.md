@@ -24,11 +24,13 @@
 
 **🔥 REGRESSION CAUGHT + FIXED in the Stage-3 walk (`b49b585`):** the perf commit skipped the platform_admins lookup for all API paths, but API **POSTs** still evaluate the billing gate → with `isPlatformAdmin` false, RB's long-expired trial (trial_ends_at **2026-04-29**, masked for months by Jake's platform-admin exemption) 307'd `POST /api/invoices/parse` to the billing PAGE → Next "Failed to find Server Action" → every upload parse 500'd on prod. Fix: platform_admins lookup restored wherever the gate can consult it (`!isLightApi`), + the expired-trial gate now returns **JSON 402 for /api/*** (was: page redirect that 500'd POSTs — no API route calls `requireBillingOk`, so this branch IS the API billing enforcement; a real expired org now gets a clean 402).
 
-**⚠️ FLAGGED FOR JAKE (posture deltas + follow-ups):**
-1. **RB org trial_ends_at is 2026-04-29 with status "trialing"** — the org is formally expired; only the platform-admin exemption keeps RB working. Consider stamping the internal org `active` so enforcement changes can't ever brick RB.
-2. **Expired-trial orgs can now complete API GETs (reads)** — the light path skips the gate (before, GET fetches got a redirect-to-HTML, i.e. garbage-but-blocked). Writes 402; pages still bounce to billing. Matches the read_only architecture direction; flag if you want reads blocked too.
-3. ~90 other API `getCurrentMembership()` call sites still pay the redundant auth pair (middleware light path already saves them 3 RTs); migrate opportunistically via `getMembershipFromRequest`.
-4. Review modal waves 1→2 remain two-stage (grid/strip mount after invoice load) — each wave now cheap; hoist only if the <500ms perceived bar misses in real use.
+**✅ JAKE'S RULINGS (2026-07-17, post-run):**
+1. **RB STAMPED ACTIVE (announced write, applied + verified).** No internal/comped flag exists in the schema, so the strongest permanent state was used: RB org `00000000-…-0001` → `subscription_status='active'` + `trial_ends_at=NULL` (plan already `enterprise`). Neither the middleware billing gate nor `requireBillingOk` has a branch that can fire on this state, and nothing flips it back (RB has no Stripe subscription). Live-verified post-write: API POST reaches the route handler (JSON 400 from the route, no gate artifact). The billing gate can never fire on the dev org again, regardless of platform-admin resolution.
+2. **EXPIRED-TRIAL POLICY — DELIBERATE (ruled, not a residual):** expired orgs READ their data (API GETs pass via the light path), WRITES get a clean JSON 402 (middleware branch is the enforcement — no route calls `requireBillingOk`), PAGES bounce to /admin/billing. Rationale: never hold customer data hostage. Any future change to billing enforcement must preserve this shape.
+
+**Follow-ups (non-blocking):**
+- ~90 other API `getCurrentMembership()` call sites still pay the redundant auth pair (middleware light path already saves them 3 RTs); migrate opportunistically via `getMembershipFromRequest`.
+- Review modal waves 1→2 remain two-stage (grid/strip mount after invoice load) — each wave now cheap; hoist only if the <500ms perceived bar misses in real use.
 
 **Then:** B2 (budget-source unification etc.) → C (QA-absorb + sweep) → D (review packet) resume per the massive-run plan below.
 
