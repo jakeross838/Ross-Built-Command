@@ -13,6 +13,7 @@ import {
 } from "@/lib/invoice-permissions";
 import { logFieldEdit } from "@/lib/audit/log-field-edit";
 import { wi013MultiJobAllocation } from "@/lib/knowledge-graph/validators/wi-013-multi-job-allocation";
+import { reattributeSpineJobsForInvoice } from "@/lib/cost-intelligence/allocation-job";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -389,6 +390,21 @@ export const PUT = withApiError(async (
 
   if (drawId) {
     await recomputePercentageBillings(drawId);
+  }
+
+  // B2 (00124): allocation set changed — re-resolve job attribution on any
+  // existing price-intel spine rows for this invoice (auto-commits at save
+  // time are born header-attributed; a later split must move each line's
+  // observation to its allocation's job). Observational data: failures log,
+  // never block the save. job_item_activity stays consistent via
+  // trg_vip_after_update_job.
+  try {
+    await reattributeSpineJobsForInvoice(supabase, context.params.id);
+  } catch (spineErr) {
+    console.error(
+      `[allocations PUT] spine re-attribution failed for ${context.params.id}:`,
+      spineErr
+    );
   }
 
   // Phase 3a: audit-log privileged edits on locked invoices. The

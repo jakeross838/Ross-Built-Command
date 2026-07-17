@@ -5219,7 +5219,17 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      invoice_budget_consumption: {
+        Row: {
+          amount_cents: number | null
+          cost_code_id: string | null
+          invoice_id: string | null
+          job_id: string | null
+          org_id: string | null
+          tier: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _compute_scheduled_payment_date: {
@@ -5306,10 +5316,6 @@ export type Database = {
         Returns: undefined
       }
       recompute_budget_line_committed: {
-        Args: { p_budget_line_id: string }
-        Returns: undefined
-      }
-      recompute_budget_line_invoiced: {
         Args: { p_budget_line_id: string }
         Returns: undefined
       }

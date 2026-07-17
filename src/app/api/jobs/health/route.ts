@@ -7,6 +7,7 @@ import {
 import { createServerClient } from "@/lib/supabase/server";
 import { tryCreateServiceRoleClient } from "@/lib/supabase/service";
 import { timed } from "@/lib/perf-log";
+import { consumedByJob } from "@/lib/budget-consumption";
 
 /**
  * GET /api/jobs/health
@@ -79,6 +80,7 @@ export const GET = withApiError(async (req: NextRequest) => {
   const [
     jobsRes,
     budgetLinesRes,
+    consumedMap,
     openInvoicesRes,
     pendingDrawsRes,
     jobActivityRes,
@@ -97,8 +99,13 @@ export const GET = withApiError(async (req: NextRequest) => {
         .select("id, name, address, client:clients(id, full_name), contract_type, original_contract_amount, current_contract_amount, previous_certificates_total, contract_date, status, pm_id")
         .eq("org_id", orgId).is("deleted_at", null).order("name")),
     timed("jobs-health", "budget_lines.by_org", false,
-      supabase.from("budget_lines").select("job_id, revised_estimate, invoiced")
+      supabase.from("budget_lines").select("job_id, revised_estimate")
         .eq("org_id", orgId).is("deleted_at", null)),
+    // B2/Q8a: per-job consumption from the invoice_budget_consumption view
+    // (migration 00123) — allocation-aware "billed to date"; the dead
+    // budget_lines.invoiced column no longer feeds health/variance math.
+    timed("jobs-health", "invoice_budget_consumption.by_org", false,
+      consumedByJob(supabase, orgId)),
     timed("jobs-health", "invoices.pm_queue_by_org", false,
       supabase.from("invoices").select("job_id, received_date")
         .eq("org_id", orgId).in("status", PM_REVIEW_STATUSES).is("deleted_at", null)),
@@ -158,16 +165,14 @@ export const GET = withApiError(async (req: NextRequest) => {
     if (p?.id && p.full_name) pmNameMap.set(p.id, p.full_name);
   }
 
-  // Budget map
-  const budgetMap = new Map<string, { revised: number; invoiced: number }>();
+  // Budget map — revised estimates only; consumed cents come from consumedMap.
+  const budgetMap = new Map<string, { revised: number }>();
   for (const line of (budgetLinesRes.data ?? []) as Array<{
     job_id: string;
     revised_estimate: number | null;
-    invoiced: number | null;
   }>) {
-    const cur = budgetMap.get(line.job_id) ?? { revised: 0, invoiced: 0 };
+    const cur = budgetMap.get(line.job_id) ?? { revised: 0 };
     cur.revised += line.revised_estimate ?? 0;
-    cur.invoiced += line.invoiced ?? 0;
     budgetMap.set(line.job_id, cur);
   }
 
@@ -215,18 +220,19 @@ export const GET = withApiError(async (req: NextRequest) => {
 
   // Compute health
   const enriched: JobHealth[] = jobList.map((j) => {
-    const budget = budgetMap.get(j.id) ?? { revised: 0, invoiced: 0 };
+    const budget = budgetMap.get(j.id) ?? { revised: 0 };
+    const invoiced = consumedMap.get(j.id) ?? 0;
     const inv = openInvoiceMap.get(j.id) ?? { count: 0, oldestDays: 0 };
     const drawAge = pendingDrawAge.get(j.id) ?? 0;
 
     const variancePct = budget.revised > 0
-      ? ((budget.invoiced - budget.revised) / budget.revised) * 100
+      ? ((invoiced - budget.revised) / budget.revised) * 100
       : 0;
-    const budgetUsedPct = budget.revised > 0 ? (budget.invoiced / budget.revised) * 100 : 0;
+    const budgetUsedPct = budget.revised > 0 ? (invoiced / budget.revised) * 100 : 0;
     // Include pre-Nightwork baseline for mid-project imports.
     const baseline = (j as { previous_certificates_total?: number }).previous_certificates_total ?? 0;
     const revised = (j as { current_contract_amount?: number }).current_contract_amount ?? 0;
-    const totalBilled = baseline + budget.invoiced;
+    const totalBilled = baseline + invoiced;
     const pctComplete = revised > 0 ? (totalBilled / revised) * 100 : budgetUsedPct;
 
     const reasons: string[] = [];
@@ -271,7 +277,7 @@ export const GET = withApiError(async (req: NextRequest) => {
       oldest_invoice_days: inv.oldestDays,
       last_activity_at: lastActivityByJob.get(j.id) ?? null,
       budget_total: budget.revised,
-      invoiced_total: budget.invoiced,
+      invoiced_total: invoiced,
     };
   });
 

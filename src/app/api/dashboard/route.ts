@@ -8,6 +8,8 @@ import { createServerClient } from "@/lib/supabase/server";
 import { tryCreateServiceRoleClient } from "@/lib/supabase/service";
 import { timed } from "@/lib/perf-log";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { consumedByJobCode } from "@/lib/budget-consumption";
+import { scopeKey } from "@/lib/invoices/balance-impact";
 
 /**
  * GET /api/dashboard
@@ -95,6 +97,7 @@ export const GET = withApiError(async (req: NextRequest) => {
     paymentsDueRes,
     duplicateRes,
     overBudgetRes,
+    consumedByCode,
     posRes,
     lienCountsRes,
     activityRes,
@@ -130,8 +133,12 @@ export const GET = withApiError(async (req: NextRequest) => {
         .is("duplicate_dismissed_at", null).is("deleted_at", null).limit(20)),
     timed("dashboard", "budget_lines.over_budget", false,
       supabase.from("budget_lines")
-        .select("id, job_id, revised_estimate, invoiced, cost_codes(code, description), jobs(name)")
+        .select("id, job_id, cost_code_id, revised_estimate, cost_codes(code, description), jobs(name)")
         .eq("org_id", orgId).is("deleted_at", null).limit(500)),
+    // B2/Q8a: per-(job, code) consumption from the invoice_budget_consumption
+    // view (migration 00123) — allocation-aware; budget_lines.invoiced is dead.
+    timed("dashboard", "invoice_budget_consumption.by_org", false,
+      consumedByJobCode(supabase, orgId)),
     timed("dashboard", "purchase_orders.open+vendor", false,
       supabase.from("purchase_orders")
         .select("id, job_id, po_number, amount, invoiced_total, status, vendors(name)")
@@ -311,17 +318,21 @@ export const GET = withApiError(async (req: NextRequest) => {
     }
   }
 
-  // 6. Over-budget lines (variance < 0)
+  // 6. Over-budget lines (variance < 0) — consumed cents keyed by (job, code)
+  // from the invoice_budget_consumption view.
   for (const raw of (overBudgetRes.data ?? []) as unknown as Array<Record<string, unknown>>) {
     const line = {
       id: String(raw.id),
       job_id: String(raw.job_id),
+      cost_code_id: raw.cost_code_id == null ? null : String(raw.cost_code_id),
       revised_estimate: typeof raw.revised_estimate === "number" ? raw.revised_estimate : null,
-      invoiced: typeof raw.invoiced === "number" ? raw.invoiced : null,
       cost_codes: pickFirst(raw.cost_codes) as { code: string; description: string } | null,
       jobs: pickFirst(raw.jobs) as { name: string } | null,
     };
-    const variance = (line.revised_estimate ?? 0) - (line.invoiced ?? 0);
+    const invoiced = line.cost_code_id
+      ? consumedByCode.get(scopeKey(line.job_id, line.cost_code_id)) ?? 0
+      : 0;
+    const variance = (line.revised_estimate ?? 0) - invoiced;
     if (variance < 0) {
       attention.push({
         kind: "budget_overrun",

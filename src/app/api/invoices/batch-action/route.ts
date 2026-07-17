@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recalcLinesAndPOs } from "@/lib/recalc";
+import { budgetAllocationGateBlocker } from "@/lib/budget-consumption";
 import { logStatusChange } from "@/lib/activity-log";
 import { getWorkflowSettings } from "@/lib/workflow-settings";
 import { getCurrentMembership } from "@/lib/org/session";
@@ -187,14 +188,20 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Gate 4 — budget allocation on every line.
+        // Gate 4 — budget allocation. B2/Q8a: allocations-canonical (was:
+        // every line item has a budget_line_id). Same check as the single-
+        // action route: fully allocated + every (job, code) resolves to a
+        // live budget line. (The over-budget WI-L-4 gate stays single-action
+        // only — batch has never carried the acknowledgment flow; unchanged.)
         if (settings.require_budget_allocation) {
-          const lines = lineItemsByInvoice.get(id) ?? [];
-          if (lines.length === 0 || lines.some((l) => !l.budget_line_id)) {
-            failed.push({
-              id,
-              reason: "Invoice is not fully allocated to budget lines",
-            });
+          const gateBlocker = await budgetAllocationGateBlocker(
+            supabase,
+            membership.org_id,
+            id,
+            invoice.total_amount
+          );
+          if (gateBlocker) {
+            failed.push({ id, reason: gateBlocker });
             continue;
           }
         }

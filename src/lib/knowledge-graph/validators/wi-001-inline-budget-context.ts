@@ -15,11 +15,14 @@
 //   - `wi-001-invoice-amount-not-finite`   — invoice.total_amount is NaN/Infinity (F1-Wave-B Slice-2 B-4 Task 8 F-K carry-forward)
 //   - `wi-001-budget-line-query-error`     — DB error on budget_lines lookup
 //   - `wi-001-cost-code-no-budget-line`    — invoice's cost_code_id has no matching budget_lines row for the job
-//   - `wi-001-invoice-aggregation-error`   — DB error on prior-invoices aggregation
+//   - `wi-001-invoice-aggregation-error`   — DB error on prior-consumption aggregation
 //   - `wi-001-budget-line-overage`         — approving this invoice would push total_to_date > revised_estimate (informational; not blocking — PM can approve over-budget per CLAUDE.md "What-If Handling" rule 4)
 //
 // Per CLAUDE.md "Recalculate, don't increment" — prior totals are aggregated
-// from source invoice rows on every call. No stored aggregate is read.
+// on every call from the `invoice_budget_consumption` view (B2/Q8a, migration
+// 00123: THE budget-consumption source; counting-status invoices only,
+// allocations-first 3-tier attribution). No stored aggregate is read —
+// `budget_lines.invoiced` is DEAD per the 00123 ruling.
 import type { Validator, ValidatorViolation } from "../types";
 import type { InvoiceRow } from "@/lib/types";
 
@@ -87,28 +90,25 @@ export const wi001InlineBudgetContext: Validator<InvoiceRow> = async (
     return { ok: false, violations };
   }
 
-  // Aggregate prior approved invoice totals for (job_id, cost_code_id).
-  // R.2 recalculate-don't-increment — sourced from invoices table, never
-  // a stored aggregate.
-  const { data: approvedInvoices, error: aiErr } = await ctx.supabase
-    .from("invoices")
-    .select("total_amount")
+  // Aggregate prior counting-status consumption for (job_id, cost_code_id)
+  // from the invoice_budget_consumption view (B2/Q8a, migration 00123).
+  // R.2 recalculate-don't-increment — the view computes from source rows on
+  // every read, never a stored aggregate. The validated invoice's own rows
+  // are EXCLUDED (`invoice_id != invoice.id`) so its proposed total is added
+  // exactly once below regardless of its current status — the same
+  // reviewed-invoice-excluded baseline contract the view's COMMENT documents.
+  const { data: priorConsumption, error: aiErr } = await ctx.supabase
+    .from("invoice_budget_consumption")
+    .select("amount_cents")
     .eq("job_id", invoice.job_id)
     .eq("cost_code_id", invoice.cost_code_id)
     .eq("org_id", ctx.org_id)
-    .in("status", [
-      "pm_approved",
-      "qa_approved",
-      "pushed_to_qb",
-      "in_draw",
-      "paid",
-    ])
-    .is("deleted_at", null);
+    .neq("invoice_id", invoice.id);
 
   if (aiErr) {
     violations.push({
       code: "wi-001-invoice-aggregation-error",
-      message: `Failed to aggregate prior invoices: ${aiErr.message}`,
+      message: `Failed to aggregate prior budget consumption: ${aiErr.message}`,
       evidence: {
         job_id: invoice.job_id,
         cost_code_id: invoice.cost_code_id,
@@ -118,16 +118,17 @@ export const wi001InlineBudgetContext: Validator<InvoiceRow> = async (
   }
 
   // F1-Wave-B Slice-2 B-4 Task 8 (F-K carry-forward, defensive sibling
-  // to the early-return guard above): filter NaN/Infinity from the prior-
-  // approved sum so a single garbage row in the approvedInvoices array
+  // to the early-return guard above): filter NaN/Infinity/null from the
+  // prior-consumption sum so a single garbage row in the view result
   // doesn't poison priorTotal. The early-return guard catches the active
-  // invoice's bad value; this filter catches the same in historical rows
-  // (e.g., a partial-write or admin-edited row that retained a non-finite
-  // amount). Defense-in-depth — no separate violation emitted because the
+  // invoice's bad value; this filter catches the same in historical rows.
+  // Defense-in-depth — no separate violation emitted because the
   // historical rows aren't part of the validator's input contract.
-  const priorTotal = (approvedInvoices ?? [])
-    .filter((row) => Number.isFinite(row.total_amount))
-    .reduce((acc, row) => acc + row.total_amount, 0);
+  const priorTotal = (priorConsumption ?? [])
+    .filter((row): row is { amount_cents: number } =>
+      Number.isFinite(row.amount_cents),
+    )
+    .reduce((acc, row) => acc + row.amount_cents, 0);
   const proposedTotalToDate = priorTotal + invoice.total_amount;
 
   if (

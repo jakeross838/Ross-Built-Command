@@ -289,15 +289,24 @@ export default function NewDrawWizardPage() {
       // the setup card re-prompting even after the contract was set).
       const contractAmount = job.current_contract_amount || job.original_contract_amount;
 
-      // Parallel: billed invoices + prior draws (independent queries)
-      const [{ data: billed }, { data: priors }] = await Promise.all([
+      // Parallel: job consumption + prior draws (independent queries).
+      // B2/Q8a (00123): costs-to-date reads the invoice_budget_consumption
+      // view — allocation-aware per-job attribution, so a split invoice
+      // contributes exactly its this-job portions (was: SUM of invoice
+      // HEADER totals by job, which over-attributed split invoices to the
+      // header job and missed foreign-headered portions — the B1 QA
+      // carry-forward defect). Same source the draw engine bills from.
+      // Note the view counts pm_approved + qa_review too (the counting set);
+      // the old header sum started at qa_approved. For the Step-1 context
+      // strip "Approved bills" we keep draw-eligible statuses by
+      // intersecting with the pool's status set server-side is not possible
+      // on the view (it has no status column) — so we read the view rows
+      // per invoice and filter by the invoice's status below.
+      const [{ data: consumptionRows }, { data: priors }] = await Promise.all([
         supabase
-          .from("invoices")
-          .select("total_amount, status")
-          .eq("job_id", jobId)
-          .eq("org_id", oid)
-          .is("deleted_at", null)
-          .in("status", ["qa_approved", "pushed_to_qb", "in_draw", "paid"]),
+          .from("invoice_budget_consumption")
+          .select("invoice_id, amount_cents")
+          .eq("job_id", jobId),
         supabase
           .from("draws")
           .select("id, draw_number, status, period_end, current_payment_due, revision_number")
@@ -306,10 +315,30 @@ export default function NewDrawWizardPage() {
           .is("deleted_at", null)
           .order("draw_number", { ascending: false }),
       ]);
-      const costsToDate = (billed ?? []).reduce(
-        (s, i) => s + ((i as { total_amount?: number }).total_amount ?? 0),
-        0
-      );
+      // Filter the view rows to draw-eligible statuses (qa_approved and
+      // beyond) so the stat keeps meaning "approved bills", not
+      // "PM-approved pipeline".
+      const consumptionList = (consumptionRows ?? []) as Array<{
+        invoice_id: string;
+        amount_cents: number | null;
+      }>;
+      let costsToDate = 0;
+      if (consumptionList.length > 0) {
+        const invIds = Array.from(new Set(consumptionList.map((r) => r.invoice_id)));
+        const { data: invStatuses } = await supabase
+          .from("invoices")
+          .select("id, status")
+          .in("id", invIds);
+        const eligible = new Set(
+          ((invStatuses ?? []) as Array<{ id: string; status: string }>)
+            .filter((i) => ["qa_approved", "pushed_to_qb", "in_draw", "paid"].includes(i.status))
+            .map((i) => i.id)
+        );
+        costsToDate = consumptionList.reduce(
+          (s, r) => s + (eligible.has(r.invoice_id) ? r.amount_cents ?? 0 : 0),
+          0
+        );
+      }
       const priorList = (priors ?? []) as PriorDraw[];
       setPriorDraws(priorList);
 
@@ -915,7 +944,7 @@ export default function NewDrawWizardPage() {
                     <Stat
                       label="Costs to date"
                       value={formatCents(jobMeta.costsToDate)}
-                      sub="Approved bills"
+                      sub="Approved bills · this job's portions"
                     />
                     <Stat
                       label="Billed to client"

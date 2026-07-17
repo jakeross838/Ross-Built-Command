@@ -10,15 +10,6 @@ import NwEyebrow from "@/components/nw/Eyebrow";
 import NwMoney from "@/components/nw/Money";
 import NwStatusDot from "@/components/nw/StatusDot";
 
-const SPENT_STATUSES = [
-  "pm_approved",
-  "qa_review",
-  "qa_approved",
-  "pushed_to_qb",
-  "in_draw",
-  "paid",
-];
-
 interface BudgetHealth {
   total_lines: number;
   over_budget: number;
@@ -97,11 +88,12 @@ export default function JobOverviewCards({
     }
     let cancelled = false;
     async function load() {
-      // Budget health — revised, committed, invoiced per line.
-      const [bhRes, invRes, poRes, coRes, lrRes, actRes, upRes, allInvRes] = await Promise.all([
+      // Budget health — revised + committed per line; consumed cents come from
+      // the invoice_budget_consumption view below (budget_lines.invoiced is dead).
+      const [bhRes, invRes, poRes, coRes, lrRes, actRes, upRes, consumptionRes] = await Promise.all([
         supabase
           .from("budget_lines")
-          .select("id, revised_estimate, committed, invoiced")
+          .select("id, cost_code_id, revised_estimate, committed")
           .eq("job_id", jobId)
           .is("deleted_at", null),
         // Pending invoices (any status before qa_approved that isn't void/denied/kicked-back/held).
@@ -159,29 +151,48 @@ export default function JobOverviewCards({
           )
           .is("deleted_at", null)
           .order("scheduled_payment_date"),
-        // Billed-to-date (for the % complete / remaining math, mirrors the bar).
+        // Consumption rows (for budget health + billed-to-date, mirrors the
+        // bar): allocation-aware per (job, cost code) from the
+        // invoice_budget_consumption view (RLS-scoped, migration 00123).
         supabase
-          .from("invoices")
-          .select("total_amount")
-          .eq("job_id", jobId)
-          .in("status", SPENT_STATUSES)
-          .is("deleted_at", null),
+          .from("invoice_budget_consumption")
+          .select("cost_code_id, amount_cents")
+          .eq("job_id", jobId),
       ]);
       if (cancelled) return;
+
+      // Aggregate view rows client-side: per cost code (health buckets) and
+      // per job (billed-to-date).
+      const consumptionRows =
+        (consumptionRes.data as Array<{
+          cost_code_id: string | null;
+          amount_cents: number | null;
+        }> | null) ?? [];
+      const consumedByCode = new Map<string, number>();
+      let jobConsumed = 0;
+      for (const r of consumptionRows) {
+        if (r.cost_code_id) {
+          consumedByCode.set(
+            r.cost_code_id,
+            (consumedByCode.get(r.cost_code_id) ?? 0) + (r.amount_cents ?? 0)
+          );
+        }
+        jobConsumed += r.amount_cents ?? 0;
+      }
 
       // Budget health buckets.
       const lines =
         (bhRes.data as Array<{
+          cost_code_id: string | null;
           revised_estimate: number;
           committed: number;
-          invoiced: number;
         }> | null) ?? [];
       let overBudget = 0;
       let underCommitted = 0;
       for (const l of lines) {
         const rev = l.revised_estimate ?? 0;
         const committed = l.committed ?? 0;
-        const invoiced = l.invoiced ?? 0;
+        const invoiced = l.cost_code_id ? consumedByCode.get(l.cost_code_id) ?? 0 : 0;
         if (rev > 0 && invoiced + committed > rev) overBudget += 1;
         if (rev > 0 && committed === 0) underCommitted += 1;
       }
@@ -256,11 +267,10 @@ export default function JobOverviewCards({
         })
       );
 
-      // Billed to date (% complete on Contract Summary card).
+      // Billed to date (% complete on Contract Summary card) — allocation-aware
+      // per-job view sum (a split invoice contributes only its this-job portions).
       // Include pre-Nightwork baseline for mid-project imports.
-      const allInv = (allInvRes.data as Array<{ total_amount: number }> | null) ?? [];
-      const nightworkBilled = allInv.reduce((s, r) => s + (r.total_amount ?? 0), 0);
-      setBilledToDate(previousCertificatesTotal + nightworkBilled);
+      setBilledToDate(previousCertificatesTotal + jobConsumed);
     }
     load();
     return () => {

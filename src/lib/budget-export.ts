@@ -9,6 +9,14 @@ import ExcelJS from "exceljs";
  *
  * All monetary values come in as cents and are converted to dollars in the
  * sheet. Percent complete comes in as a 0..100 number.
+ *
+ * B2/Q8a (migration 00123): every `invoiced` field in this contract MUST be
+ * sourced from the invoice_budget_consumption view — server-side via
+ * consumedByJobCode() in src/lib/budget-consumption.ts, keyed by
+ * scopeKey(job_id, cost_code_id) per line, summed for the summary — NEVER
+ * from the dead budget_lines.invoiced column (zero writers, zero readers).
+ * The exported field/shape is unchanged (data-portability contract); only
+ * its source changed.
  */
 
 export interface BudgetExportJob {
@@ -28,6 +36,7 @@ export interface BudgetExportLine {
   approved_cos: number;
   revised: number;
   committed: number;
+  /** From consumedByJobCode (invoice_budget_consumption view) — B2/Q8a. */
   invoiced: number;
   remaining_po: number;
   uncommitted: number;
@@ -69,6 +78,7 @@ export interface BudgetExportInput {
     approved_cos: number;
     revised: number;
     committed: number;
+    /** Sum of per-line view-sourced invoiced (consumedByJob) — B2/Q8a. */
     invoiced: number;
     remaining: number;
   };

@@ -117,6 +117,18 @@ export interface BudgetViewProps {
   /** Approved + executed change orders for this job. Used for CO-fee
    *  total in the KPI strip ("incl. $X approved COs"). */
   changeOrders: CaldwellChangeOrder[];
+  /** B2/Q8a (migration 00123): per-invoice budget-consumption rows from the
+   *  invoice_budget_consumption view for this job (3-tier attribution,
+   *  counting statuses only). When provided, each line's consumed
+   *  (previous/this-period/total "invoiced" numbers) is keyed by cost code
+   *  from these rows — the canonical source shared with the draw engine;
+   *  budget_lines.invoiced is DEAD. When omitted (design-system fixture
+   *  surfaces), the legacy invoice-header aggregation applies. */
+  consumption?: Array<{
+    cost_code_id: string;
+    invoice_id: string;
+    amount_cents: number;
+  }>;
   /** Optional breadcrumb root link. Defaults to /design-system/prototypes/. */
   breadcrumbRoot?: { href: string; label: string };
 }
@@ -170,37 +182,77 @@ export default function BudgetView({
   // warning at the call-site by destructuring with rename.
   drawLineItems: _drawLineItems,
   changeOrders,
+  consumption,
   breadcrumbRoot = { href: "/design-system/prototypes/", label: "Prototypes" },
 }: BudgetViewProps) {
   // Per R.2 — compute on render from source rows. Filter budgetLines to
   // those for this job (typically the wrapper does this, but we re-filter
   // defensively to be safe against wrapper miswiring).
   const rows: BudgetRow[] = useMemo(() => {
+    // B2/Q8a (migration 00123): when the wrapper passes view rows, aggregate
+    // once per cost code — total consumed (the canonical view sum for the
+    // scope) and the current-draw portion (via invoices.draw_id lookup;
+    // cross-job tier-1 allocations whose header invoice isn't in `invoices`
+    // simply land in the previous bucket). Fixture surfaces omit the prop
+    // and keep the legacy header-attribution math below.
+    const totalByCode = new Map<string, number>();
+    const thisPeriodByCode = new Map<string, number>();
+    if (consumption) {
+      const drawIdByInvoice = new Map(invoices.map((i) => [i.id, i.draw_id]));
+      for (const c of consumption) {
+        totalByCode.set(
+          c.cost_code_id,
+          (totalByCode.get(c.cost_code_id) ?? 0) + c.amount_cents,
+        );
+        if (
+          currentDraw.id &&
+          drawIdByInvoice.get(c.invoice_id) === currentDraw.id
+        ) {
+          thisPeriodByCode.set(
+            c.cost_code_id,
+            (thisPeriodByCode.get(c.cost_code_id) ?? 0) + c.amount_cents,
+          );
+        }
+      }
+    }
+
     return budgetLines
       .filter((bl) => bl.job_id === job.id)
       .map((bl) => {
         const cc = costCodes.find((c) => c.id === bl.cost_code_id);
 
-        // Sum invoices in PRIOR draws for this cost code (drawn but not
-        // in the current period). Excludes invoices not yet drawn
-        // (draw_id null).
-        const previous_applications = invoices
-          .filter(
-            (i) =>
-              i.cost_code_id === bl.cost_code_id &&
-              i.draw_id !== null &&
-              i.draw_id !== currentDraw.id,
-          )
-          .reduce((sum, i) => sum + i.total_amount, 0);
+        let previous_applications: number;
+        let this_period: number;
+        if (consumption) {
+          // View-sourced: total consumed for this cost code equals the
+          // invoice_budget_consumption sum for (job, code); this-period is
+          // the current-draw portion; previous is everything else (prior
+          // draws + counting-status invoices not yet drawn).
+          const total = totalByCode.get(bl.cost_code_id) ?? 0;
+          this_period = thisPeriodByCode.get(bl.cost_code_id) ?? 0;
+          previous_applications = total - this_period;
+        } else {
+          // Legacy fixture math — sum invoices in PRIOR draws for this cost
+          // code (drawn but not in the current period). Excludes invoices
+          // not yet drawn (draw_id null).
+          previous_applications = invoices
+            .filter(
+              (i) =>
+                i.cost_code_id === bl.cost_code_id &&
+                i.draw_id !== null &&
+                i.draw_id !== currentDraw.id,
+            )
+            .reduce((sum, i) => sum + i.total_amount, 0);
 
-        // Sum invoices in CURRENT draw for this cost code.
-        const this_period = invoices
-          .filter(
-            (i) =>
-              i.cost_code_id === bl.cost_code_id &&
-              i.draw_id === currentDraw.id,
-          )
-          .reduce((sum, i) => sum + i.total_amount, 0);
+          // Sum invoices in CURRENT draw for this cost code.
+          this_period = invoices
+            .filter(
+              (i) =>
+                i.cost_code_id === bl.cost_code_id &&
+                i.draw_id === currentDraw.id,
+            )
+            .reduce((sum, i) => sum + i.total_amount, 0);
+        }
 
         const total_to_date = previous_applications + this_period;
         const percent_complete =
@@ -233,7 +285,7 @@ export default function BudgetView({
           balance_to_finish,
         };
       });
-  }, [job.id, budgetLines, invoices, costCodes, currentDraw.id]);
+  }, [job.id, budgetLines, invoices, costCodes, currentDraw.id, consumption]);
 
   // KPI summary — also derived on render per R.2.
   //

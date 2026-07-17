@@ -48,14 +48,9 @@ interface ActivityRow {
 }
 
 const PO_OPEN_STATUSES = ["issued", "partially_invoiced", "fully_invoiced"];
-const INVOICE_COUNTING_STATUSES = [
-  "pm_approved",
-  "qa_review",
-  "qa_approved",
-  "pushed_to_qb",
-  "in_draw",
-  "paid",
-];
+// B2/Q8a (migration 00123): counting-status filtering lives in the
+// invoice_budget_consumption view — the invoiced listing/sums below read the
+// view, so no client-side INVOICE_COUNTING_STATUSES list is needed here.
 const CO_APPROVED_STATUSES = ["approved"];
 const PREVIEW_MAX = 120;
 
@@ -64,10 +59,9 @@ const PREVIEW_MAX = 120;
  * charged to a specific budget line.
  *
  *   1. If invoice.description is set → use first PREVIEW_MAX chars.
- *   2. Else, concatenate descriptions from invoice_line_items whose
- *      budget_line_id equals the budget line we're drilling into. (Other
- *      line items on the same invoice, charged to different budget lines,
- *      are not relevant here.)
+ *   2. Else, concatenate any provided line-item descriptions. (Since B2/Q8a
+ *      the listing is view-sourced and the caller passes none — kept for
+ *      the helper's contract.)
  *   3. Else → "No description available".
  */
 function buildPreview(
@@ -121,27 +115,60 @@ export default function BudgetDrillDown({
     let cancelled = false;
     async function load() {
       // Always fetch the budget line header (used by every mode).
+      // B2/Q8a (migration 00123): budget_lines.invoiced is DEAD — the line's
+      // consumed total is the invoice_budget_consumption view sum for its
+      // (job_id, cost_code_id) scope, fetched just below.
       const { data: bl } = await supabase
         .from("budget_lines")
         .select(
-          "id, original_estimate, revised_estimate, committed, invoiced, co_adjustments, description, cost_codes:cost_code_id (code, description)"
+          "id, job_id, cost_code_id, original_estimate, revised_estimate, committed, co_adjustments, description, cost_codes:cost_code_id (code, description)"
         )
         .eq("id", budgetLineId)
         .is("deleted_at", null)
         .maybeSingle();
-      if (!cancelled && bl) {
-        const raw = bl as unknown as {
-          original_estimate: number;
-          revised_estimate: number;
-          committed: number;
-          invoiced: number;
-          co_adjustments: number;
-          description: string | null;
-          cost_codes:
-            | { code: string; description: string }
-            | { code: string; description: string }[]
-            | null;
-        };
+      const raw = bl
+        ? (bl as unknown as {
+            job_id: string | null;
+            cost_code_id: string | null;
+            original_estimate: number;
+            revised_estimate: number;
+            committed: number;
+            co_adjustments: number;
+            description: string | null;
+            cost_codes:
+              | { code: string; description: string }
+              | { code: string; description: string }[]
+              | null;
+          })
+        : null;
+
+      // Canonical consumed rows for this line's scope (counting statuses
+      // only, 3-tier attribution — the same dollars the draw engine reads).
+      let consumptionRows: { invoice_id: string; amount_cents: number }[] = [];
+      if (raw?.job_id && raw.cost_code_id) {
+        const { data: consRows } = await supabase
+          .from("invoice_budget_consumption")
+          .select("invoice_id, amount_cents")
+          .eq("job_id", raw.job_id)
+          .eq("cost_code_id", raw.cost_code_id);
+        consumptionRows = (
+          (consRows ?? []) as Array<{
+            invoice_id: string | null;
+            amount_cents: number | null;
+          }>
+        )
+          .filter((r) => r.invoice_id)
+          .map((r) => ({
+            invoice_id: r.invoice_id as string,
+            amount_cents: r.amount_cents ?? 0,
+          }));
+      }
+      const invoicedSum = consumptionRows.reduce(
+        (s, r) => s + r.amount_cents,
+        0
+      );
+
+      if (!cancelled && raw) {
         const cc = Array.isArray(raw.cost_codes) ? raw.cost_codes[0] : raw.cost_codes;
         setLine({
           code: cc?.code ?? "—",
@@ -149,7 +176,7 @@ export default function BudgetDrillDown({
           original_estimate: raw.original_estimate ?? 0,
           revised_estimate: raw.revised_estimate ?? 0,
           committed: raw.committed ?? 0,
-          invoiced: raw.invoiced ?? 0,
+          invoiced: invoicedSum,
           co_adjustments: raw.co_adjustments ?? 0,
         });
       }
@@ -235,100 +262,86 @@ export default function BudgetDrillDown({
       }
 
       if (wantsInvoices) {
-        const { data: invRows } = await supabase
-          .from("invoice_line_items")
-          .select(
-            `amount_cents, po_id, description, invoice_id,
-             invoices:invoice_id (
-               id, description, invoice_number, total_amount, received_date, status, deleted_at,
-               vendor_name_raw, vendors:vendor_id (name)
-             ),
-             purchase_orders:po_id (po_number)`
-          )
-          .eq("budget_line_id", budgetLineId)
-          .is("deleted_at", null);
+        // B2/Q8a (migration 00123): the listing + sums come from the
+        // invoice_budget_consumption rows for this line's scope (amounts are
+        // the view's attributed cents, so section totals equal the view sum),
+        // then invoice display metadata is fetched by invoice_id. PO grouping
+        // uses the invoice-header po_id — view rows carry no per-line PO
+        // linkage.
+        const amountByInvoice = new Map<string, number>();
+        for (const r of consumptionRows) {
+          amountByInvoice.set(
+            r.invoice_id,
+            (amountByInvoice.get(r.invoice_id) ?? 0) + r.amount_cents
+          );
+        }
+        const invoiceIds = Array.from(amountByInvoice.keys());
 
-        type Row = {
-          amount_cents: number;
-          po_id: string | null;
+        type InvMeta = {
+          id: string;
           description: string | null;
-          invoice_id: string;
-          invoices: {
-            id: string;
-            description: string | null;
-            invoice_number: string | null;
-            total_amount: number;
-            received_date: string | null;
-            status: string;
-            deleted_at: string | null;
-            vendor_name_raw: string | null;
-            vendors: { name: string } | { name: string }[] | null;
-          } | null;
-          purchase_orders: { po_number: string | null } | null;
+          invoice_number: string | null;
+          received_date: string | null;
+          status: string;
+          po_id: string | null;
+          vendor_name_raw: string | null;
+          vendors: { name: string } | { name: string }[] | null;
         };
+        let metas: InvMeta[] = [];
+        if (invoiceIds.length > 0) {
+          const { data: invMetaRows } = await supabase
+            .from("invoices")
+            .select(
+              "id, description, invoice_number, received_date, status, po_id, vendor_name_raw, vendors:vendor_id (name)"
+            )
+            .in("id", invoiceIds);
+          metas = (invMetaRows ?? []) as unknown as InvMeta[];
+        }
 
-        const mapByInv = new Map<
-          string,
-          {
-            inv: NonNullable<Row["invoices"]>;
-            po_id: string | null;
-            po_number: string | null;
-            amount: number;
-            lineDescriptions: string[];
-          }
-        >();
-
-        for (const liRaw of (invRows ?? []) as unknown as Row[]) {
-          const invAny = (liRaw as { invoices: unknown }).invoices;
-          const inv = Array.isArray(invAny) ? invAny[0] : invAny;
-          if (!inv) continue;
-          const typedInv = inv as NonNullable<Row["invoices"]>;
-          if (typedInv.deleted_at) continue;
-          if (!INVOICE_COUNTING_STATUSES.includes(typedInv.status)) continue;
-          const poAny = (liRaw as { purchase_orders: unknown }).purchase_orders;
-          const po = Array.isArray(poAny) ? poAny[0] : poAny;
-
-          const existing = mapByInv.get(typedInv.id);
-          if (existing) {
-            existing.amount += liRaw.amount_cents ?? 0;
-            if (liRaw.description) existing.lineDescriptions.push(liRaw.description);
-          } else {
-            mapByInv.set(typedInv.id, {
-              inv: typedInv,
-              po_id: liRaw.po_id,
-              po_number: (po as { po_number?: string | null } | null)?.po_number ?? null,
-              amount: liRaw.amount_cents ?? 0,
-              lineDescriptions: liRaw.description ? [liRaw.description] : [],
-            });
+        // PO numbers for the header-linked POs (separate lookup — no new
+        // embed hint needed).
+        const poIds = Array.from(
+          new Set(
+            metas.map((m) => m.po_id).filter((id): id is string => !!id)
+          )
+        );
+        const poNumberById = new Map<string, string | null>();
+        if (poIds.length > 0) {
+          const { data: poRows } = await supabase
+            .from("purchase_orders")
+            .select("id, po_number")
+            .in("id", poIds);
+          for (const p of poRows ?? []) {
+            poNumberById.set(
+              (p as { id: string }).id,
+              (p as { po_number: string | null }).po_number ?? null
+            );
           }
         }
 
         const poGroup = new Map<string, InvoiceRow[]>();
         const direct: InvoiceRow[] = [];
-        for (const entry of Array.from(mapByInv.values())) {
-          const { preview, full } = buildPreview(
-            entry.inv.description,
-            entry.lineDescriptions
-          );
-          const vendor = Array.isArray(entry.inv.vendors)
-            ? entry.inv.vendors[0]?.name
-            : entry.inv.vendors?.name;
+        for (const m of metas) {
+          const { preview, full } = buildPreview(m.description, []);
+          const vendor = Array.isArray(m.vendors)
+            ? m.vendors[0]?.name
+            : m.vendors?.name;
           const row: InvoiceRow = {
-            id: entry.inv.id,
-            vendor: vendor ?? entry.inv.vendor_name_raw ?? null,
-            invoice_number: entry.inv.invoice_number,
-            amount: entry.amount,
-            received_date: entry.inv.received_date,
-            status: entry.inv.status,
-            po_id: entry.po_id,
-            po_number: entry.po_number,
+            id: m.id,
+            vendor: vendor ?? m.vendor_name_raw ?? null,
+            invoice_number: m.invoice_number,
+            amount: amountByInvoice.get(m.id) ?? 0,
+            received_date: m.received_date,
+            status: m.status,
+            po_id: m.po_id,
+            po_number: m.po_id ? poNumberById.get(m.po_id) ?? null : null,
             description_preview: preview,
             description_full: full,
           };
-          if (entry.po_id) {
-            const arr = poGroup.get(entry.po_id) ?? [];
+          if (m.po_id) {
+            const arr = poGroup.get(m.po_id) ?? [];
             arr.push(row);
-            poGroup.set(entry.po_id, arr);
+            poGroup.set(m.po_id, arr);
           } else {
             direct.push(row);
           }

@@ -36,23 +36,39 @@ const INVOICE_ACTIVE_STATUSES = [
 const CO_ACTIVE = ["draft", "pending", "approved"];
 const DRAW_ACTIVE = ["draft", "pm_review", "approved", "submitted", "paid"];
 
-/** Budget line cannot be deleted if any PO, invoice, or CO references it. */
+/** Budget line cannot be deleted if any PO or CO references it, or if any
+ *  counting-status invoice consumes budget on its (job_id, cost_code_id) —
+ *  consumption sourced from the invoice_budget_consumption view (B2/Q8a,
+ *  migration 00123), NOT the dead invoice_line_items.budget_line_id path. */
 export async function canDeleteBudgetLine(budgetLineId: string): Promise<GuardResult> {
   const supabase = tryCreateServiceRoleClient();
   if (!supabase) return { allowed: true, blockers: [] };
 
-  const [{ data: pos }, { data: ili }, { data: col }, { data: poLines }] = await Promise.all([
+  // Consumption is keyed by (job_id, cost_code_id), not budget_line_id —
+  // resolve the budget line's scope first, then read the view.
+  const consumptionPromise = (async (): Promise<{ invoice_id: string | null }[]> => {
+    const { data: bl } = await supabase
+      .from("budget_lines")
+      .select("job_id, cost_code_id")
+      .eq("id", budgetLineId)
+      .maybeSingle();
+    if (!bl?.job_id || !bl?.cost_code_id) return [];
+    const { data: cons } = await supabase
+      .from("invoice_budget_consumption")
+      .select("invoice_id")
+      .eq("job_id", bl.job_id)
+      .eq("cost_code_id", bl.cost_code_id);
+    return cons ?? [];
+  })();
+
+  const [{ data: pos }, consumption, { data: col }, { data: poLines }] = await Promise.all([
     supabase
       .from("purchase_orders")
       .select("id")
       .eq("budget_line_id", budgetLineId)
       .in("status", PO_ACTIVE)
       .is("deleted_at", null),
-    supabase
-      .from("invoice_line_items")
-      .select("id, invoices!inner(status, deleted_at)")
-      .eq("budget_line_id", budgetLineId)
-      .is("deleted_at", null),
+    consumptionPromise,
     supabase
       .from("change_order_lines")
       .select("id, change_orders!inner(status, deleted_at)")
@@ -65,10 +81,6 @@ export async function canDeleteBudgetLine(budgetLineId: string): Promise<GuardRe
       .is("deleted_at", null),
   ]);
 
-  const activeIli = (ili ?? []).filter((r) => {
-    const inv = (r as unknown as { invoices: { status: string; deleted_at: string | null } }).invoices;
-    return inv && !inv.deleted_at && INVOICE_ACTIVE_STATUSES.includes(inv.status);
-  });
   const activeCol = (col ?? []).filter((r) => {
     const co = (r as unknown as { change_orders: { status: string; deleted_at: string | null } }).change_orders;
     return co && !co.deleted_at && CO_ACTIVE.includes(co.status);
@@ -81,7 +93,8 @@ export async function canDeleteBudgetLine(budgetLineId: string): Promise<GuardRe
   const blockers: string[] = [];
   if ((pos ?? []).length > 0) blockers.push(`${pos!.length} purchase order(s) linked (header)`);
   if (activePoLines.length > 0) blockers.push(`${activePoLines.length} purchase order line(s) linked`);
-  if (activeIli.length > 0) blockers.push(`${activeIli.length} invoice line(s) allocated`);
+  if (consumption.length > 0)
+    blockers.push(`${consumption.length} invoice(s) consume budget on this job + cost code`);
   if (activeCol.length > 0) blockers.push(`${activeCol.length} change order line(s) reference this budget line`);
 
   return { allowed: blockers.length === 0, blockers };
@@ -92,7 +105,7 @@ export async function canDeleteJob(jobId: string): Promise<GuardResult> {
   const supabase = tryCreateServiceRoleClient();
   if (!supabase) return { allowed: true, blockers: [] };
 
-  const [invCount, poCount, coCount, drawCount, bdCount] = await Promise.all([
+  const [invCount, poCount, coCount, drawCount, bdCount, allocCount] = await Promise.all([
     supabase
       .from("invoices")
       .select("id", { count: "exact", head: true })
@@ -122,6 +135,13 @@ export async function canDeleteJob(jobId: string): Promise<GuardResult> {
       .select("id", { count: "exact", head: true })
       .eq("job_id", jobId)
       .is("deleted_at", null),
+    // Multi-job splits (00122): an allocation can reference a job that is
+    // NOT the invoice's header job, so the invoices check above misses it.
+    supabase
+      .from("invoice_allocations")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .is("deleted_at", null),
   ]);
 
   const blockers: string[] = [];
@@ -130,6 +150,7 @@ export async function canDeleteJob(jobId: string): Promise<GuardResult> {
   if ((coCount.count ?? 0) > 0) blockers.push(`${coCount.count} change order(s)`);
   if ((drawCount.count ?? 0) > 0) blockers.push(`${drawCount.count} draw(s)`);
   if ((bdCount.count ?? 0) > 0) blockers.push(`${bdCount.count} budget line(s)`);
+  if ((allocCount.count ?? 0) > 0) blockers.push(`${allocCount.count} invoice allocation(s)`);
 
   return { allowed: blockers.length === 0, blockers };
 }
@@ -224,12 +245,13 @@ export async function canVoidCO(coId: string): Promise<GuardResult> {
   return { allowed: blockers.length === 0, blockers };
 }
 
-/** Cost code cannot be deleted if vendors default to it, budget lines use it, or invoices reference it. */
+/** Cost code cannot be deleted if vendors default to it, budget lines use it,
+ *  or invoice lines / invoice allocations reference it. */
 export async function canDeleteCostCode(costCodeId: string): Promise<GuardResult> {
   const supabase = tryCreateServiceRoleClient();
   if (!supabase) return { allowed: true, blockers: [] };
 
-  const [blCount, invCount, poCount, vendCount] = await Promise.all([
+  const [blCount, invCount, allocCount, poCount, vendCount] = await Promise.all([
     supabase
       .from("budget_lines")
       .select("id", { count: "exact", head: true })
@@ -237,6 +259,13 @@ export async function canDeleteCostCode(costCodeId: string): Promise<GuardResult
       .is("deleted_at", null),
     supabase
       .from("invoice_line_items")
+      .select("id", { count: "exact", head: true })
+      .eq("cost_code_id", costCodeId)
+      .is("deleted_at", null),
+    // Allocations are the canonical budget-consumption scope (00122/00123)
+    // and reference cost codes independently of line items.
+    supabase
+      .from("invoice_allocations")
       .select("id", { count: "exact", head: true })
       .eq("cost_code_id", costCodeId)
       .is("deleted_at", null),
@@ -255,6 +284,7 @@ export async function canDeleteCostCode(costCodeId: string): Promise<GuardResult
   const blockers: string[] = [];
   if ((blCount.count ?? 0) > 0) blockers.push(`${blCount.count} budget line(s)`);
   if ((invCount.count ?? 0) > 0) blockers.push(`${invCount.count} invoice line(s)`);
+  if ((allocCount.count ?? 0) > 0) blockers.push(`${allocCount.count} invoice allocation(s)`);
   if ((poCount.count ?? 0) > 0) blockers.push(`${poCount.count} purchase order(s)`);
   if ((vendCount.count ?? 0) > 0) blockers.push(`${vendCount.count} vendor(s) default to this code`);
   return { allowed: blockers.length === 0, blockers };

@@ -14,6 +14,17 @@ import { getWorkflowSettings } from "@/lib/workflow-settings";
 import { captureCorrections } from "@/lib/invoices/corrections";
 import { updateWithLock, isLockConflict } from "@/lib/api/optimistic-lock";
 import { applyApprovalStamp } from "@/lib/invoices/apply-approval-stamp";
+import {
+  budgetAllocationGateBlocker,
+  consumedByJobCode,
+  liveInvoiceContribution,
+} from "@/lib/budget-consumption";
+import {
+  evaluateOverBudget,
+  jobIdsFromContribution,
+  type GateBudgetLine,
+} from "@/lib/invoices/over-budget";
+import { scopeKey } from "@/lib/invoices/balance-impact";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -173,18 +184,17 @@ export async function POST(
  }
 
  if (settings.require_budget_allocation) {
- const { data: lineCheck } = await supabase
- .from("invoice_line_items")
- .select("budget_line_id")
- .eq("invoice_id", params.id)
- .is("deleted_at", null);
- const allAllocated =
- (lineCheck?.length ?? 0) > 0 && lineCheck!.every((l) => !!l.budget_line_id);
- if (!allAllocated) {
- return NextResponse.json(
- { error: "Every invoice line must be allocated to a budget line before approval" },
- { status: 422 }
+ // B2/Q8a: allocations-canonical gate (was: every line item has a
+ // budget_line_id). Fully allocated + every (job, code) resolves to a
+ // live budget line — mirrors WI-013 check (c) hard-mode on split saves.
+ const gateBlocker = await budgetAllocationGateBlocker(
+ supabase,
+ membership.org_id,
+ params.id,
+ (typeof updates?.total_amount === "number" ? updates.total_amount : invoice.total_amount) as number
  );
+ if (gateBlocker) {
+ return NextResponse.json({ error: gateBlocker }, { status: 422 });
  }
  }
  }
@@ -223,11 +233,16 @@ export async function POST(
  );
  }
 
- // WI-L-4: budget gate. Sum this invoice's allocations per budget line; any
- // line that would exceed `revised_estimate` requires an explicit override
- // from the PM. The "?acknowledged_over_budget=true" URL param is the
- // acknowledgement token — without it we return 422 with the overage detail
- // so the client can show the red warning dialog.
+ // WI-L-4: budget gate. B2/Q8a re-source (2026-07-17 ruling): this
+ // invoice's contribution = its live 3-tier attribution per (job, code)
+ // — allocations-first, so a split invoice gates each job's portion
+ // against THAT job's budget line. The baseline is computed FROM SOURCE
+ // via the invoice_budget_consumption view (reviewed-invoice-excluded),
+ // NEVER the dead budget_lines.invoiced cache. Any scope exceeding
+ // `revised_estimate` requires an explicit override from the PM. The
+ // "?acknowledged_over_budget=true" URL param is the acknowledgement
+ // token — without it we return 422 with the overage detail so the
+ // client can show the red warning dialog.
  const INVOICE_COUNTING = [
  "pm_approved",
  "qa_review",
@@ -237,59 +252,43 @@ export async function POST(
  "paid",
  ];
  if (!INVOICE_COUNTING.includes(invoice.status)) {
- const { data: allocLines } = await supabase
- .from("invoice_line_items")
- .select("budget_line_id, amount_cents")
- .eq("invoice_id", params.id)
- .is("deleted_at", null);
- const allocationsByBL = new Map<string, number>();
- for (const l of allocLines ?? []) {
- const blId = (l as { budget_line_id: string | null }).budget_line_id;
- const amt = (l as { amount_cents: number | null }).amount_cents ?? 0;
- if (!blId) continue;
- allocationsByBL.set(blId, (allocationsByBL.get(blId) ?? 0) + amt);
- }
+ const contribution = await liveInvoiceContribution(supabase, params.id);
 
- if (allocationsByBL.size > 0) {
- const { data: bls } = await supabase
+ if (contribution.size > 0) {
+ const gateJobIds = jobIdsFromContribution(contribution);
+ const [{ data: bls }, baseline] = await Promise.all([
+ supabase
  .from("budget_lines")
- .select("id, revised_estimate, invoiced, cost_code_id, cost_codes(code, description)")
- .in("id", Array.from(allocationsByBL.keys()))
- .eq("org_id", membership.org_id);
+ .select("id, job_id, cost_code_id, revised_estimate, cost_codes(code, description)")
+ .in("job_id", gateJobIds)
+ .eq("org_id", membership.org_id)
+ .is("deleted_at", null),
+ consumedByJobCode(supabase, membership.org_id, {
+ jobIds: gateJobIds,
+ excludeInvoiceId: params.id,
+ }),
+ ]);
 
- const overageDetails: Array<{
- budget_line_id: string;
- cost_code: string | null;
- description: string | null;
- revised_estimate: number;
- currently_invoiced: number;
- this_invoice_allocation: number;
- overage: number;
- }> = [];
-
+ const budgetLineByScope = new Map<string, GateBudgetLine>();
  for (const bl of bls ?? []) {
  const blRow = bl as {
  id: string;
+ job_id: string | null;
+ cost_code_id: string | null;
  revised_estimate: number | null;
- invoiced: number | null;
  cost_codes: { code?: string; description?: string } | { code?: string; description?: string }[] | null;
  };
- const revised = blRow.revised_estimate ?? 0;
- const invoiced = blRow.invoiced ?? 0;
- const thisInvoice = allocationsByBL.get(blRow.id) ?? 0;
- if (invoiced + thisInvoice > revised && revised > 0) {
+ if (!blRow.job_id || !blRow.cost_code_id) continue;
  const cc = Array.isArray(blRow.cost_codes) ? blRow.cost_codes[0] : blRow.cost_codes;
- overageDetails.push({
+ budgetLineByScope.set(scopeKey(blRow.job_id, blRow.cost_code_id), {
  budget_line_id: blRow.id,
+ revised_estimate: blRow.revised_estimate ?? 0,
  cost_code: cc?.code ?? null,
  description: cc?.description ?? null,
- revised_estimate: revised,
- currently_invoiced: invoiced,
- this_invoice_allocation: thisInvoice,
- overage: invoiced + thisInvoice - revised,
  });
  }
- }
+
+ const overageDetails = evaluateOverBudget(contribution, baseline, budgetLineByScope);
 
  if (overageDetails.length > 0) {
  const url = new URL(request.url);

@@ -8,6 +8,7 @@ import {
   type CodeBaseline,
   type InvoiceContribution,
 } from "@/lib/invoices/balance-impact";
+import { consumedByJobCode } from "@/lib/budget-consumption";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -84,17 +85,18 @@ export const GET = withApiError(async (
       .eq("org_id", membership.org_id),
   ]);
 
-  // Line-item contributions per scope, across ALL in-scope jobs (via the
-  // invoices join; RLS + the org filter keep this tenant-safe).
+  // PO-scope contributions still come from line items (allocations carry no
+  // po_id — PO scope stays line-item-sourced per the B2/Q8a ruling). The
+  // invoices join + org filter keep this tenant-safe.
   const { data: lineItems } = await supabase
     .from("invoice_line_items")
-    .select("amount_cents, budget_line_id, po_id, invoices!inner(id, status, deleted_at, job_id)")
+    .select("amount_cents, po_id, invoices!inner(id, status, deleted_at, job_id)")
     .in("invoices.job_id", jobIds)
+    .not("po_id", "is", null)
     .is("deleted_at", null);
 
   type LineRow = {
     amount_cents: number | null;
-    budget_line_id: string | null;
     po_id: string | null;
     invoices: { id: string; status: string; deleted_at: string | null } | null;
   };
@@ -103,24 +105,25 @@ export const GET = withApiError(async (
   );
 
   const contribsByPo = new Map<string, InvoiceContribution[]>();
-  const contribsByBudgetLine = new Map<string, InvoiceContribution[]>();
   for (const r of rows) {
-    const contrib: InvoiceContribution = {
+    if (!r.po_id) continue;
+    const arr = contribsByPo.get(r.po_id) ?? [];
+    arr.push({
       invoiceId: r.invoices!.id,
       status: r.invoices!.status,
       amountCents: r.amount_cents ?? 0,
-    };
-    if (r.po_id) {
-      const arr = contribsByPo.get(r.po_id) ?? [];
-      arr.push(contrib);
-      contribsByPo.set(r.po_id, arr);
-    }
-    if (r.budget_line_id) {
-      const arr = contribsByBudgetLine.get(r.budget_line_id) ?? [];
-      arr.push(contrib);
-      contribsByBudgetLine.set(r.budget_line_id, arr);
-    }
+    });
+    contribsByPo.set(r.po_id, arr);
   }
+
+  // Budget-scope baselines: B2/Q8a — computed from the unified consumption
+  // view (allocations-first 3-tier), reviewed-invoice-EXCLUDED at the query
+  // (the trap-proof contract; the view only holds counting-status invoices,
+  // and the neq filter drops the reviewed one when it is itself counting).
+  const budgetBaseline = await consumedByJobCode(supabase, membership.org_id, {
+    jobIds,
+    excludeInvoiceId: reviewedId,
+  });
 
   const baselines: Record<string, CodeBaseline> = {};
 
@@ -132,7 +135,7 @@ export const GET = withApiError(async (
     baselines[scopeKey(blJob, ccId)] = {
       scope: "budget",
       scopeTotalCents: (bl as { revised_estimate: number | null }).revised_estimate ?? 0,
-      baselineCents: computeBaselineCents(contribsByBudgetLine.get((bl as { id: string }).id) ?? [], reviewedId),
+      baselineCents: budgetBaseline.get(scopeKey(blJob, ccId)) ?? 0,
     };
   }
   // ...then PO scope overrides any (job, code) that has an open PO.

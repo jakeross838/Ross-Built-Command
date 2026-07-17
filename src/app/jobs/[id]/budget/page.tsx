@@ -46,7 +46,7 @@ export default async function JobBudgetPage({
     .maybeSingle();
   if (!job) return notFound();
 
-  const [linesRes, invoicesRes, drawRes, cosRes] = await Promise.all([
+  const [linesRes, invoicesRes, drawRes, cosRes, consumptionRes] = await Promise.all([
     supabase
       .from("budget_lines")
       .select(
@@ -84,6 +84,15 @@ export default async function JobBudgetPage({
       .eq("status", "approved")
       .is("deleted_at", null)
       .order("pcco_number"),
+    // B2/Q8a (migration 00123): per-invoice budget consumption from the
+    // canonical invoice_budget_consumption view (3-tier attribution,
+    // counting statuses only). budget_lines.invoiced is DEAD — per-line
+    // consumed numbers in BudgetView key off these rows by cost code.
+    supabase
+      .from("invoice_budget_consumption")
+      .select("cost_code_id, invoice_id, amount_cents")
+      .eq("job_id", params.id)
+      .eq("org_id", membership.org_id),
   ]);
 
   const lineRows = linesRes.data ?? [];
@@ -112,6 +121,19 @@ export default async function JobBudgetPage({
   }
 
   const clientEmbed = Array.isArray(job.client) ? job.client[0] ?? null : job.client;
+  const consumption = (
+    (consumptionRes.data ?? []) as Array<{
+      cost_code_id: string | null;
+      invoice_id: string | null;
+      amount_cents: number | null;
+    }>
+  )
+    .filter((r) => r.cost_code_id && r.invoice_id)
+    .map((r) => ({
+      cost_code_id: r.cost_code_id as string,
+      invoice_id: r.invoice_id as string,
+      amount_cents: r.amount_cents ?? 0,
+    }));
   const costCodes = lineRows
     .map((l) => (Array.isArray(l.cost_codes) ? l.cost_codes[0] : l.cost_codes))
     .filter(Boolean)
@@ -123,6 +145,7 @@ export default async function JobBudgetPage({
         job={mapJob(job, (clientEmbed as { full_name: string | null } | null)?.full_name ?? null)}
         budgetLines={lineRows.map((l) => mapBudgetLine(l))}
         invoices={(invoicesRes.data ?? []).map((i) => mapInvoice(i))}
+        consumption={consumption}
         costCodes={costCodes}
         currentDraw={drawRes.data ? mapDraw(drawRes.data) : emptyDrawShim(params.id)}
         drawLineItems={[]}

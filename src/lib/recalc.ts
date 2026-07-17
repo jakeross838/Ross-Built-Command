@@ -40,13 +40,18 @@ const PO_OPEN_STATUSES = ["issued", "partially_invoiced", "fully_invoiced"];
 const CO_APPROVED_STATUSES = ["approved"];
 
 /**
- * Recompute committed / invoiced / co_adjustments / revised_estimate for one
- * budget line. Returns the new values for callers that want to diff them
- * against prior values (useful for activity_log deltas).
+ * Recompute committed / co_adjustments / revised_estimate for one budget
+ * line. Returns the new values for callers that want to diff them against
+ * prior values (useful for activity_log deltas).
+ *
+ * B2/Q8a (migration 00123): `invoiced` is NO LONGER computed or written —
+ * the column is dead (zero writers, zero readers). Budget consumption is
+ * read from the `invoice_budget_consumption` view via
+ * src/lib/budget-consumption.ts (allocations-first 3-tier, mirroring the
+ * draw engine). Never resurrect a stored rollup without a writer.
  */
 export async function recalcBudgetLine(budgetLineId: string): Promise<{
   committed: number;
-  invoiced: number;
   co_adjustments: number;
   revised_estimate: number;
 } | null> {
@@ -85,19 +90,6 @@ export async function recalcBudgetLine(budgetLineId: string): Promise<{
     .reduce((s, li) => s + ((li as { amount: number }).amount ?? 0), 0);
   const committed = headerSum + lineSum;
 
-  // invoiced = sum of approved invoice_line_items allocated to this line.
-  const { data: invRows } = await supabase
-    .from("invoice_line_items")
-    .select("amount_cents, invoices!inner(status, deleted_at)")
-    .eq("budget_line_id", budgetLineId)
-    .is("deleted_at", null);
-  const invoiced = (invRows ?? [])
-    .filter((li) => {
-      const inv = (li as unknown as { invoices: { status: string; deleted_at: string | null } }).invoices;
-      return inv && !inv.deleted_at && INVOICE_COUNTING_STATUSES.includes(inv.status);
-    })
-    .reduce((s, li) => s + ((li as { amount_cents: number }).amount_cents ?? 0), 0);
-
   // co_adjustments = sum of approved CO lines allocated to this budget line.
   const { data: coRows } = await supabase
     .from("change_order_lines")
@@ -124,14 +116,13 @@ export async function recalcBudgetLine(budgetLineId: string): Promise<{
     .from("budget_lines")
     .update({
       committed,
-      invoiced,
       co_adjustments,
       revised_estimate,
       updated_at: new Date().toISOString(),
     })
     .eq("id", budgetLineId);
 
-  return { committed, invoiced, co_adjustments, revised_estimate };
+  return { committed, co_adjustments, revised_estimate };
 }
 
 /**

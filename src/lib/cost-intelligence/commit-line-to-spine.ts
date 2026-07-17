@@ -31,6 +31,7 @@ import {
   resolveConversionWithAI,
   type ItemForConversion,
 } from "./convert-units";
+import { resolveAllocationJobForLine } from "./allocation-job";
 
 export interface CommitLineOptions {
   /** User doing the verification (null for auto-commit path). */
@@ -295,6 +296,34 @@ export async function commitLineToSpine(
     }
   }
 
+  // 4c. B2 (00124): per-portion job attribution. The line's job is the
+  // unique job among live allocations matching the line's own cost code
+  // (header fallback — mono-job invoices unchanged). Auto-commits at save
+  // time still land header-attributed (the split happens later in review);
+  // the allocations PUT re-attributes via reattributeSpineJobsForInvoice.
+  let resolvedJobId: string | null = invoice.job_id;
+  const spineLineItemId = (extractionLine as unknown as { invoice_line_item_id?: string | null })
+    .invoice_line_item_id ?? null;
+  if (spineLineItemId) {
+    const [{ data: spineLine }, { data: liveAllocs }] = await Promise.all([
+      supabase
+        .from("invoice_line_items")
+        .select("cost_code_id")
+        .eq("id", spineLineItemId)
+        .maybeSingle(),
+      supabase
+        .from("invoice_allocations")
+        .select("job_id, cost_code_id")
+        .eq("invoice_id", invoice.id)
+        .is("deleted_at", null),
+    ]);
+    resolvedJobId = resolveAllocationJobForLine(
+      (spineLine as { cost_code_id: string | null } | null)?.cost_code_id ?? null,
+      invoice.job_id,
+      (liveAllocs ?? []) as Array<{ job_id: string | null; cost_code_id: string | null }>
+    );
+  }
+
   // 5. Insert vendor_item_pricing row
   const { data: vip, error: vipErr } = await supabase
     .from("vendor_item_pricing")
@@ -316,7 +345,7 @@ export async function commitLineToSpine(
       canonical_quantity: canonicalQty,
       canonical_unit_price_cents: canonicalUnitPriceCents,
       conversion_applied: conversionApplied,
-      job_id: invoice.job_id,
+      job_id: resolvedJobId,
       cost_code_id: ccId,
       source_type: "invoice_line",
       source_invoice_id: invoice.id,

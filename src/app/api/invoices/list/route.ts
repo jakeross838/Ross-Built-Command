@@ -85,7 +85,61 @@ export async function GET(request: NextRequest) {
     string,
     { hasAllBudgetLines: boolean; hasAllPOs: boolean; lineCount: number }
   >();
+  // B2/Q8a: hasAllBudgetLines mirrors the server's allocations-canonical gate
+  // (budgetAllocationGateBlocker): live allocations exist, sum to the invoice
+  // total, and every (job, code) resolves to a live budget line. Computed
+  // below from invoice_allocations + org budget lines; the line-item loop
+  // keeps feeding hasAllPOs + lineCount + the code badges.
+  const allocationCoverageByInvoice = new Map<string, boolean>();
   const invoiceIds = invoices.map((i) => i.id);
+  if (invoiceIds.length > 0) {
+    const [{ data: allocRows }, { data: orgBudgetLines }] = await Promise.all([
+      supabase
+        .from("invoice_allocations")
+        .select("invoice_id, job_id, cost_code_id, amount_cents")
+        .in("invoice_id", invoiceIds)
+        .is("deleted_at", null),
+      supabase
+        .from("budget_lines")
+        .select("job_id, cost_code_id")
+        .eq("org_id", org)
+        .is("deleted_at", null),
+    ]);
+    const blKeys = new Set(
+      ((orgBudgetLines ?? []) as Array<{ job_id: string | null; cost_code_id: string | null }>)
+        .filter((b) => b.job_id && b.cost_code_id)
+        .map((b) => `${b.job_id}::${b.cost_code_id}`)
+    );
+    const allocsByInvoice = new Map<
+      string,
+      Array<{ job_id: string | null; cost_code_id: string | null; amount_cents: number | null }>
+    >();
+    for (const a of allocRows ?? []) {
+      const row = a as unknown as {
+        invoice_id: string;
+        job_id: string | null;
+        cost_code_id: string | null;
+        amount_cents: number | null;
+      };
+      const arr = allocsByInvoice.get(row.invoice_id) ?? [];
+      arr.push(row);
+      allocsByInvoice.set(row.invoice_id, arr);
+    }
+    const totalByInvoice = new Map(
+      (invoices as unknown as Array<{ id: string; total_amount: number | null }>).map((i) => [
+        i.id,
+        i.total_amount ?? 0,
+      ])
+    );
+    for (const [invId, allocs] of allocsByInvoice) {
+      const sum = allocs.reduce((s, a) => s + Math.round(a.amount_cents ?? 0), 0);
+      const balanced = allocs.length > 0 && sum === (totalByInvoice.get(invId) ?? 0);
+      const allResolved = allocs.every(
+        (a) => a.job_id && a.cost_code_id && blKeys.has(`${a.job_id}::${a.cost_code_id}`)
+      );
+      allocationCoverageByInvoice.set(invId, balanced && allResolved);
+    }
+  }
   if (invoiceIds.length > 0) {
     const { data: lineItems } = await supabase
       .from("invoice_line_items")
@@ -130,15 +184,23 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const enriched = invoices.map((inv) => ({
-    ...inv,
-    line_item_cost_codes: Array.from(lineItemCodesByInvoice.get(inv.id) ?? []),
-    line_item_summary: lineItemSummaryByInvoice.get(inv.id) ?? {
+  const enriched = invoices.map((inv) => {
+    const liSummary = lineItemSummaryByInvoice.get(inv.id) ?? {
       hasAllBudgetLines: false,
       hasAllPOs: false,
       lineCount: 0,
-    },
-  }));
+    };
+    return {
+      ...inv,
+      line_item_cost_codes: Array.from(lineItemCodesByInvoice.get(inv.id) ?? []),
+      line_item_summary: {
+        ...liSummary,
+        // Allocations-canonical (B2/Q8a) — overrides the legacy line-item
+        // derivation so the list's eligibility display matches the server gate.
+        hasAllBudgetLines: allocationCoverageByInvoice.get(inv.id) ?? false,
+      },
+    };
+  });
 
   const pmUsers = (
     (pmResult.data as Array<{

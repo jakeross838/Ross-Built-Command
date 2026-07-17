@@ -14,15 +14,6 @@ interface JobFinancials {
   remaining: number;
 }
 
-const SPENT_STATUSES = [
-  "pm_approved",
-  "qa_review",
-  "qa_approved",
-  "pushed_to_qb",
-  "in_draw",
-  "paid",
-];
-
 export default function JobFinancialBar({
   jobId,
   preloaded,
@@ -39,7 +30,7 @@ export default function JobFinancialBar({
     }
     let cancelled = false;
     async function load() {
-      const [{ data: job }, { data: invRows }] = await Promise.all([
+      const [{ data: job }, { data: consumptionRows }] = await Promise.all([
         supabase
           .from("jobs")
           .select(
@@ -48,12 +39,13 @@ export default function JobFinancialBar({
           .eq("id", jobId)
           .is("deleted_at", null)
           .maybeSingle(),
+        // Billed-to-date: allocation-aware per-job sum from the
+        // invoice_budget_consumption view (RLS-scoped, migration 00123) — a
+        // split invoice contributes only its this-job portions.
         supabase
-          .from("invoices")
-          .select("total_amount")
-          .eq("job_id", jobId)
-          .in("status", SPENT_STATUSES)
-          .is("deleted_at", null),
+          .from("invoice_budget_consumption")
+          .select("amount_cents")
+          .eq("job_id", jobId),
       ]);
 
       if (cancelled || !job) return;
@@ -63,8 +55,8 @@ export default function JobFinancialBar({
       const revised =
         (job as { current_contract_amount?: number }).current_contract_amount ?? original + approvedCos;
       const baseline = (job as { previous_certificates_total?: number }).previous_certificates_total ?? 0;
-      const nightworkBilled = (invRows ?? []).reduce(
-        (s, r) => s + ((r as { total_amount: number }).total_amount ?? 0),
+      const nightworkBilled = (consumptionRows ?? []).reduce(
+        (s, r) => s + ((r as { amount_cents: number | null }).amount_cents ?? 0),
         0
       );
       const billed = baseline + nightworkBilled;

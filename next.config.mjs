@@ -2,6 +2,12 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Lesson 12 (.planning/lessons.md): parallel dev servers must get their
+  // own build dir — never share .next. NEXT_DIST_DIR lets a second local
+  // instance run isolated (e.g. NEXT_DIST_DIR=.next-walk npm run dev -- -p
+  // 3100) instead of corrupting the primary server's .next. Unset = the
+  // normal .next; Vercel builds are unaffected (env not set there).
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Surface Vercel's VERCEL_ENV system env var to the client bundle as
   // NEXT_PUBLIC_VERCEL_ENV. Vercel sets VERCEL_ENV automatically
   // ("production" on prod deploys, "preview" on PR/branch deploys,

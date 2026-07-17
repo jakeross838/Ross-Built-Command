@@ -25,7 +25,10 @@ const test = (name: string, fn: () => Promise<void>) =>
 
 // ── stub supabase client ──────────────────────────────────────────────
 // The validator chains: .from(table).select(...).eq(...).eq(...).eq(...).is(...).maybeSingle()
-// AND: .from(table).select(...).eq(...).eq(...).eq(...).in(...).is(...) (no maybeSingle on aggregation; returns array)
+// AND: .from("invoice_budget_consumption").select(...).eq(...).eq(...).eq(...).neq(...)
+// (no maybeSingle on the consumption aggregation; returns array — B2/Q8a
+// re-sourced the prior-total aggregation to the invoice_budget_consumption
+// view per migration 00123)
 //
 // We stub a fluent builder that records the table name + final terminator
 // (maybeSingle vs. await) and returns canned data based on `table` + `query`.
@@ -33,6 +36,7 @@ const test = (name: string, fn: () => Promise<void>) =>
 interface StubBuilder {
   select: (..._args: unknown[]) => StubBuilder;
   eq: (..._args: unknown[]) => StubBuilder;
+  neq: (..._args: unknown[]) => StubBuilder;
   is: (..._args: unknown[]) => StubBuilder;
   in: (..._args: unknown[]) => StubBuilder;
   maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
@@ -45,8 +49,8 @@ interface StubBuilder {
 interface StubConfig {
   budgetLine?: { id: string; revised_estimate: number | null } | null;
   budgetLineError?: { message: string } | null;
-  priorInvoices?: Array<{ total_amount: number | null }>;
-  priorInvoicesError?: { message: string } | null;
+  priorConsumption?: Array<{ amount_cents: number | null }>;
+  priorConsumptionError?: { message: string } | null;
 }
 
 function makeStubClient(cfg: StubConfig): ValidatorContext["supabase"] {
@@ -54,10 +58,11 @@ function makeStubClient(cfg: StubConfig): ValidatorContext["supabase"] {
     from(table: string): StubBuilder {
       // Inline state on the per-query chain
       const isBudgetLines = table === "budget_lines";
-      const isInvoices = table === "invoices";
+      const isConsumption = table === "invoice_budget_consumption";
       const builder: StubBuilder = {
         select: () => builder,
         eq: () => builder,
+        neq: () => builder,
         is: () => builder,
         in: () => builder,
         maybeSingle: async () => {
@@ -70,11 +75,12 @@ function makeStubClient(cfg: StubConfig): ValidatorContext["supabase"] {
           return { data: null, error: null };
         },
         then(resolve) {
-          // Aggregation path (no maybeSingle) — applies only to invoices read
-          if (isInvoices) {
+          // Aggregation path (no maybeSingle) — applies only to the
+          // invoice_budget_consumption view read
+          if (isConsumption) {
             return Promise.resolve({
-              data: cfg.priorInvoices ?? [],
-              error: cfg.priorInvoicesError ?? null,
+              data: cfg.priorConsumption ?? [],
+              error: cfg.priorConsumptionError ?? null,
             }).then(resolve);
           }
           return Promise.resolve({ data: null, error: null }).then(resolve);
@@ -149,7 +155,7 @@ test("invoice within budget → ok=true", async () => {
   const ctx: ValidatorContext = {
     supabase: makeStubClient({
       budgetLine: { id: "bl-001", revised_estimate: 500_000 }, // $5,000 budget
-      priorInvoices: [{ total_amount: 200_000 }], // $2,000 already booked
+      priorConsumption: [{ amount_cents: 200_000 }], // $2,000 already booked
     }),
     org_id: ORG_ID,
     user_id: null,
@@ -164,7 +170,7 @@ test("invoice that pushes over budget → wi-001-budget-line-overage with correc
   const ctx: ValidatorContext = {
     supabase: makeStubClient({
       budgetLine: { id: "bl-001", revised_estimate: 250_000 }, // $2,500 budget
-      priorInvoices: [{ total_amount: 200_000 }], // $2,000 already booked
+      priorConsumption: [{ amount_cents: 200_000 }], // $2,000 already booked
     }),
     org_id: ORG_ID,
     user_id: null,
@@ -182,7 +188,7 @@ test("budget_line revised_estimate null → no overage check", async () => {
   const ctx: ValidatorContext = {
     supabase: makeStubClient({
       budgetLine: { id: "bl-001", revised_estimate: null },
-      priorInvoices: [],
+      priorConsumption: [],
     }),
     org_id: ORG_ID,
     user_id: null,

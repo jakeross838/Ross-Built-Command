@@ -54,6 +54,48 @@ export const POST = withApiError(
       throw new ApiError("Job and cost code must be assigned before partial approval", 422);
     }
 
+    // B2 ruling (2026-07-17, recorded alongside Q9 credits-don't-split):
+    // SPLIT invoices cannot be partially approved. Line items carry no job
+    // identity, so neither proportional nor explicit apportionment derives
+    // honestly from a line-item pick — and the equivalent path already
+    // exists in the allocation grid. Explicit-per-portion becomes a future
+    // upgrade only if real use demands it.
+    const { data: parentAllocs } = await supabase
+      .from("invoice_allocations")
+      .select("job_id, cost_code_id, amount_cents")
+      .eq("invoice_id", params.id)
+      .is("deleted_at", null);
+    const liveAllocs = (parentAllocs ?? []) as Array<{
+      job_id: string | null;
+      cost_code_id: string | null;
+      amount_cents: number | null;
+    }>;
+    if (liveAllocs.some((a) => a.job_id !== parent.job_id)) {
+      throw new ApiError(
+        "This invoice is split across jobs and can't be partially approved. Adjust the allocations to the amount you're approving, then approve in full — or remove the split.",
+        422
+      );
+    }
+
+    // Draw-membership guard: a portion already on a draw means totals are
+    // locked into draw math — partial approval would desync it (same posture
+    // as the allocations PUT's in_draw/paid block).
+    if (["in_draw", "paid"].includes(parent.status as string)) {
+      throw new ApiError(`Cannot partially approve a ${parent.status} invoice`, 422);
+    }
+    const { data: drawLinks } = await supabase
+      .from("invoice_draw_links")
+      .select("id")
+      .eq("invoice_id", params.id)
+      .is("deleted_at", null)
+      .limit(1);
+    if ((drawLinks ?? []).length > 0) {
+      throw new ApiError(
+        "A portion of this invoice is attached to a draw — it can't be partially approved.",
+        422
+      );
+    }
+
     // Load parent's line items
     const { data: allLines } = await supabase
       .from("invoice_line_items")
@@ -211,6 +253,89 @@ export const POST = withApiError(
 
     if (parentUpdateErr) {
       throw new ApiError(`Failed to update parent invoice: ${parentUpdateErr.message}`, 500);
+    }
+
+    // ─── B2: regenerate allocations on BOTH sides ─────────────────────────
+    // The parent's live allocations summed to the ORIGINAL total — stale the
+    // moment the split happens (the pre-B2 defect: they were left untouched
+    // and silently overstated budget consumption). Regenerate each side from
+    // its post-split line items, mirroring the allocations GET
+    // auto-materialize tiering exactly: grouped coded lines when they sum to
+    // the side's total, else a single header-code allocation covering the
+    // total. Mono-job is guaranteed by the split block above, so job_id is
+    // always the parent's job. Failures log — the approval itself stands
+    // (same posture as the stamp step), and the review-page GET regenerates
+    // on next open since the stale set is already soft-deleted.
+    try {
+      await supabase
+        .from("invoice_allocations")
+        .update({ deleted_at: nowIso })
+        .eq("invoice_id", parent.id)
+        .is("deleted_at", null);
+
+      const buildAllocs = (
+        sideLines: typeof lines,
+        sideTotal: number,
+        invoiceId: string
+      ): Array<Record<string, unknown>> => {
+        const coded = sideLines.filter((l) => l.cost_code_id);
+        const codedSum = coded.reduce((s, l) => s + (l.amount_cents ?? 0), 0);
+        if (coded.length > 0 && codedSum === sideTotal) {
+          const groups = new Map<string, { amount_cents: number; description: string | null }>();
+          for (const l of coded) {
+            const prev = groups.get(l.cost_code_id as string);
+            if (prev) prev.amount_cents += l.amount_cents ?? 0;
+            else
+              groups.set(l.cost_code_id as string, {
+                amount_cents: l.amount_cents ?? 0,
+                description: l.description ?? null,
+              });
+          }
+          return Array.from(groups.entries()).map(([cost_code_id, g]) => ({
+            invoice_id: invoiceId,
+            cost_code_id,
+            amount_cents: g.amount_cents,
+            description: g.description,
+            org_id: parent.org_id,
+            job_id: parent.job_id,
+          }));
+        }
+        // Fallback: single header-code allocation covering the side's total
+        // (mirrors the GET auto-materialize stub; credits keep amounts ≥ 0
+        // out of allocations — skip when the total is negative).
+        if (parent.cost_code_id && sideTotal > 0) {
+          return [
+            {
+              invoice_id: invoiceId,
+              cost_code_id: parent.cost_code_id,
+              amount_cents: sideTotal,
+              description: parent.description ?? null,
+              org_id: parent.org_id,
+              job_id: parent.job_id,
+            },
+          ];
+        }
+        return [];
+      };
+
+      const childAllocs = buildAllocs(approvedLines, approvedTotal, childRow.id);
+      const heldAllocs = buildAllocs(heldLines, heldTotal, parent.id);
+      const toInsert = [...childAllocs, ...heldAllocs];
+      if (toInsert.length > 0) {
+        const { error: allocErr } = await supabase
+          .from("invoice_allocations")
+          .insert(toInsert);
+        if (allocErr) {
+          console.error(
+            `[partial-approve] allocation regeneration failed for ${parent.id}/${childRow.id}: ${allocErr.message}`
+          );
+        }
+      }
+    } catch (allocRegenErr) {
+      console.error(
+        `[partial-approve] allocation regeneration threw for ${parent.id}:`,
+        allocRegenErr
+      );
     }
 
     return NextResponse.json({

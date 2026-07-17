@@ -7,6 +7,8 @@ import {
 import { createServerClient } from "@/lib/supabase/server";
 import { tryCreateServiceRoleClient } from "@/lib/supabase/service";
 import { timed } from "@/lib/perf-log";
+import { consumedByJobCode } from "@/lib/budget-consumption";
+import { scopeKey } from "@/lib/invoices/balance-impact";
 
 /**
  * GET /api/jobs/[id]/overview
@@ -23,15 +25,6 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 export const maxDuration = 30;
-
-const SPENT_STATUSES = [
-  "pm_approved",
-  "qa_review",
-  "qa_approved",
-  "pushed_to_qb",
-  "in_draw",
-  "paid",
-];
 
 const PM_PENDING_STATUSES = ["received", "ai_processed", "pm_review"];
 
@@ -57,7 +50,7 @@ export const GET = withApiError(async (
     jobRes,
     usersRes,
     budgetLinesRes,
-    billedInvoicesRes,
+    consumedMap,
     pendingInvoicesRes,
     draftPosRes,
     pendingCosRes,
@@ -92,11 +85,13 @@ export const GET = withApiError(async (
         .eq("is_active", true)
         .in("role", ["pm", "admin"])),
     timed("job-overview", "budget_lines.by_job", false,
-      supabase.from("budget_lines").select("id, revised_estimate, committed, invoiced")
+      supabase.from("budget_lines").select("id, cost_code_id, revised_estimate, committed")
         .eq("job_id", jobId).eq("org_id", orgId).is("deleted_at", null)),
-    timed("job-overview", "invoices.billed", false,
-      supabase.from("invoices").select("total_amount")
-        .eq("job_id", jobId).eq("org_id", orgId).in("status", SPENT_STATUSES).is("deleted_at", null)),
+    // B2/Q8a: consumption reads the invoice_budget_consumption view (migration
+    // 00123) — allocation-aware per (job, cost code); budget_lines.invoiced is
+    // dead. Feeds both the budget-health buckets and billed-to-date below.
+    timed("job-overview", "invoice_budget_consumption.by_job", false,
+      consumedByJobCode(supabase, orgId, { jobId })),
     timed("job-overview", "invoices.pending", false,
       supabase.from("invoices").select("id, total_amount")
         .eq("job_id", jobId).eq("org_id", orgId).in("status", PM_PENDING_STATUSES).is("deleted_at", null)),
@@ -151,27 +146,31 @@ export const GET = withApiError(async (
   const approvedCos = (job.approved_cos_total as number) ?? 0;
   const revised = (job.current_contract_amount as number) ?? original + approvedCos;
 
-  // Financial bar — billed + % complete + remaining.
+  // Financial bar — billed + % complete + remaining. Billed-to-date is the
+  // allocation-aware per-job view sum (a split invoice contributes only its
+  // this-job portions), not a sum of invoice header totals.
   // Include pre-Nightwork baseline for mid-project imports.
   const baseline = (job.previous_certificates_total as number) ?? 0;
-  const nightworkBilled = (billedInvoicesRes.data ?? []).reduce(
-    (s: number, r: { total_amount?: number }) => s + (r.total_amount ?? 0), 0
-  );
+  let nightworkBilled = 0;
+  for (const cents of consumedMap.values()) nightworkBilled += cents;
   const billed = baseline + nightworkBilled;
   const pendingInvoiceRows = (pendingInvoicesRes.data ?? []) as Array<{ total_amount: number }>;
   const pctComplete = revised > 0 ? Math.min(100, Math.max(0, (billed / revised) * 100)) : 0;
 
-  // Budget health buckets
+  // Budget health buckets — per-line consumed comes from the view keyed by
+  // (job, cost code); bucket formulas unchanged.
   let overBudget = 0, underCommitted = 0;
   const lines = (budgetLinesRes.data ?? []) as Array<{
+    cost_code_id: string | null;
     revised_estimate: number | null;
     committed: number | null;
-    invoiced: number | null;
   }>;
   for (const l of lines) {
     const rev = l.revised_estimate ?? 0;
     const committed = l.committed ?? 0;
-    const invoiced = l.invoiced ?? 0;
+    const invoiced = l.cost_code_id
+      ? consumedMap.get(scopeKey(jobId, l.cost_code_id)) ?? 0
+      : 0;
     if (rev > 0 && invoiced + committed > rev) overBudget += 1;
     if (rev > 0 && committed === 0) underCommitted += 1;
   }

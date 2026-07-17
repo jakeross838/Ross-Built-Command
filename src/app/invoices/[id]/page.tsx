@@ -519,7 +519,13 @@ export default function InvoiceReviewPage() {
  setBudgetByCostCode(new Map());
  return;
  }
- // Parallel: budget lines + spent invoices (independent queries)
+ // Parallel: budget lines + consumed budget (independent queries).
+ // Consumed comes from THE budget-consumption source — the
+ // invoice_budget_consumption view (B2/Q8a, migration 00123; counting
+ // statuses only, allocations-first 3-tier attribution). Like the prior
+ // header-status aggregation it replaces, this INCLUDES the reviewed
+ // invoice's own rows when it is already counting-status (display only —
+ // the approve gate computes its own reviewed-invoice-excluded baseline).
  const [{ data: blData }, { data: spentData }] = await Promise.all([
  supabase
  .from("budget_lines")
@@ -528,17 +534,16 @@ export default function InvoiceReviewPage() {
  .in("cost_code_id", uniqueLineCostCodeIds)
  .is("deleted_at", null),
  supabase
- .from("invoices")
- .select("cost_code_id, total_amount")
+ .from("invoice_budget_consumption")
+ .select("cost_code_id, amount_cents")
  .eq("job_id", jobId)
- .in("cost_code_id", uniqueLineCostCodeIds)
- .in("status", ["pm_approved", "qa_review", "qa_approved", "pushed_to_qb", "in_draw", "paid"])
- .is("deleted_at", null),
+ .in("cost_code_id", uniqueLineCostCodeIds),
  ]);
  if (cancelled) return;
  const spentByCode = new Map<string, number>();
  for (const row of spentData ?? []) {
- spentByCode.set(row.cost_code_id, (spentByCode.get(row.cost_code_id) ?? 0) + row.total_amount);
+ if (!row.cost_code_id) continue;
+ spentByCode.set(row.cost_code_id, (spentByCode.get(row.cost_code_id) ?? 0) + (row.amount_cents ?? 0));
  }
  const next = new Map<string, BudgetInfo>();
  for (const bl of blData ?? []) {

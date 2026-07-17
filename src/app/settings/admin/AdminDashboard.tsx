@@ -86,7 +86,7 @@ export default function AdminDashboard() {
   }
 
   async function fixAll() {
-    if (!confirm("Run recalc on every job in the org? This recomputes committed/invoiced/CO adjustments from source data.")) return;
+    if (!confirm("Run recalc on every job in the org? This recomputes committed/CO adjustments and PO invoiced totals from source data.")) return;
     setFixing(true);
     setError(null);
     try {

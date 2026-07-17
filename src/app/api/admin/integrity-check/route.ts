@@ -59,7 +59,7 @@ export const GET = withApiError(async (_request: NextRequest) => {
   // ── Budget lines ──
   const { data: budgetLines } = await supabase
     .from("budget_lines")
-    .select("id, job_id, committed, invoiced, co_adjustments, revised_estimate, original_estimate, cost_codes:cost_code_id(code, description)")
+    .select("id, job_id, committed, co_adjustments, revised_estimate, original_estimate, cost_codes:cost_code_id(code, description)")
     .eq("org_id", membership.org_id)
     .is("deleted_at", null);
 
@@ -106,29 +106,9 @@ export const GET = withApiError(async (_request: NextRequest) => {
       });
     }
 
-    // Invoiced
-    const { data: invRows } = await supabase
-      .from("invoice_line_items")
-      .select("amount_cents, invoices!inner(status, deleted_at)")
-      .eq("budget_line_id", bl.id)
-      .is("deleted_at", null);
-    const invoicedCalc = (invRows ?? [])
-      .filter((li) => {
-        const inv = (li as unknown as { invoices: { status: string; deleted_at: string | null } }).invoices;
-        return inv && !inv.deleted_at && INVOICE_COUNTING_STATUSES.includes(inv.status);
-      })
-      .reduce((s, li) => s + ((li as { amount_cents: number }).amount_cents ?? 0), 0);
-    if (invoicedCalc !== (bl.invoiced ?? 0)) {
-      mismatches.push({
-        entity_type: "budget_line",
-        entity_id: bl.id,
-        label,
-        field: "invoiced",
-        stored_value: bl.invoiced ?? 0,
-        calculated_value: invoicedCalc,
-        delta: invoicedCalc - (bl.invoiced ?? 0),
-      });
-    }
+    // Invoiced check removed per B2/Q8a (migration 00123) — budget
+    // consumption is view-computed (invoice_budget_consumption), nothing
+    // stored on budget_lines to drift.
 
     // CO adjustments
     const { data: coRows } = await supabase

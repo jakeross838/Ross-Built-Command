@@ -1,6 +1,31 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-17 (perf + data-freshness run) · **HEAD (origin/main):** perf run `2d9edab` + billing-gate regression fix `b49b585` on B1 `6264c17` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod).
+**Updated:** 2026-07-17 (B2 shipped) · **HEAD (origin/main):** B2 budget unification on `7345a94` lineage · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod).
+
+## ✅ MASSIVE RUN — SESSION 3: **B2 SHIPPED — budget-source unification onto allocations (Q8a) + split-model completion**. QA: `.planning/qa-runs/2026-07-17-massive-run-b2-budget-unification-qa-report.md` · Ruling + tie-out record: `.planning/coherence/b2-q8a-tieout-halt.md`.
+
+**THE TIE-OUT GATE FIRED → JAKE RULED OPTION A.** Old source (line-items by stored `budget_line_id`) read **$0.00 company-wide** — zero live budget_lines existed and all 28 line items carried NULL `budget_line_id` (resolution never re-runs); the allocations source read the same dollars draws bill on G703s:
+
+| Job | Code | Vendor · status | OLD | NEW | Δ |
+|---|---|---|---:|---:|---:|
+| Patrick Gavin | 13103 | EloDesigns · qa_approved | $0.00 | $5,702.35 | +$5,702.35 |
+| Sample A | 03114 | Mock Concrete · qa_review | $0.00 | $950.00 | +$950.00 |
+| Sample A | 05101 | Mock Concrete · qa_review | $0.00 | $8,910.00 | +$8,910.00 |
+| Sample A | 10101 | Test Plumbing · qa_approved | $0.00 | $10,710.70 | +$10,710.70 |
+| Sample A | 12102 | Test Plumbing · qa_approved | $0.00 | $2,739.20 | +$2,739.20 |
+| Sample A | 13101 | Demo Electric · qa_approved | $0.00 | $4,160.50 | +$4,160.50 |
+| Sample B | 10101 | Sample Framing · in_draw | $0.00 | $14,750.00 | +$14,750.00 |
+| Sample B | 15102 | Placeholder Drywall · in_draw | $0.00 | $1,814.96 | +$1,814.96 |
+| Sample B | 19101 | Placeholder Drywall · in_draw | $0.00 | $9,683.04 | +$9,683.04 |
+| **Total** | | | **$0.00** | **$59,420.75** | **+$59,420.75** |
+
+**Shipped:** migration **00123** (`invoice_budget_consumption` view = THE consumption source, 3-tier ≡ draw-calc tiering, security_invoker, predicate-pushdown shape + EXPLAIN-verified; 00027 invoiced-cache maintenance DROPPED — **`budget_lines.invoiced` is DEAD, zero writers zero readers** per Jake's rider; `trg_split_total_guard` blocks total/allocation desync on splits) · migration **00124** (price-intel per-portion: `resolve_allocation_job_for_line` unique-code→job rule in the 00077 LIVE + 00073 dormant pricing_history triggers; `trg_vip_after_update_job` maintains job_item_activity under spine re-attribution) · new `src/lib/budget-consumption.ts` + pure `over-budget.ts` gate · WI-L-4 + require_budget_allocation + batch Gate-4 + balance-impact budget baselines + list-route eligibility flag re-anchored to allocations · 14-surface display sweep (job bars/health/dashboard/budget page/drill-down/export-contract/integrity-check/review-page/wi-001/deletion-guards incl. the canDeleteJob allocation gap) · **partial-approve: BLOCK-ON-SPLIT** (Jake's ruled message; + in_draw/junction guards + the mono-job stale-allocation defect fixed via both-sides regeneration) — recorded as deliberate policy beside Q9 · commit-line-to-spine job resolution + allocations-PUT spine re-attribution · wizard Step-1 context strip portion-correct ("Approved bills · this job's portions").
+
+**PROOF (announced fixture, FULL revert verified byte-identical):** strip predicted 05101 **$5,910 over** → gate fired at exactly **+$5,910.00 (65.7%)** → partial-approve 422'd with the ruled message → total-guard raised on desync → pricing_history + spine attributed per-portion (job-correct, job_item_activity followed) → REAL `computeDrawLines` pulled 05101=600000 (A) + 13101=400000 (B) **cent-identical to the view (draws ≡ budgets)** → wizard Sample-B costs-to-date $30,248.00 incl. the foreign-headered portion. Gate-threshold identity old-vs-new pinned by `__tests__/budget-consumption-gate.test.ts` (16/16; suite ALL PASS; tsc 0).
+
+**C-sweep carry-forward (from B2):** `budget-export.ts` ORPHANED (0 importers — keep or delete) · wizard "Billed to client" reads stored `current_payment_due` display cache ($23,623.20 vs canonical $22,983.20 on Sample B — pre-existing, display-only) · `.next` prod-build clobber healed via config-watch self-restart; `NEXT_DIST_DIR` distDir override added to next.config.mjs (Lesson-12 affordance) · pricing ambiguous-code (same code, 2+ jobs, one invoice) attributes header by documented rule; explicit line↔allocation linkage = future upgrade.
+
+**Then:** C (QA-absorb + residual sweep, incl. the C2 seed list + B2 carry-forwards above) → D (review packet) per the massive-run plan below.
 
 ## ✅ PERFORMANCE + DATA-FRESHNESS RUN (2026-07-17, jumped the queue per Jake — B2/C/D paused, now resume). QA: `.planning/qa-runs/2026-07-17-perf-freshness-run-qa-report.md`.
 
