@@ -13,9 +13,19 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const membership = getMembershipFromRequest(request) ?? (await getCurrentMembership());
   const supabase = createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Fast path: trusted x-user-id header set by middleware (it strips any
+  // inbound value before setting its own, so a client cannot forge it).
+  // Falls back to auth.getUser() when absent.
+  let user: { id: string } | null = null;
+  const headerUserId = request.headers.get("x-user-id");
+  if (headerUserId) {
+    user = { id: headerUserId };
+  } else {
+    const {
+      data: { user: u },
+    } = await supabase.auth.getUser();
+    user = u;
+  }
 
   if (!membership || !user) {
     return NextResponse.json({

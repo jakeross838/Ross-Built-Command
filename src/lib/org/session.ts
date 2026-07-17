@@ -146,3 +146,22 @@ export function getMembershipFromRequest(req: NextRequest): CurrentMembership | 
   if (!orgId || !role) return null;
   return { org_id: orgId, role: role as OrgMemberRole, is_active: true };
 }
+
+/**
+ * Same fast path for SERVER COMPONENTS / loaders that have no NextRequest —
+ * reads the middleware-forwarded x-org-id / x-org-role via next/headers.
+ * Falls back to null outside a request scope; callers should fall back to
+ * `getCurrentMembership()`.
+ */
+export async function getMembershipFromHeaders(): Promise<CurrentMembership | null> {
+  try {
+    const { headers } = await import("next/headers");
+    const h = headers();
+    const orgId = h.get("x-org-id");
+    const role = h.get("x-org-role");
+    if (!orgId || !role) return null;
+    return { org_id: orgId, role: role as OrgMemberRole, is_active: true };
+  } catch {
+    return null; // outside a request scope (build-time render, scripts)
+  }
+}

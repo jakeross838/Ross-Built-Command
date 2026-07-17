@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchMe } from "@/lib/api/me-client";
 
 /**
  * Current user's org_id, resolved SERVER-SIDE via /api/me (RLS-safe cookie
@@ -20,16 +21,11 @@ export function useOrgId(): string | null {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/me");
-        if (!res.ok) return;
-        const json = (await res.json()) as { org_id?: string | null };
-        if (!cancelled && json?.org_id) setOrgId(json.org_id);
-      } catch {
-        /* leave null — callers must not query without an org_id */
-      }
-    })();
+    // Shared /api/me promise (me-client) — dedupes with the nav bar's fetch
+    // so a page never pays for two identity round-trips.
+    fetchMe().then((me) => {
+      if (!cancelled && me?.org_id) setOrgId(me.org_id);
+    });
     return () => {
       cancelled = true;
     };

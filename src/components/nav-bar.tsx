@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { logoutAction } from "@/app/login/actions";
 import { useOrgBranding } from "@/components/org-branding-provider";
 import { PUBLIC_APP_NAME } from "@/lib/org/public";
+import { fetchMe } from "@/lib/api/me-client";
 import TrialBanner from "@/components/trial-banner";
 import NotificationBell from "@/components/notification-bell";
 import FeedbackTrigger from "@/components/feedback-trigger";
@@ -119,14 +120,13 @@ export default function NavBar() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/me", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then(
-        (d: { authenticated?: boolean; id?: string; full_name?: string; role?: string } | null) => {
-          if (cancelled || !d || !d.authenticated || !d.role) return;
-          setProfile({ id: d.id ?? "", full_name: d.full_name ?? "", role: d.role as UserRole });
-        },
-      )
+    // Shared /api/me promise (me-client) — dedupes with useOrgId consumers
+    // so a page never pays for two identity round-trips.
+    fetchMe()
+      .then((d) => {
+        if (cancelled || !d || !d.authenticated || !d.role) return;
+        setProfile({ id: d.id ?? "", full_name: d.full_name ?? "", role: d.role as UserRole });
+      })
       .catch(() => {});
     return () => {
       cancelled = true;

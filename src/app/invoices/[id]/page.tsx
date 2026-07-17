@@ -25,6 +25,7 @@ import {
 } from "@/components/invoices/InvoiceDetailsPanel";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentRole } from "@/hooks/use-current-role";
+import { patchListSnapshot } from "@/hooks/use-fresh-list";
 import { useOrgId } from "@/hooks/use-org-id";
 import { isInvoiceLocked, canEditLockedFields } from "@/lib/invoice-permissions";
 
@@ -604,6 +605,17 @@ export default function InvoiceReviewPage() {
  router.push(`/jobs/${jobId}/change-orders/new?${params.toString()}`);
  };
 
+ // Freshness pattern (perf run): after a mutation here, the list page we
+ // navigate back to paints its snapshot instantly — patch that snapshot with
+ // the SERVER-CONFIRMED status (or drop the row on delete) so it never shows
+ // a ghost of the pre-mutation row while its background refetch converges.
+ type ListSnap = { invoices: Array<{ id: string; status: string }> };
+ const patchListStatus = (newStatus: string) =>
+ patchListSnapshot<ListSnap>("invoices-list", (d) => ({
+ ...d,
+ invoices: d.invoices.map((i) => (i.id === invoiceId ? { ...i, status: newStatus } : i)),
+ }));
+
  const handleAction = async (action: "approve" | "hold" | "deny" | "request_info" | "info_received", note?: string) => {
  setSaving(true);
  const overrides = buildOverrides();
@@ -710,6 +722,8 @@ export default function InvoiceReviewPage() {
  request_info: "Info request sent",
  info_received: "Returned to PM review",
  };
+ const body = (await res.json().catch(() => null)) as { status?: string } | null;
+ if (body?.status) patchListStatus(body.status);
  flash.show(ACTION_LABEL[action] ?? "Action saved");
  router.push("/invoices/queue");
  } else {
@@ -936,7 +950,11 @@ export default function InvoiceReviewPage() {
  body: JSON.stringify({ action: "reopen", note: "Reopened for review" }),
  });
  setSaving(false);
- if (res.ok) router.refresh();
+ if (res.ok) {
+ const body = (await res.json().catch(() => null)) as { status?: string } | null;
+ if (body?.status) patchListStatus(body.status);
+ router.refresh();
+ }
  };
 
  // Phase 3b: QA Approve — ported verbatim from src/app/invoices/[id]/qa/
@@ -957,6 +975,8 @@ export default function InvoiceReviewPage() {
  });
  setSaving(false);
  if (res.ok) {
+ const body = (await res.json().catch(() => null)) as { status?: string } | null;
+ if (body?.status) patchListStatus(body.status);
  flash.show("Invoice QA approved");
  router.push("/invoices/qa");
  } else {
@@ -980,6 +1000,8 @@ export default function InvoiceReviewPage() {
  });
  setSaving(false);
  if (res.ok) {
+ const body = (await res.json().catch(() => null)) as { status?: string } | null;
+ if (body?.status) patchListStatus(body.status);
  flash.show("Kicked back to PM");
  router.push("/invoices/qa");
  } else {
@@ -999,6 +1021,12 @@ export default function InvoiceReviewPage() {
  body: JSON.stringify({ reason: deleteReason.trim() }),
  });
  if (res.ok) {
+ // Drop the row from the list snapshot so the deleted invoice can't
+ // ghost-appear on the list before its background refetch lands.
+ patchListSnapshot<ListSnap>("invoices-list", (d) => ({
+ ...d,
+ invoices: d.invoices.filter((i) => i.id !== invoice.id),
+ }));
  flash.show("Invoice deleted");
  router.push("/financials/bills");
  return;

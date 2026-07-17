@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/lib/org/session";
+import { getCurrentMembership, getMembershipFromRequest } from "@/lib/org/session";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +9,10 @@ export const dynamic = "force-dynamic";
 // cost codes) so completion derives from actual data, not a stored flag — and
 // avoids the client-side auth/RLS/timing fragility of doing these counts in the
 // browser. Existence probes (limit 1) are all the guide needs.
-export async function GET() {
-  const membership = await getCurrentMembership();
+export async function GET(request: NextRequest) {
+  // Fast path: org from middleware-set headers (skips a redundant
+  // auth.getUser() + org_members round-trip pair).
+  const membership = getMembershipFromRequest(request) ?? (await getCurrentMembership());
   if (!membership) {
     return NextResponse.json({ costCodes: 0, jobs: 0, invoices: 0 });
   }

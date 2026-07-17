@@ -45,7 +45,7 @@
 
 import { createServerClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { getCurrentMembership } from "@/lib/org/session";
+import { getCurrentMembership, getMembershipFromHeaders } from "@/lib/org/session";
 import {
   appliedAdjustmentsForDraw,
   applicationNumberForDraw,
@@ -226,20 +226,32 @@ type JobEmbed = {
 export async function loadPayAppViewData(
   drawId: string
 ): Promise<PayAppViewData | null> {
-  const membership = await getCurrentMembership();
+  // Fast path: middleware-forwarded org headers (skips auth.getUser() +
+  // org_members — 2 sequential round-trips measured on the 4.6s SSR chain).
+  const membership = (await getMembershipFromHeaders()) ?? (await getCurrentMembership());
   if (!membership) return null;
 
   const supabase = createServerClient();
 
-  const { data: draw, error } = await supabase
-    .from("draws")
-    .select(
-      `*, jobs:job_id (id, name, address, contract_type, status, deposit_percentage, gc_fee_percentage, retainage_percent, original_contract_amount, current_contract_amount, starting_application_number, previous_co_completed_amount, billing_method, markup_display, backup_detail, pm_id, client:clients(id, full_name))`
-    )
-    .eq("id", drawId)
-    .eq("org_id", membership.org_id)
-    .is("deleted_at", null)
-    .maybeSingle();
+  // Draw row + org letterhead row are independent — fetch in parallel.
+  const [{ data: draw, error }, { data: orgRow }] = await Promise.all([
+    supabase
+      .from("draws")
+      .select(
+        `*, jobs:job_id (id, name, address, contract_type, status, deposit_percentage, gc_fee_percentage, retainage_percent, original_contract_amount, current_contract_amount, starting_application_number, previous_co_completed_amount, billing_method, markup_display, backup_detail, pm_id, client:clients(id, full_name))`
+      )
+      .eq("id", drawId)
+      .eq("org_id", membership.org_id)
+      .is("deleted_at", null)
+      .maybeSingle(),
+    supabase
+      .from("organizations")
+      .select(
+        "name, logo_url, company_address, company_city, company_state, company_zip, pay_app_signatory_name, pay_app_signatory_title, default_markup_display, default_backup_detail"
+      )
+      .eq("id", membership.org_id)
+      .maybeSingle(),
+  ]);
 
   if (error) {
     console.error("[pay-apps/[id]] draw query error:", error);
@@ -248,18 +260,12 @@ export async function loadPayAppViewData(
   if (!draw) return null;
 
   // PRINT FIDELITY — contractor letterhead identity from the org row (NOT
-  // hardcoded). Fetched once here so BOTH the frozen-snapshot early-return and
-  // the live recompute path share it. Presentation identity legitimately
-  // reflects CURRENT org identity even on a frozen draw — only the FINANCIALS
-  // are byte-frozen at approval, not the letterhead. Also reused by the
-  // cost_plus_statement branch below (default_markup_display/backup_detail).
-  const { data: orgRow } = await supabase
-    .from("organizations")
-    .select(
-      "name, logo_url, company_address, company_city, company_state, company_zip, pay_app_signatory_name, pay_app_signatory_title, default_markup_display, default_backup_detail"
-    )
-    .eq("id", membership.org_id)
-    .maybeSingle();
+  // hardcoded; fetched in the parallel pair above). Shared by BOTH the
+  // frozen-snapshot early-return and the live recompute path. Presentation
+  // identity legitimately reflects CURRENT org identity even on a frozen
+  // draw — only the FINANCIALS are byte-frozen at approval, not the
+  // letterhead. Also reused by the cost_plus_statement branch below
+  // (default_markup_display/backup_detail).
   const contractor = {
     name: (orgRow?.name as string | null) ?? "",
     address: formatOrgAddress(
@@ -339,33 +345,100 @@ export async function loadPayAppViewData(
     ? jobEmbed.client[0] ?? null
     : jobEmbed.client;
 
-  // Invoices linked to this draw — junction membership (00122). Each carries
-  // its THIS-JOB portion (Σ allocations on the draw's job; full total only
-  // for allocation-less invoices headered here) so the statement backup and
-  // "Invoices in this draw" tie to the per-portion G703 cent-exact.
-  const { data: linkRowsForDraw } = await supabase
-    .from("invoice_draw_links")
-    .select("invoice_id")
-    .eq("draw_id", drawId)
-    .is("deleted_at", null);
+  // PERF RUN 2026-07-17: the reads below were a ~10-deep sequential await
+  // chain (measured 4.6s streamed SSR on prod). They are mutually
+  // independent reads — parallelized here with IDENTICAL inputs flowing to
+  // computeDrawLines/rollupDrawTotals (concurrency only; no money-math
+  // change, F1 firewall intact).
+  const [
+    { data: linkRowsForDraw },
+    { data: budgetLinesRaw },
+    lessPrevCerts,
+    nonBudgetLineThisPeriod,
+    appliedAdjustmentsTotal,
+    depositAppliedOnOthers,
+    { data: adjRows },
+    uncaptured,
+    { data: coRows },
+  ] = await Promise.all([
+    // Invoices linked to this draw — junction membership (00122). Each
+    // carries its THIS-JOB portion (Σ allocations on the draw's job; full
+    // total only for allocation-less invoices headered here) so the
+    // statement backup and "Invoices in this draw" tie to the per-portion
+    // G703 cent-exact.
+    supabase
+      .from("invoice_draw_links")
+      .select("invoice_id")
+      .eq("draw_id", drawId)
+      .is("deleted_at", null),
+    // Budget lines + cost-code embeds for the G703 rows.
+    supabase
+      .from("budget_lines")
+      .select(
+        `id, cost_code_id, original_estimate, revised_estimate, previous_applications_baseline,
+         cost_codes:cost_code_id (code, description, category, sort_order)`
+      )
+      .eq("job_id", draw.job_id as string)
+      .eq("org_id", membership.org_id)
+      .is("deleted_at", null),
+    lessPreviousCertificatesForJob(
+      draw.job_id as string,
+      draw.draw_number as number,
+      draw.id as string
+    ),
+    nonBudgetLineThisPeriodForDraw(draw.id as string),
+    // BLOCK B — deposit + adjustments for this draw (both feed
+    // current_payment_due).
+    appliedAdjustmentsForDraw(draw.id as string),
+    depositAppliedToDateForJob(draw.job_id as string, draw.id as string),
+    // Adjustment rows for the Adjustments & Credits section (applied) + the
+    // wizard's pending pool (approved). Display only — the math sum comes
+    // from the canonical appliedAdjustmentsForDraw helper (single source).
+    supabase
+      .from("draw_adjustments")
+      .select(
+        "id, adjustment_type, adjustment_status, amount_cents, reason, affected_pcco_number"
+      )
+      .eq("draw_id", draw.id as string)
+      .eq("org_id", membership.org_id)
+      .in("adjustment_status", ["approved", "applied_to_draw"])
+      .is("deleted_at", null)
+      .order("created_at"),
+    // HANDOFF #2 — uncoded linked-invoice dollars (see drawAdjustments push
+    // below).
+    uncapturedLinkedInvoicesForDraw(draw.id as string),
+    // Approved/executed change orders on the job (contract-sum running
+    // total).
+    supabase
+      .from("change_orders")
+      .select(
+        "id, job_id, pcco_number, title, description, amount, gc_fee_amount, gc_fee_rate, total_with_fee, estimated_days_added, status, approved_date, draw_number"
+      )
+      .eq("job_id", draw.job_id as string)
+      .eq("org_id", membership.org_id)
+      .in("status", ["approved", "executed"])
+      .is("deleted_at", null)
+      .order("pcco_number"),
+  ]);
   const linkedInvoiceIds = Array.from(
     new Set((linkRowsForDraw ?? []).map((l) => (l as { invoice_id: string }).invoice_id))
   );
-  const { data: invoices } = linkedInvoiceIds.length
-    ? await supabase
-        .from("invoices")
-        .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id, received_date, status, job_id")
-        .in("id", linkedInvoiceIds)
-        .eq("org_id", membership.org_id)
-        .is("deleted_at", null)
-    : { data: [] as never[] };
-  const { data: portionAllocRows } = linkedInvoiceIds.length
-    ? await supabase
-        .from("invoice_allocations")
-        .select("invoice_id, amount_cents, job_id")
-        .in("invoice_id", linkedInvoiceIds)
-        .is("deleted_at", null)
-    : { data: [] as never[] };
+  // Linked invoices + their allocations — independent given the id set.
+  const [{ data: invoices }, { data: portionAllocRows }] = linkedInvoiceIds.length
+    ? await Promise.all([
+        supabase
+          .from("invoices")
+          .select("id, vendor_name_raw, invoice_number, total_amount, cost_code_id, received_date, status, job_id")
+          .in("id", linkedInvoiceIds)
+          .eq("org_id", membership.org_id)
+          .is("deleted_at", null),
+        supabase
+          .from("invoice_allocations")
+          .select("invoice_id, amount_cents, job_id")
+          .in("invoice_id", linkedInvoiceIds)
+          .is("deleted_at", null),
+      ])
+    : [{ data: [] as never[] }, { data: [] as never[] }];
   const invoiceHasAllocs = new Set(
     (portionAllocRows ?? []).map((a) => (a as { invoice_id: string }).invoice_id)
   );
@@ -385,17 +458,7 @@ export async function loadPayAppViewData(
         ? Number(inv.total_amount ?? 0)
         : 0;
 
-  // Budget lines + cost-code embeds for the G703 rows.
-  const { data: budgetLinesRaw } = await supabase
-    .from("budget_lines")
-    .select(
-      `id, cost_code_id, original_estimate, revised_estimate, previous_applications_baseline,
-       cost_codes:cost_code_id (code, description, category, sort_order)`
-    )
-    .eq("job_id", draw.job_id as string)
-    .eq("org_id", membership.org_id)
-    .is("deleted_at", null);
-
+  // Budget lines fetched in the parallel group above; shim the embeds here.
   const budgetLines = (budgetLinesRaw ?? []).map((bl) => ({
     ...bl,
     cost_codes: (Array.isArray(bl.cost_codes)
@@ -423,34 +486,9 @@ export async function loadPayAppViewData(
     isFinalDraw: !!draw.is_final,
   });
 
-  const lessPrevCerts = await lessPreviousCertificatesForJob(
-    draw.job_id as string,
-    draw.draw_number as number,
-    draw.id as string
-  );
-  const nonBudgetLineThisPeriod = await nonBudgetLineThisPeriodForDraw(
-    draw.id as string
-  );
-  // BLOCK B — deposit + adjustments for this draw (both feed current_payment_due).
-  const appliedAdjustmentsTotal = await appliedAdjustmentsForDraw(draw.id as string);
+  // lessPrevCerts / nonBudgetLineThisPeriod / appliedAdjustmentsTotal /
+  // depositAppliedOnOthers / adjRows all resolved in the parallel group above.
   const depositApplied = (draw.deposit_applied_cents as number | null) ?? 0;
-  const depositAppliedOnOthers = await depositAppliedToDateForJob(
-    draw.job_id as string,
-    draw.id as string
-  );
-  // Adjustment rows for the Adjustments & Credits section (applied) + the
-  // wizard's pending pool (approved). Display only — the math sum above comes
-  // from the canonical appliedAdjustmentsForDraw helper (single source).
-  const { data: adjRows } = await supabase
-    .from("draw_adjustments")
-    .select(
-      "id, adjustment_type, adjustment_status, amount_cents, reason, affected_pcco_number"
-    )
-    .eq("draw_id", draw.id as string)
-    .eq("org_id", membership.org_id)
-    .in("adjustment_status", ["approved", "applied_to_draw"])
-    .is("deleted_at", null)
-    .order("created_at");
   const drawAdjustments: DrawAdjustment[] = (adjRows ?? []).map((a) => ({
     id: a.id as string,
     adjustment_type: (a.adjustment_type as string) ?? "",
@@ -465,8 +503,8 @@ export async function loadPayAppViewData(
   // entries, so a linked invoice can never contribute $0. Pushed as synthetic
   // 'applied_to_draw' rows so the shared section renders them alongside real
   // draw_adjustments; the math term is uncaptured.total, SEPARATE from
-  // appliedAdjustmentsTotal (no double count).
-  const uncaptured = await uncapturedLinkedInvoicesForDraw(draw.id as string);
+  // appliedAdjustmentsTotal (no double count). (`uncaptured` resolved in the
+  // parallel group above.)
   for (const it of uncaptured.items) {
     drawAdjustments.push({
       id: `uncaptured-${it.id}`,
@@ -495,19 +533,8 @@ export async function loadPayAppViewData(
     uncapturedLinkedCents: uncaptured.total,
   });
 
-  // Approved/executed change orders on the job (contract-sum running total).
-  const { data: coRows } = await supabase
-    .from("change_orders")
-    .select(
-      "id, job_id, pcco_number, title, description, amount, gc_fee_amount, gc_fee_rate, total_with_fee, estimated_days_added, status, approved_date, draw_number"
-    )
-    .eq("job_id", draw.job_id as string)
-    .eq("org_id", membership.org_id)
-    .in("status", ["approved", "executed"])
-    .is("deleted_at", null)
-    .order("pcco_number");
-
   // ---- Shims (locked View contracts; CaldwellX shapes) ----
+  // (coRows resolved in the parallel group above.)
 
   const rawDrawStatus = draw.status as string;
   const drawStatus: CaldwellDraw["status"] = (

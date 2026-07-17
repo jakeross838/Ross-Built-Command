@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { ApiError, withApiError } from "@/lib/api/errors";
-import { getCurrentMembership } from "@/lib/org/session";
+import { getCurrentMembership, getMembershipFromRequest } from "@/lib/org/session";
 import {
   computeBaselineCents,
   scopeKey,
@@ -26,10 +26,12 @@ export const fetchCache = "force-no-store";
  * after = now - liveGridSum, live as the PM edits. NO approval math here.
  */
 export const GET = withApiError(async (
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: { id: string } }
 ) => {
-  const membership = await getCurrentMembership();
+  // Fast path: org from middleware-set headers (skips a redundant
+  // auth.getUser() + org_members round-trip pair; measured ~2.3s warm).
+  const membership = getMembershipFromRequest(req) ?? (await getCurrentMembership());
   if (!membership) throw new ApiError("Not authenticated", 401);
   const supabase = createServerClient();
   const reviewedId = context.params.id;

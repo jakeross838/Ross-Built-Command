@@ -40,9 +40,11 @@ const VALID_SENSITIVITY: DuplicateSensitivity[] = ["strict", "moderate", "loose"
 
 // GET is readable by any active org member (PMs need to know which gates apply).
 // PATCH is admin/owner only.
-export const GET = withApiError(async () => {
-  const { getCurrentMembership } = await import("@/lib/org/session");
-  const membership = await getCurrentMembership();
+export const GET = withApiError(async (request: NextRequest) => {
+  // Fast path: org from middleware-set headers (skips auth.getUser() +
+  // org_members — measured ~1.8-2.9s warm on prod before the perf run).
+  const { getCurrentMembership, getMembershipFromRequest } = await import("@/lib/org/session");
+  const membership = getMembershipFromRequest(request) ?? (await getCurrentMembership());
   if (!membership) throw new ApiError("Not authenticated", 401);
   const settings = await getWorkflowSettings(membership.org_id);
   return NextResponse.json({ settings });

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
+import { useFreshList } from "@/hooks/use-fresh-list";
 import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
 import EmptyState, { EmptyIcons } from "@/components/empty-state";
 import { SkeletonList } from "@/components/loading-skeleton";
@@ -33,25 +34,29 @@ interface Draw {
 // one flat table across every job with Job as a filterable column, matching the
 // Invoices list. The prior grouped-by-job rendering + the Financials sub-nav are
 // gone; rows open the reachable pay-app detail (/financials/pay-apps/[id]).
+const EMPTY_DRAWS: Draw[] = [];
+
 export default function DrawsPage() {
-  const [draws, setDraws] = useState<Draw[]>([]);
-  const [loading, setLoading] = useState(true);
+  // List data via the ONE freshness pattern (use-fresh-list): snapshot-painted
+  // on remount (no skeleton flash), background-refetched on every mount, so
+  // draw create/void/submit from other routes converge without a manual
+  // refresh.
+  const { data, loading } = useFreshList<Draw[]>(
+    "draws-list",
+    useCallback(async () => {
+      const res = await fetch("/api/draws", {
+        cache: "no-store",
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return null; // keep whatever is painted
+      return (await res.json()) as Draw[];
+    }, [])
+  );
+  const draws = data ?? EMPTY_DRAWS;
   const { selectedJobId } = useJobFilter();
   // Voided draws stay in the record (soft-delete only) but are noise in the
   // active list, so they're hidden by default and revealed via this filter.
   const [statusFilter, setStatusFilter] = useState<"active" | "voided" | "all">("active");
-
-  useEffect(() => {
-    async function fetchDraws() {
-      const res = await fetch("/api/draws");
-      if (res.ok) {
-        const data = await res.json();
-        setDraws(data);
-      }
-      setLoading(false);
-    }
-    fetchDraws();
-  }, []);
 
   // Job filter comes from the cross-surface left rail (PART 2).
   const jobFiltered = selectedJobId ? draws.filter((d) => d.jobs?.id === selectedJobId) : draws;

@@ -15,17 +15,16 @@ import * as Sentry from "@sentry/nextjs";
  */
 export type BillingGate = "ok" | "expired" | "read_only";
 
-/**
- * Read-only API routes that benefit from skipping the billing gate query
- * in middleware. These routes don't mutate data, so there's no write to
- * block when the sub is past due. Keep the list tight — don't add mutating
- * routes here.
- */
-const HOT_API_PATHS = new Set(["/api/dashboard", "/api/jobs/health"]);
-
-function isHotApiPath(pathname: string): boolean {
-  return HOT_API_PATHS.has(pathname);
-}
+// PERF RUN 2026-07-17: the old HOT_API_PATHS allowlist (/api/dashboard,
+// /api/jobs/health) generalized to ALL read-path (GET/HEAD) API requests.
+// Measured on prod: every API call paid 3 sequential middleware round-trips
+// (GoTrue getUser ~250ms + org_members-with-org-embed + platform_admins)
+// before the route handler even started — 1.2-2.9s warm per call across the
+// invoice list / draws / review-modal surfaces. Read paths don't gate on
+// billing (writes enforce via requireBillingOk) and don't need GoTrue's
+// revocation check (signed JWT + RLS backstop — same posture the hot-path
+// comment below documented). Non-GET API requests and page navigations keep
+// the full strong path unchanged.
 
 /**
  * Refresh the Supabase session cookie on every request and expose
@@ -73,15 +72,19 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Hot-path perf: for /api/ routes, skip the auth.getUser() round-trip to
-  // GoTrue and rely on getSession() (JWT decode, ~1ms). The JWT is signed
-  // and tamper-proof; the only thing getUser() adds is server-side
-  // revocation checks, which Supabase's RLS will still enforce on the DB
-  // queries the route actually makes. For pages/navigations we keep
-  // getUser() since redirect decisions here need the stronger guarantee.
-  const isHotApi = isHotApiPath(request.nextUrl.pathname);
+  // Light path = read-only API request. Skip the auth.getUser() round-trip
+  // to GoTrue and rely on getSession() (JWT decode + refresh-if-expired).
+  // The JWT is signed and tamper-proof; the only thing getUser() adds is
+  // server-side revocation checks, which Supabase's RLS will still enforce
+  // on the DB queries the route actually makes. Pages/navigations and API
+  // writes keep getUser() since redirect/mutation decisions need the
+  // stronger guarantee.
+  const pathname = request.nextUrl.pathname;
+  const isApiPath = pathname.startsWith("/api/");
+  const isLightApi =
+    isApiPath && (request.method === "GET" || request.method === "HEAD");
   let user: { id: string } | null = null;
-  if (isHotApi) {
+  if (isLightApi) {
     const { data: { session } } = await supabase.auth.getSession();
     user = session?.user ? { id: session.user.id } : null;
   } else {
@@ -89,36 +92,62 @@ export async function updateSession(request: NextRequest) {
     user = u;
   }
 
-  // Resolve membership (always) + billing gate (skip for hot-path API
-  // routes — those routes don't gate on billing). One query either way.
+  // Platform admin lookup is only consulted by /admin* page guards, the
+  // /api/admin/platform/* fast-path helper, and impersonation resolution —
+  // skip it for ordinary API requests without the impersonation cookie
+  // (route-side getPlatformAdminFromRequest falls back to a full lookup
+  // when the header is absent, so this is a pure perf skip, not a
+  // capability change).
+  const needsPlatformAdmin =
+    !isApiPath ||
+    pathname.startsWith("/api/admin/platform") ||
+    !!request.cookies.get("nw_impersonate");
+
+  // Resolve membership + billing gate + platform admin. Membership and
+  // platform_admins are independent single-row reads — run them in
+  // PARALLEL (they were sequential; measured ~250ms each on prod). Light
+  // API paths skip the billing-gate org embed (read paths don't gate on
+  // billing; writes enforce via requireBillingOk).
   let gate: BillingGate = "ok";
   let membership: { org_id: string; role: string } | null = null;
+  let platformAdmin: { role: string } | null = null;
   if (user) {
-    if (isHotApi) {
-      const { data: member } = await supabase
-        .from("org_members")
-        .select("org_id, role")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (member) {
-        membership = { org_id: member.org_id as string, role: member.role as string };
-      }
-    } else {
-      const { data: member } = await supabase
-        .from("org_members")
-        .select(
-          "org_id, role, organizations:org_id (subscription_status, trial_ends_at, updated_at)"
-        )
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (member) {
-        membership = { org_id: member.org_id as string, role: member.role as string };
+    const membershipQuery = isLightApi
+      ? supabase
+          .from("org_members")
+          .select("org_id, role")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle()
+      : supabase
+          .from("org_members")
+          .select(
+            "org_id, role, organizations:org_id (subscription_status, trial_ends_at, updated_at)"
+          )
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+    const platformAdminQuery = needsPlatformAdmin
+      ? supabase
+          .from("platform_admins")
+          .select("role")
+          .eq("user_id", user.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null } as { data: { role: string } | null });
+
+    const [{ data: member }, { data: pa }] = await Promise.all([
+      membershipQuery,
+      platformAdminQuery,
+    ]);
+    if (pa) platformAdmin = { role: pa.role as string };
+
+    if (member) {
+      membership = { org_id: member.org_id as string, role: member.role as string };
+      if (!isLightApi) {
         const orgRaw = (member as unknown as { organizations: unknown }).organizations;
         const org = (Array.isArray(orgRaw) ? orgRaw[0] : orgRaw) as
           | { subscription_status?: string; trial_ends_at?: string | null; updated_at?: string | null }
@@ -140,19 +169,6 @@ export async function updateSession(request: NextRequest) {
         }
       }
     }
-  }
-
-  // Platform admin lookup — cheap single-row read. We do this for
-  // every authenticated request (skipping hot API paths) so impersonation
-  // and /admin/platform route guards can check without extra queries.
-  let platformAdmin: { role: string } | null = null;
-  if (user && !isHotApi) {
-    const { data: pa } = await supabase
-      .from("platform_admins")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (pa) platformAdmin = { role: pa.role as string };
   }
 
   // Impersonation: if the cookie is present and the user is actually a

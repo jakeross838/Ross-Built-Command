@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useFreshList } from "@/hooks/use-fresh-list";
 import Link from "next/link";
 import { useJobFilter } from "@/components/job-filter/JobFilterProvider";
 import { formatCents, formatStatus, formatDate, statusBadgeOutline } from "@/lib/utils/format";
@@ -159,15 +160,48 @@ function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
 
 // StatCard removed with the contradicting stat cards (per Jake ship-review fix 1).
 
+// Stable empty references so derived useMemos don't churn while data loads.
+const EMPTY_INVOICES: Invoice[] = [];
+const EMPTY_PM_USERS: PmUser[] = [];
+
 export default function AllInvoicesPage() {
  const searchParams = useSearchParams();
  const router = useRouter();
- const [invoices, setInvoices] = useState<Invoice[]>([]);
- const [pmUsers, setPmUsers] = useState<PmUser[]>([]);
+ const pathname = usePathname();
+ // List data via the ONE freshness pattern (use-fresh-list): snapshot-painted
+ // on remount (no skeleton flash), background-refetched on every mount, and
+ // await-refetched after mutations. This page mounts at BOTH /invoices and
+ // /financials/bills — the shared snapshot keeps the two visits coherent.
+ const {
+ data: listData,
+ loading,
+ refetch: refetchList,
+ mutate: mutateList,
+ } = useFreshList<{ invoices: Invoice[]; pmUsers: PmUser[] }>(
+ "invoices-list",
+ useCallback(async () => {
+ // 15s abort backstop: the skeleton must never be permanent.
+ const res = await fetch("/api/invoices/list", {
+ cache: "no-store",
+ signal: AbortSignal.timeout(15000),
+ });
+ if (!res.ok) return null; // keep whatever is painted
+ const data = (await res.json()) as { invoices?: Invoice[]; pmUsers?: PmUser[] };
+ return { invoices: data.invoices ?? [], pmUsers: data.pmUsers ?? [] };
+ }, [])
+ );
+ const invoices = listData?.invoices ?? EMPTY_INVOICES;
+ const pmUsers = listData?.pmUsers ?? EMPTY_PM_USERS;
+ // In-place patches (approve/check#/picked-up) write through the snapshot.
+ const setInvoices = useCallback(
+ (updater: (prev: Invoice[]) => Invoice[]) => {
+ mutateList((d) => ({ ...d, invoices: updater(d.invoices) }));
+ },
+ [mutateList]
+ );
  // Live setup progress — the SetupGuide derives step completion from these
  // actual data counts, not a stored onboarding flag.
  const [setupCounts, setSetupCounts] = useState<{ costCodes: number; jobs: number }>({ costCodes: 0, jobs: 0 });
- const [loading, setLoading] = useState(true);
  // 3.2 workflow settings — gates the folded-in Quick-Approve / batch machinery
  // (batch_approval_enabled + quick_approve_enabled + the eligibility gates).
  const [workflowSettings, setWorkflowSettings] = useState<ListWorkflowSettings | null>(null);
@@ -221,13 +255,11 @@ export default function AllInvoicesPage() {
  // local dropdown. New jobs land in the rail via the provider's own listener.
  const { selectedJobId, clear: clearJobFilter } = useJobFilter();
 
+ // Invoices + PM dropdown load through useFreshList above (server route,
+ // per-request cookie auth — the ~15s client-auth-strand fix lives on; the
+ // 15s backstop is now the fetch's AbortSignal.timeout). This effect keeps
+ // the two independent fire-and-forget side loads.
  useEffect(() => {
- // Backstop: the loading skeleton must NEVER be permanent. If fetchData
- // hasn't flipped `loading` within 15s (e.g. a hung network call), force it
- // so the user always reaches the empty state / list, never an endless spin.
- const loadingSafety = setTimeout(() => setLoading(false), 15000);
- async function fetchData() {
- try {
  // Setup progress (server-side, INDEPENDENT of the invoice load so a slow /
  // hanging invoice query can't block it) — fire-and-forget; it updates the
  // SetupGuide as soon as it resolves.
@@ -266,32 +298,6 @@ export default function AllInvoicesPage() {
  );
  })
  .catch(() => setWorkflowSettings(RB_DEFAULT_SETTINGS));
- // Invoices + PM dropdown, loaded SERVER-SIDE via /api/invoices/list.
- // Root-cause fix for the ~15s hang: the previous client-side supabase-js
- // load blocked on getSession()/auth-init, which can strand and never
- // resolve (confirmed on RB: fetchData never got past getSession). A plain
- // fetch to a server route uses per-request cookie auth (refreshed by
- // middleware) and doesn't touch the client's stuck auth singleton, so the
- // list renders fast — data or empty state — never via the 15s backstop.
- const res = await fetch("/api/invoices/list", { cache: "no-store" });
- if (res.ok) {
- const data = (await res.json()) as { invoices?: Invoice[]; pmUsers?: PmUser[] };
- setInvoices(data.invoices ?? []);
- setPmUsers(data.pmUsers ?? []);
- }
- } catch (err) {
- // Robustness (new-org signup bug): never strand the page on the loading
- // skeleton. A thrown/rejected query anywhere in this async chain (auth,
- // RLS, network) must still resolve to the empty state, not spin forever.
- // The empty-state branch handles zero data; a real error is logged here.
- console.error("[invoices] load failed:", err);
- } finally {
- clearTimeout(loadingSafety);
- setLoading(false);
- }
- }
- fetchData();
- return () => clearTimeout(loadingSafety);
  }, []);
 
  // Auto-dismiss the Save & Route flash strip.
@@ -1116,13 +1122,21 @@ export default function AllInvoicesPage() {
  initialMode={uploadMode}
  onClose={() => {
  setUploadOpen(false);
- if (searchParams.get("action")) router.replace("/invoices");
- router.refresh();
+ // Strip the ?action deep-link param without leaving this route (the page
+ // mounts at BOTH /invoices and /financials/bills — replacing to a fixed
+ // path forced a cross-route remount, one source of the list flicker).
+ if (searchParams.get("action")) router.replace(pathname);
+ // A cancelled batch may still have saved some files — silent refetch
+ // (seq-guarded; snapshot repaints without a skeleton flash).
+ void refetchList();
  }}
- onSaved={(count) => {
+ onSaved={async (count) => {
+ // THE freshness pattern (await-refetch): the list reflects the server's
+ // rows BEFORE the modal closes — never a manual refresh, never a
+ // router.refresh() no-op against client state.
+ await refetchList();
  setUploadOpen(false);
- if (searchParams.get("action")) router.replace("/invoices");
- router.refresh();
+ if (searchParams.get("action")) router.replace(pathname);
  setFlashMsg(`${count} invoice${count === 1 ? "" : "s"} saved & routed for review.`);
  }}
  />
