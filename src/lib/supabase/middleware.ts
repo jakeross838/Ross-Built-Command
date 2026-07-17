@@ -92,14 +92,17 @@ export async function updateSession(request: NextRequest) {
     user = u;
   }
 
-  // Platform admin lookup is only consulted by /admin* page guards, the
-  // /api/admin/platform/* fast-path helper, and impersonation resolution —
-  // skip it for ordinary API requests without the impersonation cookie
-  // (route-side getPlatformAdminFromRequest falls back to a full lookup
-  // when the header is absent, so this is a pure perf skip, not a
-  // capability change).
+  // Platform admin lookup runs everywhere EXCEPT light (GET/HEAD) API
+  // paths — there the billing gate is skipped too, so isPlatformAdmin is
+  // never consulted and the route-side getPlatformAdminFromRequest falls
+  // back to a full lookup when the header is absent. Non-GET API requests
+  // MUST keep the lookup: the billing gate's platform-admin exemption
+  // applies to them (regression 2026-07-17: skipping it for API POSTs
+  // flipped isPlatformAdmin false → the expired-trial gate 307'd POST
+  // /api/invoices/parse to the billing PAGE → "Failed to find Server
+  // Action" 500s for platform-admin users).
   const needsPlatformAdmin =
-    !isApiPath ||
+    !isLightApi ||
     pathname.startsWith("/api/admin/platform") ||
     !!request.cookies.get("nw_impersonate");
 

@@ -530,6 +530,18 @@ export async function middleware(request: NextRequest) {
   // level (middleware stays GET-only friendly so pages can still render).
   // Platform admins are exempt — staff need to debug billing issues.
   if (user && !isPlatformAdmin && gate === "expired" && !canEscapeBillingGate(pathname)) {
+    // API requests get JSON (mirrors the auth gate's JSON-401 at line
+    // 158-162). The old page redirect here 307'd API POSTs to a PAGE —
+    // the method is preserved, Next treats the POST as a Server Action
+    // invocation, and the caller gets a framework 500 instead of a
+    // billing error. NOTE: no API route currently calls requireBillingOk,
+    // so this middleware branch IS the API-level billing enforcement.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Your free trial has ended. Pick a plan in Settings → Billing." },
+        { status: 402 }
+      );
+    }
     const url = request.nextUrl.clone();
     // iter-2 mechanical #4 — canonical billing path post-1.5c per D-01.
     // Pre-1.5c the gate redirected to /settings/billing; that path now
