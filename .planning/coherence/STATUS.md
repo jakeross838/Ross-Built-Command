@@ -1,6 +1,36 @@
 # STATUS — invoices+draws big fix (durable session handoff)
 
-**Updated:** 2026-07-16 (massive-run session 1) · **HEAD (origin/main):** massive-run Stage-A `b21c963` on Stage-1 chrome `30ffd48` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod). Tree clean after doc commit.
+**Updated:** 2026-07-17 (perf + data-freshness run) · **HEAD (origin/main):** perf run `2d9edab` + billing-gate regression fix `b49b585` on B1 `6264c17` · branch `flat-ia-rework` → pushes to `origin/main` (ship-to-prod).
+
+## ✅ PERFORMANCE + DATA-FRESHNESS RUN (2026-07-17, jumped the queue per Jake — B2/C/D paused, now resume). QA: `.planning/qa-runs/2026-07-17-perf-freshness-run-qa-report.md`.
+
+**1a upload invisibility — mechanism named + fixed:** list rows lived in client useState from a run-once mount effect; upload `onSaved` fired `router.refresh()` — a NO-OP for client state — so uploads stayed invisible until a hard remount, and every remount blanked to skeleton then refilled (the flicker; the page mounts at BOTH /invoices and /financials/bills and onSaved cross-route-replaced between them). **THE pattern** (`src/hooks/use-fresh-list.ts`): module snapshot painted instantly on remount + background refetch every mount + **await-refetch before mutation success reveals** + sequence guard dropping out-of-order responses + `patchListSnapshot` for cross-route mutations (SERVER-returned status only; delete drops the row). Applied: invoices list (upload/manual/import + in-place approve/check#/picked-up write-through), review page (all 7 status actions + delete), draws list.
+
+**1b root cause of the universal slowness:** middleware ran getUser (GoTrue RT) → org_members+embed → platform_admins SEQUENTIALLY on every request; routes then repeated getUser + org_members via `getCurrentMembership()` — 5 round-trips before the first data query. Fixed: GET/HEAD API requests take a light path (JWT decode, no GoTrue RT; billing gate not evaluated — same posture the old HOT_API_PATHS pair documented), org_members ∥ platform_admins, header fast path (`getMembershipFromRequest` / new `getMembershipFromHeaders`) wired into draws/workflow-settings/setup-status/allocations/balance-impact/me + the draw-detail loader; duplicate `/api/me` killed via shared `me-client` promise (nav-bar + useOrgId — also un-gates the review modal's org-scoped lookups); draw-detail loader's ~10-deep sequential read chain → one `Promise.all` (concurrency only — money math byte-untouched, F1 intact).
+
+**BEFORE → AFTER (prod, warm steady-state):**
+| Surface / route | Before | After |
+|---|---|---|
+| `/api/draws` | 1726–2103ms | **319–553ms** |
+| `/api/invoices/list` | 1681–2527ms | **~760ms** |
+| `/api/workflow-settings` | 1785–2945ms | **~211ms** (floor) |
+| `/api/me` | 1225–2526ms | **~700ms** |
+| Invoice list content landed | ~6.2s | **~3.4s** (fetches fire at ~1.8s hydration; the 5 calls run ∥) |
+| Draws list content landed | ~4.4s | **~2.3s** |
+| Draw detail SSR body | ~4.6–4.8s | **~2.6s** steady (4.6→2.6 over 4 samples; helper internals still sequential — money-adjacent, untouched) |
+| Review modal content | ~5.5–6s (3 waves, dup /api/me, dup budget_lines) | **~3.2s** (1 /api/me, 1 budget_lines, waves compressed; shell+skeleton ~1s) |
+
+**Freshness proof:** TF-001 ($111.11) + TF-002 ($222.22) uploaded consecutively (localhost on live DB, announced) — each row appeared at the TOP of To Review **the instant the modal closed**, zero manual refresh, zero errors. Fixtures fully reverted (2 invoices + line items + 1 vendor — vendor B fuzzy-matched onto A). Third watched upload ran on PROD post-deploy (TF-003; reverted).
+
+**🔥 REGRESSION CAUGHT + FIXED in the Stage-3 walk (`b49b585`):** the perf commit skipped the platform_admins lookup for all API paths, but API **POSTs** still evaluate the billing gate → with `isPlatformAdmin` false, RB's long-expired trial (trial_ends_at **2026-04-29**, masked for months by Jake's platform-admin exemption) 307'd `POST /api/invoices/parse` to the billing PAGE → Next "Failed to find Server Action" → every upload parse 500'd on prod. Fix: platform_admins lookup restored wherever the gate can consult it (`!isLightApi`), + the expired-trial gate now returns **JSON 402 for /api/*** (was: page redirect that 500'd POSTs — no API route calls `requireBillingOk`, so this branch IS the API billing enforcement; a real expired org now gets a clean 402).
+
+**⚠️ FLAGGED FOR JAKE (posture deltas + follow-ups):**
+1. **RB org trial_ends_at is 2026-04-29 with status "trialing"** — the org is formally expired; only the platform-admin exemption keeps RB working. Consider stamping the internal org `active` so enforcement changes can't ever brick RB.
+2. **Expired-trial orgs can now complete API GETs (reads)** — the light path skips the gate (before, GET fetches got a redirect-to-HTML, i.e. garbage-but-blocked). Writes 402; pages still bounce to billing. Matches the read_only architecture direction; flag if you want reads blocked too.
+3. ~90 other API `getCurrentMembership()` call sites still pay the redundant auth pair (middleware light path already saves them 3 RTs); migrate opportunistically via `getMembershipFromRequest`.
+4. Review modal waves 1→2 remain two-stage (grid/strip mount after invoice load) — each wave now cheap; hoist only if the <500ms perceived bar misses in real use.
+
+**Then:** B2 (budget-source unification etc.) → C (QA-absorb + sweep) → D (review packet) resume per the massive-run plan below.
 
 ## ✅ MASSIVE RUN — SESSION 2: **B1 SHIPPED — multi-job invoice split (schema + engine + draws end-to-end)**. QA: `.planning/qa-runs/2026-07-16-massive-run-b1-multi-job-split-qa-report.md`.
 Jake's GO with rulings (Q1,2,3,5,7,8,9 as recommended; **Q4 overridden**: Job column hidden-when-uniform + auto-reveal + "Split to another job…" affordance; **Q6 clarified**: whole-invoice status, manual payment no-auto-flip, liens per-portion; PM-allocations RLS fix folded into the migration). Shipped: **migration 00122** (allocation job_id backfilled=header NOT NULL · invoice_draw_links junction backfilled 6/6 · split⇒fully-allocated trigger · header-change sync trigger · PM write policy · 3 draw RPCs re-issued junction-aware w/ per-portion liens) · engine job-scoped (sums/uncaptured/prior-apps/recalc via junction; fallbacks header-only) · 8 routes junction-aware (new/preview/update-draft/revise/send_back/detail/compare/allocations) · **WI-013 resurrected** into the allocations PUT (hard 422s; Q3 advisory budget-line warnings) · save-path job stamping · grid Job column per Q4 + job-grouped strip (composite scope keys) + wizard/detail/statement "$X of $Y invoice total" + per-job stamp breakdown · 8 new cent-exact split tests (suite ALL PASS, tsc 0).
